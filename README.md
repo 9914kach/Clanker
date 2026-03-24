@@ -12,6 +12,7 @@ Homeserver-repo för Raspberry Pi (Clanker) — skript, anteckningar och tjänst
 | `apps/discord-hub-api/` | Backend för samma hub — se `apps/discord-hub-api/README.md` |
 | `apps/dev-tools-web/` | **Lokala dev-verktyg** (dokumentationsviewer m.m., separat från discord-hub; samma UI-grund som discord-hub) — **start:** se [apps/dev-tools-web/README.md](apps/dev-tools-web/README.md) (`npm run dev:tools`, eller `npm run dev:all` tillsammans med discord-hub; Docker-profil `devtools`) |
 | `packages/ui/` | Delat **`@clanker/ui`** — shadcn/ui-primitives som båda webapparna importerar |
+| `.agents/skills/shadcn/` | **AI-skill** för shadcn/ui (mönster, CLI, theming) — installerad enligt [Skills (shadcn/ui)](https://ui.shadcn.com/docs/skills); uppdatera med `npx skills add shadcn/ui -y`. Roten har `skills-lock.json` som låser källan. |
 | `experiments/` | Isolerade försök och engångsskript |
 | `pihole/` | Dokumentation och skript för Pi-hole (själva Compose-filen ligger i repots rot) |
 | `docs/homelab-todo.md` | Backlog / TODO för homelab (VM, domän, osv.) |

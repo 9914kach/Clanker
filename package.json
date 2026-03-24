@@ -7,6 +7,8 @@
   ],
   "scripts": {
     "dev": "npm run dev -w discord-hub-web",
+    "dev:discord-api": "npm run dev -w discord-hub-api",
+    "dev:discord-stack": "concurrently -n api,web -c blue,green \"npm run dev:discord-api\" \"npm run dev -w discord-hub-web\"",
     "dev:tools": "npm run dev -w dev-tools-web",
     "dev:all": "concurrently -n discord,tools -c cyan,magenta \"npm run dev\" \"npm run dev:tools\"",
     "build": "npm run build -w discord-hub-web",
@@ -15,7 +17,7 @@
     "preview:tools": "npm run preview -w dev-tools-web",
     "lint": "npm run lint -w discord-hub-web",
     "lint:tools": "npm run lint -w dev-tools-web",
-    "typecheck": "npm run typecheck -w discord-hub-web && npm run typecheck -w dev-tools-web"
+    "typecheck": "npm run typecheck -w discord-hub-web && npm run typecheck -w dev-tools-web && npm run typecheck -w discord-hub-api"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

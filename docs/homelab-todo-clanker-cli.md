@@ -112,5 +112,5 @@ Compose-profiler i [docker-compose.yml](../docker-compose.yml):
 
 ## Beslutade frågor (tidigare öppna)
 
-- **Vite:** `clanker run` = samma som `clanker-run` (Compose + ev. **båda** Viter via `dev:all` i bakgrunden om `CLANKER_VITE_DEV=1`). `clanker dev discord|devtools` kör **`clanker up` för profilen** och sedan **en** Vite-app i förgrund (`--vite-only` om bara Vite). `clanker up` startar inte Vite (dokumenterat i `help` och docker.md).
+- **Vite:** `clanker run` = samma som `clanker-run` (Compose + ev. **båda** Viter via `dev:all` i bakgrunden om `CLANKER_VITE_DEV=1`). `clanker dev discord` kör **`clanker up` för profilen** och sedan **`npm run dev:discord-stack`** (discord-hub-api + discord-hub-web). `clanker dev devtools` kör en Vite-app som förut. `--vite-only` hoppar över Docker; för discord startas då bara Vite — kör `npm run dev:discord-api` separat om OAuth ska fungera. `clanker up` startar inte Vite (dokumenterat i `help` och docker.md).
 - **`CLANKER_KILL_KEEP_PIHOLE`:** kort rad i `clanker help` under `kill` + full förklaring i [docker.md](docker.md) (avsnitt om `clanker.kill`).

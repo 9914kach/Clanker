@@ -31,7 +31,8 @@ Vanliga fall: använd clanker up / stop / run / kill. För rå Docker Compose-sy
   ps                docker compose ps
   doctor            snabb hälsokoll (.env, compose ps, node_modules om Vite är påslaget i .env)
   dev APP           kör först clanker up APP (webb + alltid caddy), sedan Vite för den appen i förgrund
-                    • --vite-only: hoppa över Docker, bara npm run dev -w …
+                    • discord: startar även discord-hub-api (port 3001) tillsammans med Vite — krävs för /api (OAuth)
+                    • --vite-only: hoppa över Docker, bara npm run dev -w … (API startas inte; kör npm run dev:discord-api separat om du behöver OAuth)
                     • --no-build / --build vidare till clanker up (samma som clanker up …)
                     • --up är överflödig (standard är redan up); kräver npm och node_modules i rot
 
@@ -241,6 +242,14 @@ clanker_cmd_dev() {
     discord) workspace=discord-hub-web ;;
     devtools) workspace=dev-tools-web ;;
   esac
+
+  if [[ "$app" == discord ]] && ((skip_docker == 0)); then
+    exec npm run dev:discord-stack
+  fi
+
+  if [[ "$app" == discord ]] && ((skip_docker == 1)); then
+    echo "clanker: tips: OAuth kräver discord-hub-api på port 3001 — kör i annan terminal: npm run dev:discord-api" >&2
+  fi
 
   exec npm run dev -w "$workspace"
 }
