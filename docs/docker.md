@@ -10,6 +10,83 @@ Compose-filen använder volymsökvägar som `./etc-pihole` och `./etc-dnsmasq.d`
 cd ~/apps/Clanker   # anpassa sökväg efter din maskin
 ```
 
+## Ett kommando från SSH (`clanker.run`)
+
+Skriptet [`scripts/clanker-run`](../scripts/clanker-run) byter alltid till **repots rot** och kör `docker compose up -d --build`. Vilka profiler som startas styrs av **`COMPOSE_PROFILES` i `.env`** — utan den variabeln startar du i praktiken främst tjänster utan profil (t.ex. Pi-hole). Sätt t.ex. `COMPOSE_PROFILES=discord,devtools` eller lägg till `,caddy` / `,db` enligt behov (se `.env.example`).
+
+**Vite i bakgrunden (valfritt):** sätter du **`CLANKER_VITE_DEV=1`** i `.env` och har kört **`npm install`** i roten startar skriptet efter lyckad Compose-körning även **`npm run dev:all`** (discord-hub + dev-tools) i bakgrunden med `setsid`, så Caddy kan nå `dev.clanker.*` utan separat terminal. PID sparas i **`.clanker/vite-dev.pid`** (gitignorerad), logg i **`.clanker/vite-dev.log`**. Utan `npm` eller `node_modules/` skrivs en varning och Compose påverkas inte. Om en Vite-process redan körs enligt PID-filen startas ingen ny.
+
+**Kör från repo:**
+
+```bash
+./scripts/clanker-run
+```
+
+**Flaggor** vidarebefordras till `docker compose up`, t.ex.:
+
+```bash
+./scripts/clanker-run --no-build
+```
+
+**Globalt kommando** (anpassa sökvägen till din clone):
+
+```bash
+sudo ln -sf "$HOME/apps/Clanker/scripts/clanker-run" /usr/local/bin/clanker.run
+clanker.run
+```
+
+## Stäng ned (`clanker.kill`)
+
+Skriptet [`scripts/clanker-kill`](../scripts/clanker-kill) stoppar först **Vite** om **`.clanker/vite-dev.pid`** finns (samma som `clanker-run` skapade med `CLANKER_VITE_DEV=1` — hela processgruppen avslutas), därefter som standard **`docker compose down`** från **repots rot** (samma `.env` / `COMPOSE_PROFILES` som vid start).
+
+**Pi-hole och DNS:** `clanker-pihole` har ingen Compose-profil och ingår därför i samma projekt. **`docker compose down` stoppar alltså Pi-hole också.** Klienter som i routern/DHCP **bara** har Pis IP som DNS-server får då inga DNS-svar (internet “fungerar inte”) tills Pi-hole startar igen — t.ex. med `./scripts/clanker-run` eller `docker compose up -d`. Lägg gärna in **sekundär DNS** (t.ex. `1.1.1.1`) i routern så uppslag fungerar om Pi är nere; se [pihole/README_PIHOLE.md](../pihole/README_PIHOLE.md) (avsnitt om DHCP och sekundär DNS).
+
+**Lämn Pi-hole igång:** sätt **`CLANKER_KILL_KEEP_PIHOLE=1`** i `.env`. Då kör skriptet `docker compose stop` på `discord-hub-web`, `dev-tools-web`, `clanker-caddy` och `clanker-db` i stället för `down`. Containrar blir kvar i *exited*-läge (till skillnad från `down`). **Extra argument** (t.ex. `--volumes`) **används inte** i det läget — använd full `down` utan variabeln om du behöver dem.
+
+Efteråt skrivs **compose-status** och **TCP-portar** (`ss -tlnp`). **Tolkning:** **22** (SSH), **111** (rpcbind), **631** (CUPS), **5900** (VNC) m.m. är vanliga värdtjänster; **127.0.0.1** med `node` kan vara IDE (t.ex. Cursor), inte Clanker. Efter **full** `down` ska Clanker-relaterat ofta vara borta: 80, 4173, 4174, 5173, 5174, 8080, och Pi-hole kan använda **TCP 53** (DNS över TCP syns här; **UDP 53** syns inte i `ss -tlnp`). Med **`CLANKER_KILL_KEEP_PIHOLE=1`** är **53** och **8080** i stället **förväntade** så länge Pi-hole kör. Om **5173/5174** står kvar kan det vara Vite utanför `clanker-run` eller en process som sluppit processgruppen.
+
+**Kör från repo:**
+
+```bash
+./scripts/clanker-kill
+```
+
+**Flaggor** vidarebefordras till `docker compose down` (när `CLANKER_KILL_KEEP_PIHOLE` inte är satt), t.ex. ta bort volymer:
+
+```bash
+./scripts/clanker-kill --volumes
+```
+
+**Globalt kommando:**
+
+```bash
+sudo ln -sf "$HOME/apps/Clanker/scripts/clanker-kill" /usr/local/bin/clanker.kill
+clanker.kill
+```
+
+## Kommandot `clanker` (dispatcher)
+
+[`scripts/clanker`](../scripts/clanker) är en **tunn ingång** från repots rot: samma idé som `clanker.run` / `clanker.kill`, men med **delkommandon** så du slipper komma ihåg långa `docker compose --profile …`-rader. Detaljerad backlog och framtida förbättringar: [homelab-todo-clanker-cli.md](homelab-todo-clanker-cli.md).
+
+| Kommando | Betydelse |
+|----------|-----------|
+| `clanker run` | = `./scripts/clanker-run` (Compose enligt `.env` + ev. Vite) |
+| `clanker kill` | = `./scripts/clanker-kill` |
+| `clanker up` | `docker compose up -d --build` (använder `COMPOSE_PROFILES` om satt) |
+| `clanker up devtools` | Startar en profil i taget (kan lista flera: `discord devtools caddy`) |
+| `clanker up … --no-build` | Samma som ovan men utan `--build` |
+| `clanker stop devtools` | Stoppar **en** profils container (mappning se `clanker help`) |
+| `clanker compose …` | Rå `docker compose` från rot (för avancerade fall) |
+| `clanker ps` | `docker compose ps` |
+
+**Linux kort:** lägg en symlink i en katalog som finns i `PATH` (t.ex. `ln -sf "$HOME/apps/Clanker/scripts/clanker" /usr/local/bin/clanker`) så räcker det att skriva `clanker` var du än står. Filen måste vara körbar (`chmod +x`).
+
+```bash
+./scripts/clanker help
+```
+
+---
+
 ## Starta alla tjänster (Docker)
 
 **Snabbstart (utan Postgres)** — Pi-hole + båda webbapparna (vanligast om du inte kör API/DB än):
@@ -56,10 +133,13 @@ docker compose up -d --build
 | **PostgreSQL** | Docker | Endast **på själva Pi:ns** loopback | **127.0.0.1:5432** på värden (ej öppet mot hela LAN som standard) (`POSTGRES_PORT`) |
 | **Pi-hole** (DNS + admin m.m.) | Docker, `host`-nät | Direkt på värden: `WEB_PORT` / `FTLCONF_webserver_port` (t.ex. **8080** i `.env.example`). DNS: port **53**. Via Caddy: `http://clanker.pihole` på värdens port **80** (samma ingång som övriga Caddy-namn). | Pi-hole delar Pi:ns nätverksstack. |
 
+Om klienterna i LAN **bara** använder Pis IP som DNS och Pi-hole-containern **inte** kör, försvinner namnuppslag (det kan kännas som att hela nätverket är nere även om t.ex. `ping 1.1.1.1` fungerar). Sätt gärna **sekundär DNS** i routern/DHCP eller läs mer under felsökning i [`pihole/README_PIHOLE.md`](../pihole/README_PIHOLE.md).
+
 **Utveckling utan Docker** (npm från repots rot — *inte* samma portar som tabellen ovan):
 
 | App | Kommando | Dev-server (typiskt) |
 |-----|----------|----------------------|
+| Båda (rekommenderat med Caddy `dev.clanker.*`) | `npm run dev:all` | Vite **5173** + **5174** parallellt |
 | Discord hub | `npm run dev` | Vite, oftast **5173** |
 | Dev tools | `npm run dev:tools` | Vite, oftast **5174** |
 
@@ -127,7 +207,8 @@ Exempel (en rad):
 
 - **4173 och 4174** — oförändrat direkt till nginx i containrarna.
 - **Endast HTTP:** [Caddyfile](../infra/caddy/Caddyfile) använder `http://` så Caddy inte aktiverar HTTPS mot **443** (inte mappad i Compose). HTTPS kan läggas framför eller i Caddy senare.
-- **Begränsning:** `dev.clanker.*` förutsätter att **Vite kör på samma värd som Docker** (`npm run dev` / `npm run dev:tools` på Pi:en). Kör du Vite bara på en annan maskin utan motsvarande nätverksväg når inte Caddy på Pi den processen.
+- **Begränsning:** `dev.clanker.*` förutsätter att **Vite kör på samma värd som Docker** (`npm run dev:all` eller båda `npm run dev` och `npm run dev:tools` på Pi:en). Kör du Vite bara på en annan maskin utan motsvarande nätverksväg når inte Caddy på Pi den processen.
+- **Grå sida på `dev.clanker.*`:** du laddar HTML på port **80**, men Vite försöker annars koppla HMR-WebSocket mot **5173/5174** (som inte går via Caddy). Lägg **`VITE_HMR_CLIENT_PORT=80`** i **repots rot-**`.env` och **starta om** Vite. (`vite.config` använder `loadEnv` mot roten så värdet plockas upp — `process.env` i config-filen läser inte `.env` automatiskt.) Lämna variabeln borttagen om du bara använder `http://localhost:5173` / `:5174`.
 
 ## Kolla status
 

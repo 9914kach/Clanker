@@ -1,9 +1,9 @@
 # Homelab — TODO / backlog
 
-**Tills vidare:** enda backlogen är denna Markdown-fil i repot (ingen separat ticket-/PM-tjänst).
+**Primär backlog** är denna fil. **Fördjupade checklistor** får ligga i separata Markdown-filer under `docs/` när de **länkas härifrån** (samma checkbox-konvention). Övrig planering utanför repot (ticket-system m.m.) används inte tills vidare.
 
 Här samlas **planerade** saker som inte är pågående implementation i kod just nu.  
-Uppdatera listan när du börjar eller avslutar något; flytta gärna färdiga punkter till avsnittet längst ner så historiken finns kvar.
+Uppdatera listan när du börjar eller avslutar något; flytta gärna färdiga punkter till avsnittet längst ner så historiken finns kvar. Uppdatera även länkade detaljfiler när punkter där blir klara.
 
 ## Konvention
 
@@ -31,6 +31,10 @@ Uppdatera listan när du börjar eller avslutar något; flytta gärna färdiga p
 ## Övrigt
 
 - [ ] *(t.ex. domän + HTTPS för discord-hub, backup-rutin)*
+
+## Länkade detaljbackloggar
+
+- [homelab-todo-clanker-cli.md](homelab-todo-clanker-cli.md) — **Clanker CLI & QoL:** dispatcher `scripts/clanker`, profiler/up/stop, Linux/PATH-tips, framtida completion m.m.
 
 ---
 

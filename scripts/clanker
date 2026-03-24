@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+# Tunn dispatcher: cd till repots rot, delegerar till docker compose eller befintliga skript.
+set -euo pipefail
+
+SCRIPT_SOURCE="${BASH_SOURCE[0]:-$0}"
+SCRIPT_REAL="$(readlink -f "$SCRIPT_SOURCE")"
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_REAL")" && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+cd "$ROOT"
+
+clanker_usage() {
+  sed -n '1,200p' <<'EOF'
+Användning: clanker <kommando> [argument …]
+
+  help              denna hjälp
+  run               samma som scripts/clanker-run (Compose + ev. Vite via .env)
+  kill              samma som scripts/clanker-kill
+  up [PROFIL …]     docker compose up -d (standard --build)
+                    • utan profiler: respekterar COMPOSE_PROFILES i .env
+                    • en eller flera: discord | devtools | caddy | db
+                    • lägg --no-build sist om du inte vill bygga om images
+  stop PROFIL       stoppar en profils tjänst (en profil åt gången)
+  compose …         vidarebefordrar till docker compose (från repots rot)
+  ps                docker compose ps
+
+Exempel:
+  clanker up devtools
+  clanker up discord devtools caddy
+  clanker up --no-build
+  clanker stop devtools
+  clanker compose --profile devtools logs -f
+
+Profiler ↔ tjänster: discord→discord-hub-web, devtools→dev-tools-web,
+  caddy→clanker-caddy, db→clanker-db. Pi-hole har ingen profil.
+
+Mer: docs/docker.md
+EOF
+}
+
+clanker_cmd_up() {
+  shift
+  local prof_args=()
+  while (($# > 0)) && [[ "$1" =~ ^(discord|devtools|caddy|db)$ ]]; do
+    prof_args+=(--profile "$1")
+    shift
+  done
+
+  local add_build=1
+  for a in "$@"; do
+    if [[ "$a" == --no-build ]]; then
+      add_build=0
+      break
+    fi
+  done
+  local build_args=()
+  ((add_build)) && build_args=(--build)
+
+  if ((${#prof_args[@]} == 0)); then
+    if (($# > 0)) && [[ ! "$1" =~ ^- ]]; then
+      echo "clanker: okänd profil eller ogiltigt argument: $1" >&2
+      echo "clanker: kända profiler: discord devtools caddy db" >&2
+      echo "clanker: tips: använd \"clanker compose …\" för avancerade fall." >&2
+      exit 1
+    fi
+    docker compose up -d "${build_args[@]}" "$@"
+  else
+    docker compose "${prof_args[@]}" up -d "${build_args[@]}" "$@"
+  fi
+}
+
+clanker_cmd_stop() {
+  shift
+  local profile="${1:-}"
+  if [[ -z "$profile" ]]; then
+    echo "clanker: användning: clanker stop <discord|devtools|caddy|db>" >&2
+    exit 1
+  fi
+  case "$profile" in
+    discord) docker compose stop discord-hub-web ;;
+    devtools) docker compose stop dev-tools-web ;;
+    caddy) docker compose stop clanker-caddy ;;
+    db) docker compose stop clanker-db ;;
+    *)
+      echo "clanker: okänd profil: $profile (discord devtools caddy db)" >&2
+      exit 1
+      ;;
+  esac
+}
+
+cmd="${1:-}"
+case "$cmd" in
+  "" | help | -h | --help)
+    clanker_usage
+    ;;
+  run)
+    shift
+    exec "$SCRIPT_DIR/clanker-run" "$@"
+    ;;
+  kill)
+    shift
+    exec "$SCRIPT_DIR/clanker-kill" "$@"
+    ;;
+  up)
+    clanker_cmd_up "$@"
+    ;;
+  stop)
+    clanker_cmd_stop "$@"
+    ;;
+  compose)
+    shift
+    docker compose "$@"
+    ;;
+  ps)
+    shift
+    docker compose ps "$@"
+    ;;
+  *)
+    echo "clanker: okänt kommando: $cmd" >&2
+    echo "clanker: kör \"clanker help\" för lista." >&2
+    exit 1
+    ;;
+esac

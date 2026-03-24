@@ -1,0 +1,7 @@
+# Mall för repo-rot: etc-dnsmasq.d/99-dhcp-dns-fallback.conf
+# Kopiera till etc-dnsmasq.d/ (repo-rot) och byt 192.168.1.50 till din Pis LAN-IP.
+# Aktivt bara när Pi-hole (inte routern) delar ut DHCP på nätet.
+#
+#   cp pihole/examples/99-dhcp-dns-fallback.conf.example etc-dnsmasq.d/99-dhcp-dns-fallback.conf
+#
+dhcp-option=6,192.168.1.50,1.1.1.1

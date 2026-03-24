@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "npm run dev -w discord-hub-web",
     "dev:tools": "npm run dev -w dev-tools-web",
+    "dev:all": "concurrently -n discord,tools -c cyan,magenta \"npm run dev\" \"npm run dev:tools\"",
     "build": "npm run build -w discord-hub-web",
     "build:tools": "npm run build -w dev-tools-web",
     "preview": "npm run preview -w discord-hub-web",
@@ -15,5 +16,8 @@
     "lint": "npm run lint -w discord-hub-web",
     "lint:tools": "npm run lint -w dev-tools-web",
     "typecheck": "npm run typecheck -w discord-hub-web && npm run typecheck -w dev-tools-web"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
   }
 }

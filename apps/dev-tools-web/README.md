@@ -20,6 +20,10 @@ npm run dev:tools
 
 Öppna **http://localhost:5174** (standardport; Vite kan välja annan port om 5174 är upptagen — se terminalutskrift).
 
+Kör du **också** discord-hub lokalt (samma scenario som Caddy med båda `dev.clanker.*`-namnen), använd i stället **`npm run dev:all`** från roten — då startas båda Vite-servrarna parallellt.
+
+**Caddy / `http://dev.clanker.tools`:** om sidan blir **grå**, sätt **`VITE_HMR_CLIENT_PORT=80`** i repots rot-`.env` och starta om Vite (`npm run dev:tools` eller `npm run dev:all`). Se [docs/docker.md](../../docs/docker.md#caddy-reverse-proxy).
+
 **Raspberry Pi / Linux utan Node:** Om du får `npm: command not found` har du inget Node.js installerat. Antingen:
 
 - **Installera Node** (t.ex. [nvm](https://github.com/nvm-sh/nvm) och Node 22, i linje med Docker-imagen):

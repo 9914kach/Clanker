@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_SOURCE="${BASH_SOURCE[0]:-$0}"
+SCRIPT_REAL="$(readlink -f "$SCRIPT_SOURCE")"
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_REAL")" && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# shellcheck source=clanker-vite-lib.sh
+source "$SCRIPT_DIR/clanker-vite-lib.sh"
+
+cd "$ROOT"
+
+if [[ ! -f .env ]]; then
+  echo "clanker-kill: varning: .env saknas i $ROOT." >&2
+fi
+
+clanker_load_dotenv
+clanker_vite_stop
+
+if [[ "${CLANKER_KILL_KEEP_PIHOLE:-}" == "1" ]]; then
+  if (($# > 0)); then
+    echo "clanker-kill: CLANKER_KILL_KEEP_PIHOLE=1 — ignorerar argument till docker compose down: $*" >&2
+    echo "clanker-kill: (ta bort variabeln eller sätt till 0 om du behöver t.ex. --volumes eller --remove-orphans)" >&2
+  fi
+  echo "clanker-kill: stoppar discord-hub-web, dev-tools-web, clanker-caddy, clanker-db — clanker-pihole rörs inte (fortsätter köra om den redan var uppe)."
+  docker compose stop discord-hub-web dev-tools-web clanker-caddy clanker-db
+else
+  docker compose down "$@"
+fi
+
+echo ""
+echo "=== Clanker: compose-status ==="
+docker compose ps -a
+
+echo ""
+echo "=== TCP-portar som lyssnar nu ==="
+echo "Tolkning: 22 = SSH; 111 = rpcbind; 631 = CUPS; 5900 = VNC (vanliga värdtjänster). Slumpmässiga 127.0.0.1:node = ofta IDE (t.ex. Cursor), inte Clanker."
+if [[ "${CLANKER_KILL_KEEP_PIHOLE:-}" == "1" ]]; then
+  echo "Med CLANKER_KILL_KEEP_PIHOLE=1: 53 och 8080 kan ligga kvar när Pi-hole kör (DNS + webb-UI). Webb/caddy: 80, 4173, 4174 ska vara borta; 5173/5174 om Vite var igång."
+else
+  echo "Efter full compose down: 80, 4173, 4174, 5173, 5174, 8080 och Pi-holes 53 ska vara borta om inget annat program tar över (UDP 53 syns inte i denna TCP-lista)."
+fi
+if command -v ss >/dev/null 2>&1; then
+  ss -tlnp
+  if ss -tlnp 2>/dev/null | grep -qE ':(5173|5174)\b'; then
+    echo "" >&2
+    echo "clanker-kill: tips: något lyssnar på 5173/5174 — ofta Vite utanför clanker-run eller barnprocess som slapp processgruppen; stäng med ss -tlnp / kill." >&2
+  fi
+else
+  netstat -tlnp 2>/dev/null || true
+fi
+
+if [[ "${CLANKER_KILL_KEEP_PIHOLE:-}" != "1" ]]; then
+  echo "" >&2
+  echo "clanker-kill: Pi-hole stoppades med compose — klienter som endast använder denna Pi som DNS får inga lookups förrän du startar om (t.ex. clanker.run). Sekundär DNS i routern: se pihole/README_PIHOLE.md §6b." >&2
+fi

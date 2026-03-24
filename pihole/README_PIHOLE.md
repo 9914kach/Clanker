@@ -115,7 +115,36 @@ Det kontrollerar:
 - DNSSEC: aktiverat
 - Interface setting: `Allow only local requests`
 
+## 6b) DHCP via Pi-hole och sekundär DNS till klienter
+
+När **Pi-hole** (inte routern) delar ut DHCP kan du ge klienterna **två DNS-servrar** via dnsmasq: först Pis LAN-IP (Pi-hole), sedan t.ex. `1.1.1.1` som fallback om Pi inte svarar på port 53.
+
+- **Aktiv fil** (gitignored, bara på din maskin): `etc-dnsmasq.d/99-dhcp-dns-fallback.conf` — monteras som `/etc/dnsmasq.d/` i containern (se `docker-compose.yml`).
+- **Mall i repot** (för nya kloner eller annan IP): `pihole/examples/99-dhcp-dns-fallback.conf.example` — kopiera till `etc-dnsmasq.d/99-dhcp-dns-fallback.conf` och justera första IP.
+- Kräver att **DHCP i routern är av** på samma nät (annars dubbla DHCP-servrar).
+- Efter ändring: från repo-rot kör `docker compose restart clanker-pihole`.
+
+Om du använder **routerns DHCP** i stället ska sekundär DNS sättas där — inte bara via denna fil.
+
 ## 7) Felsökning
+
+### Problem: "Internet slutar fungera" när containrar / Pi-hole stannar
+
+Det här är nästan alltid **DNS**, inte att hela LAN:et eller routern går sönder.
+
+- Pi-hole-containern (`clanker-pihole`) använder `network_mode: host` och tar **UDP/TCP port 53** på **Pis LAN-IP**.
+- Om routern eller DHCP bara delar ut **Pis IP som (enda) DNS-server** till klienterna, finns det **ingen DNS** när containern är stoppad, kraschar eller när du kör `docker compose down` — då kan inget domännamn slås upp och webbläsare visar ofta "ingen anslutning".
+- Compose har redan `restart: unless-stopped`; vid reboot bör containern komma upp igen om **Docker startar med systemet** (`sudo systemctl enable --now docker`).
+
+**Gör så här om du vill att nätet ska vara användbart även när Pi-hole är nere**
+
+- **Pi-hole delar ut DHCP:** använd `etc-dnsmasq.d/99-dhcp-dns-fallback.conf` (se [6b](#6b-dhcp-via-pi-hole-och-sekundär-dns-till-klienter)).
+- **Routern delar ut DHCP:** sätt **sekundär DNS** i routern (t.ex. `1.1.1.1` eller `8.8.8.8`) bredvid Pis IP. Nackdel: vissa enheter kan ibland använda sekundären även när Pi lever, så en del frågor kan slippa Pi-hole-filtrering — det är avvägningen mot tillgänglighet.
+- Alternativ (mer jobb): låt **routern** vara DNS mot klienterna och konfigurera den att vidarebefordra till Pi när du vill ha filter, med egen fallback i routern.
+
+**Snabb kontroll på en klient**
+
+- Om `ping 1.1.1.1` fungerar men `nslookup google.com` inte gör det → **DNS till Pis adress** (eller DHCP) är problemet, inte "internetledningen".
 
 ### Problem: klienter använder inte Pi-hole
 
@@ -150,6 +179,7 @@ nslookup flurry.com 192.168.1.50
 - `etc-dnsmasq.d/` (repo-rot) - extra dnsmasq-konfig
 - `pihole/pihole-healthcheck.sh` - Linux healthcheck
 - `pihole/pihole-healthcheck.ps1` - Windows PowerShell healthcheck
+- `pihole/examples/99-dhcp-dns-fallback.conf.example` - mall för DHCP DNS-fallback (kopiera till `etc-dnsmasq.d/`)
 - `pihole/PIHOLE_5_DAGAR_STATUSCHECK.md` - checklista för uppföljning
 
 ## 9) Säkerhet och backup (kort)

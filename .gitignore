@@ -39,6 +39,9 @@ etc-dnsmasq.d/
 # Docker local overrides
 docker-compose.override.yml
 
+# Clanker scripts (Vite PID/log från clanker-run)
+.clanker/
+
 # Node / frontend
 node_modules/
 apps/discord-hub-web/dist/

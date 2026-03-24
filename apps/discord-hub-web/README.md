@@ -15,6 +15,10 @@ npm run dev
 
 Öppna den URL Vite skriver ut (vanligtvis `http://localhost:5173`).
 
+För **både** discord-hub och `dev-tools-web` i samma terminal (t.ex. Caddy och `http://dev.clanker.discord` + `http://dev.clanker.tools`): `npm run dev:all` från roten.
+
+**Caddy / `http://dev.clanker.discord`:** om sidan blir grå, sätt **`VITE_HMR_CLIENT_PORT=80`** i repots rot-`.env` och starta om Vite (`npm run dev` eller `npm run dev:all`). Se [docs/docker.md](../../docs/docker.md#caddy-reverse-proxy).
+
 ## Miljövariabler
 
 Kopiera `.env.example` till `.env` i denna mapp vid behov. `VITE_API_URL` används när backend ligger på annan bas-URL; annars lämna tom och använd `/api` (Vite proxar till `127.0.0.1:3001` i utveckling).
