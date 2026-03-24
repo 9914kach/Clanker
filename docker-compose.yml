@@ -21,18 +21,26 @@ services:
       - "${DEV_TOOLS_WEB_PORT:-4174}:80"
     restart: unless-stopped
 
-  # Reverse proxy (HTTP) — värdnamn → webbcontainrarna. Start: --profile caddy (tillsammans med discord + devtools).
+  # Reverse proxy (HTTP) — prod-webb, Pi-hole-admin på värd, dev-Vite på värd. Start: --profile caddy (+ discord/devtools för prod-upstreams).
   clanker-caddy:
     profiles: ["caddy"]
     image: caddy:2-alpine
     container_name: clanker-caddy
     ports:
       - "${CADDY_HTTP_PORT:-80}:80"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
     environment:
-      CLANKER_DISCORD_HOST: ${CLANKER_DISCORD_HOST:-clanker.local}
-      CLANKER_DEVTOOLS_HOST: ${CLANKER_DEVTOOLS_HOST:-devtools.local}
+      CLANKER_DISCORD_HOST: ${CLANKER_DISCORD_HOST:-clanker.discord}
+      CLANKER_DEVTOOLS_HOST: ${CLANKER_DEVTOOLS_HOST:-clanker.tools}
+      CLANKER_PIHOLE_HOST: ${CLANKER_PIHOLE_HOST:-clanker.pihole}
+      CLANKER_PIHOLE_UPSTREAM: ${CLANKER_PIHOLE_UPSTREAM:-http://host.docker.internal:8080}
+      CLANKER_DISCORD_DEV_HOST: ${CLANKER_DISCORD_DEV_HOST:-dev.clanker.discord}
+      CLANKER_DISCORD_DEV_UPSTREAM: ${CLANKER_DISCORD_DEV_UPSTREAM:-http://host.docker.internal:5173}
+      CLANKER_DEVTOOLS_DEV_HOST: ${CLANKER_DEVTOOLS_DEV_HOST:-dev.clanker.tools}
+      CLANKER_DEVTOOLS_DEV_UPSTREAM: ${CLANKER_DEVTOOLS_DEV_UPSTREAM:-http://host.docker.internal:5174}
     restart: unless-stopped
 
   # PostgreSQL — aktivera när du har backend. Start: docker compose --profile db up -d clanker-db

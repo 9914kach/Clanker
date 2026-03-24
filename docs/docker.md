@@ -25,12 +25,18 @@ docker compose --profile discord --profile devtools up -d --build
 docker compose --profile discord --profile devtools --profile db up -d --build
 ```
 
+**Med Caddy** (HTTP på port 80 — prod-webb, Pi-hole-admin, samt `dev.clanker.*` mot Vite på värden om det körs):
+
+```bash
+docker compose --profile discord --profile devtools --profile caddy up -d --build
+```
+
 - `--build` bygger om webb-images efter kodändringar; utelämna den om du bara vill starta snabbt.
 - Vill du **bara** Pi-hole: `docker compose up -d` (inga profiler).
 
 **Miljö:** ha `.env` från `.env.example` om du behöver egna portar eller Pi-hole-inställningar.
 
-**Valfritt — kortare kommando:** i `.env` kan du sätta `COMPOSE_PROFILES=discord,devtools` (lägg till `,db` när du vill ha Postgres). Sedan:
+**Valfritt — kortare kommando:** i `.env` kan du sätta `COMPOSE_PROFILES=discord,devtools` (lägg till `,db` för Postgres, `,caddy` för reverse proxy). Sedan:
 
 ```bash
 docker compose up -d --build
@@ -46,9 +52,9 @@ docker compose up -d --build
 |-----|-----|----------------|----------------------------------------|
 | **Discord hub** (webb, nginx-build) | Docker | `http://<din-pi>:4173` | Värdport **4173** → nginx port 80 i containern (`DISCORD_HUB_WEB_PORT`) |
 | **Dev tools** (webb, nginx-build) | Docker | `http://<din-pi>:4174` | Värdport **4174** (`DEV_TOOLS_WEB_PORT`) |
-| **Caddy** (valfritt, reverse proxy) | Docker | `http://<värdnamn från .env>` | Värdport **80** eller `CADDY_HTTP_PORT` → proxar till webbcontainrarna (profil **`caddy`**; se avsnittet [Caddy](#caddy-reverse-proxy)) |
+| **Caddy** (valfritt, reverse proxy) | Docker | `http://clanker.discord`, `http://clanker.tools`, `http://clanker.pihole`, `http://dev.clanker.discord`, … (standardnamn; se [Caddy](#caddy-reverse-proxy)) | Värdport **80** eller `CADDY_HTTP_PORT`; profil **`caddy`**. Proxar även Pi-hole-admin och Vite på värden via `host.docker.internal`. |
 | **PostgreSQL** | Docker | Endast **på själva Pi:ns** loopback | **127.0.0.1:5432** på värden (ej öppet mot hela LAN som standard) (`POSTGRES_PORT`) |
-| **Pi-hole** (DNS + admin m.m.) | Docker, `host`-nät | Admin-UI: se Pi-hole-docs / din `.env` (t.ex. `WEB_PORT` / `FTLCONF_webserver_port` **8080** i exemplet). DNS använder värdens port **53**. | Inte samma mappning som webbcontainrarna — Pi-hole delar Pi:ns nätverk. |
+| **Pi-hole** (DNS + admin m.m.) | Docker, `host`-nät | Direkt på värden: `WEB_PORT` / `FTLCONF_webserver_port` (t.ex. **8080** i `.env.example`). DNS: port **53**. Via Caddy: `http://clanker.pihole` på värdens port **80** (samma ingång som övriga Caddy-namn). | Pi-hole delar Pi:ns nätverksstack. |
 
 **Utveckling utan Docker** (npm från repots rot — *inte* samma portar som tabellen ovan):
 
@@ -69,33 +75,59 @@ I `docker-compose.yml` finns fem tjänster. **Profiler** styr vilka som startar 
 |--------|------------------|--------|------------------|
 | `discord-hub-web` | `discord-hub-web` | `discord` | Port **4173→80** i containern (`DISCORD_HUB_WEB_PORT` i `.env`) |
 | `dev-tools-web` | `dev-tools-web` | `devtools` | Port **4174→80** (`DEV_TOOLS_WEB_PORT`) |
-| `clanker-caddy` | `clanker-caddy` | `caddy` | HTTP på värd: `CADDY_HTTP_PORT` (standard **80**); värdnamn: `CLANKER_DISCORD_HOST`, `CLANKER_DEVTOOLS_HOST` — se [Caddy](#caddy-reverse-proxy) |
+| `clanker-caddy` | `clanker-caddy` | `caddy` | HTTP på värd: `CADDY_HTTP_PORT` (standard **80**). Prod, Pi-hole-admin, dev-Vite — se [Caddy](#caddy-reverse-proxy); `extra_hosts: host.docker.internal:host-gateway`. |
 | `clanker-db` | `clanker-db` | `db` | Postgres 16, volym `clanker-pgdata`, port **127.0.0.1:5432** på värden |
 | `clanker-pihole` | `clanker-pihole` | *(ingen)* | `network_mode: host` — delar Pi:ns nätverksstack |
 
 - **Ingen profil** = tjänsten ingår i “default”-uppsättningen när du kör `docker compose up` utan `--profile`.
 - **Med profil** = tjänsten startar bara om du anger motsvarande `--profile` (eller sätter miljövariabeln `COMPOSE_PROFILES`).
 
-Pi-hole har ingen profil, så den startar ofta när du kör ett brett `up`. Webbapparna kräver explicit `discord` / `devtools`. Caddy kräver profilen `caddy` **och** att `discord` + `devtools` kör — annars svarar proxyn med 502 mot den upstream som saknas.
+Pi-hole har ingen profil, så den startar ofta när du kör ett brett `up`. Webbapparna kräver explicit `discord` / `devtools`. **Caddy** kräver profilen `caddy`. Namnen `clanker.discord` / `clanker.tools` ger **502** om motsvarande webbcontainer inte kör; `clanker.pihole` funkar om Pi-hole lyssnar på värdens `WEB_PORT` och `CLANKER_PIHOLE_UPSTREAM` stämmer. `dev.clanker.*` ger **502** om Vite inte kör på **samma värd som Docker**.
 
 ## Miljövariabler (`.env`)
 
 Kopiera `.env.example` → `.env` och justera. För Docker är bland annat detta relevant:
 
 - `DISCORD_HUB_WEB_PORT`, `DEV_TOOLS_WEB_PORT` — vilken port på **värden** som mappas till nginx i containern.
-- Caddy (profil `caddy`): `CADDY_HTTP_PORT`, `CLANKER_DISCORD_HOST`, `CLANKER_DEVTOOLS_HOST` — se [Caddy](#caddy-reverse-proxy).
+- Caddy (profil `caddy`): `CADDY_HTTP_PORT`, prod- och dev-värdnamn/upstreams, `CLANKER_PIHOLE_HOST`, `CLANKER_PIHOLE_UPSTREAM` (ska matcha Pi-holes `WEB_PORT`) — se [Caddy](#caddy-reverse-proxy).
 - Postgres: `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_PORT` (när du använder profilen `db`).
 - Pi-hole läser `env_file: .env` — se Pi-hole-dokumentation och repots egna guider under `pihole/`.
 
 ## Caddy (reverse proxy)
 
-Valfri tjänst **`clanker-caddy`** (`caddy:2-alpine`) läser [infra/caddy/Caddyfile](../infra/caddy/Caddyfile) och proxar HTTP till `discord-hub-web:80` respektive `dev-tools-web:80` utifrån **Host**-header (värdnamn).
+Valfri tjänst **`clanker-caddy`** (`caddy:2-alpine`) läser [infra/caddy/Caddyfile](../infra/caddy/Caddyfile) och routar HTTP utifrån **Host**-header. Containern har `extra_hosts: host.docker.internal:host-gateway` så proxyn kan nå **värdmaskinen** (Pi-holes webb-UI och Vite).
 
-- **Start:** `docker compose --profile discord --profile devtools --profile caddy up -d --build`, eller lägg `caddy` i `COMPOSE_PROFILES` i `.env` tillsammans med `discord` och `devtools`.
-- **DNS eller hosts:** Värdnamnen i `CLANKER_DISCORD_HOST` och `CLANKER_DEVTOOLS_HOST` (standard i Compose: `clanker.local` och `devtools.local` om inget annat finns i `.env`) måste peka på **den maskin där Docker körs** — t.ex. rader i `/etc/hosts` på din laptop (`127.0.0.1 clanker.local devtools.local`), eller lokala poster i Pi-hole om du vill nå samma namn från hela LAN.
-- **Port 4173 och 4174** kan fortfarande användas för direktåtkomst till nginx i containrarna. Caddy ger **samma appar** via valfritt namn på värdens port **80** (eller det du sätter med `CADDY_HTTP_PORT` om t.ex. 80 redan är upptagen).
-- **Endast HTTP** i denna setup: [Caddyfile](../infra/caddy/Caddyfile) använder `http://` framför värdnamnen så att Caddy **inte** slår på automatisk HTTPS (som annars omdirigerar till port **443**, som inte är mappad i Compose). HTTPS framför kan du lägga senare (t.ex. annan proxy eller `tls` + publicera `443:443`).
-- **Vite på värden** (5173/5174) proxas **inte** av den här Caddy-containern. För det behöver du separat `reverse_proxy` mot `host.docker.internal` (Docker Desktop) eller värdens Docker-brygga (t.ex. `172.17.0.1` på Linux) — det är en egen justering av `Caddyfile`.
+### Standardvärdnamn (överskrivs i `.env`)
+
+| Värdnamn | Mål |
+|----------|-----|
+| `clanker.discord` | Prod discord-hub → `discord-hub-web:80` |
+| `clanker.tools` | Prod dev-tools-web → `dev-tools-web:80` |
+| `clanker.pihole` | Pi-hole admin → `CLANKER_PIHOLE_UPSTREAM` (standard `http://host.docker.internal:8080`) |
+| `dev.clanker.discord` | Vite discord-hub på värden (port **5173**) |
+| `dev.clanker.tools` | Vite dev-tools-web på värden (port **5174**) |
+
+Om du ändrar Pi-holes **`WEB_PORT`** / **`FTLCONF_webserver_port`** i `.env`, sätt **`CLANKER_PIHOLE_UPSTREAM`** till samma port (t.ex. `http://host.docker.internal:9090`).
+
+### DNS eller hosts
+
+Alla namn du använder måste peka på **den adress där Caddy lyssnar** (Pi:ns IP i LAN, eller `127.0.0.1` om du SSH-/port-forwardar värdens port 80 till din laptop).
+
+Exempel (en rad):
+
+```text
+127.0.0.1  clanker.discord  clanker.tools  clanker.pihole  dev.clanker.discord  dev.clanker.tools
+```
+
+### Start
+
+`docker compose --profile discord --profile devtools --profile caddy up -d --build`, eller lägg `caddy` i `COMPOSE_PROFILES`. Du kan även starta bara `clanker-caddy` om du bara vill proxyn (t.ex. `clanker.pihole`) — prod-namn ger då **502** tills webbcontainrarna körs.
+
+### Övrigt
+
+- **4173 och 4174** — oförändrat direkt till nginx i containrarna.
+- **Endast HTTP:** [Caddyfile](../infra/caddy/Caddyfile) använder `http://` så Caddy inte aktiverar HTTPS mot **443** (inte mappad i Compose). HTTPS kan läggas framför eller i Caddy senare.
+- **Begränsning:** `dev.clanker.*` förutsätter att **Vite kör på samma värd som Docker** (`npm run dev` / `npm run dev:tools` på Pi:en). Kör du Vite bara på en annan maskin utan motsvarande nätverksväg når inte Caddy på Pi den processen.
 
 ## Kolla status
 
@@ -184,7 +216,7 @@ docker compose --profile discord up -d --build
 docker compose --profile discord --profile devtools up -d --build
 ```
 
-**Exempel — båda webbapparna + Caddy** (värdnamn på port 80, se [Caddy](#caddy-reverse-proxy)):
+**Exempel — båda webbapparna + Caddy** (port 80: prod, Pi-hole-admin, `dev.clanker.*` — se [Caddy](#caddy-reverse-proxy)):
 
 ```bash
 docker compose --profile discord --profile devtools --profile caddy up -d --build

@@ -15,6 +15,9 @@ export default defineConfig({
     },
   },
   server: {
+    // Lyssna på alla interfaces så Caddy (Docker) kan nå Vite via host.docker.internal
+    host: true,
+    allowedHosts: ["dev.clanker.discord", "localhost"],
     // När discord-hub-api kör lokalt: proxa /api till backend under utveckling
     proxy: {
       "/api": {

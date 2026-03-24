@@ -2,10 +2,25 @@
 # Se docs/docker.md — du behöver DNS eller /etc/hosts som pekar hit.
 # Explicit http:// — annars försöker Caddy HTTPS (443), som vi inte exponerar i Compose.
 
+# Prod (nginx i containrar)
 http://{$CLANKER_DISCORD_HOST} {
 	reverse_proxy discord-hub-web:80
 }
 
 http://{$CLANKER_DEVTOOLS_HOST} {
 	reverse_proxy dev-tools-web:80
+}
+
+# Pi-hole admin (värdens nätverk — upstream via host.docker.internal i Compose)
+http://{$CLANKER_PIHOLE_HOST} {
+	reverse_proxy {$CLANKER_PIHOLE_UPSTREAM}
+}
+
+# Dev (Vite på samma värd som Docker — 502 om Vite inte kör)
+http://{$CLANKER_DISCORD_DEV_HOST} {
+	reverse_proxy {$CLANKER_DISCORD_DEV_UPSTREAM}
+}
+
+http://{$CLANKER_DEVTOOLS_DEV_HOST} {
+	reverse_proxy {$CLANKER_DEVTOOLS_DEV_UPSTREAM}
 }
