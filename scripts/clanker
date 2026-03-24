@@ -5,31 +5,45 @@ set -euo pipefail
 SCRIPT_SOURCE="${BASH_SOURCE[0]:-$0}"
 SCRIPT_REAL="$(readlink -f "$SCRIPT_SOURCE")"
 SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_REAL")" && pwd)"
-ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-cd "$ROOT"
+# shellcheck source=clanker-root.sh
+source "$SCRIPT_DIR/clanker-root.sh"
+clanker_init_repo_root "$SCRIPT_SOURCE"
 
 clanker_usage() {
-  sed -n '1,200p' <<'EOF'
+  sed -n '1,220p' <<'EOF'
 Användning: clanker <kommando> [argument …]
 
+Vanliga fall: använd clanker up / stop / run / kill. För rå Docker Compose-syntax:
+  clanker compose <vad som helst>  (samma som docker compose från repots rot)
+
   help              denna hjälp
-  run               samma som scripts/clanker-run (Compose + ev. Vite via .env)
-  kill              samma som scripts/clanker-kill
-  up [PROFIL …]     docker compose up -d (standard --build)
-                    • utan profiler: respekterar COMPOSE_PROFILES i .env
-                    • en eller flera: discord | devtools | caddy | db
-                    • lägg --no-build sist om du inte vill bygga om images
+  run               Compose enligt .env + alltid profil caddy + ev. Vite (CLANKER_VITE_DEV=1). clanker up startar inte Vite.
+  kill              som scripts/clanker-kill (Vite stoppas först, sedan compose down m.m.).
+                    CLANKER_KILL_KEEP_PIHOLE=1 i .env lämnar Pi-hole igång — se docs/docker.md (Stäng ned / clanker.kill)
+  up [PROFIL …]     docker compose up -d (standard --build om du inte skickar --no-build)
+                    • profilen caddy läggs alltid till (reverse proxy) — du behöver inte skriva caddy
+                    • utan övriga profiler: respekterar COMPOSE_PROFILES i .env + alltid caddy
+                    • discord | devtools | caddy | db — lägg --no-build sist om du inte vill bygga om
   stop PROFIL       stoppar en profils tjänst (en profil åt gången)
-  compose …         vidarebefordrar till docker compose (från repots rot)
+  down [FLAGGOR …]  docker compose down — varning skrivs (Pi-hole, skillnad mot kill)
+  compose …         rå docker compose (lägger inte till caddy automatiskt — använd up/run/dev)
   ps                docker compose ps
+  doctor            snabb hälsokoll (.env, compose ps, node_modules om Vite är påslaget i .env)
+  dev APP           kör först clanker up APP (webb + alltid caddy), sedan Vite för den appen i förgrund
+                    • --vite-only: hoppa över Docker, bara npm run dev -w …
+                    • --no-build / --build vidare till clanker up (samma som clanker up …)
+                    • --up är överflödig (standard är redan up); kräver npm och node_modules i rot
 
 Exempel:
   clanker up devtools
-  clanker up discord devtools caddy
+  clanker up discord devtools
   clanker up --no-build
   clanker stop devtools
   clanker compose --profile devtools logs -f
+  clanker dev discord
+  clanker dev devtools --no-build
+  clanker dev discord --vite-only
 
 Profiler ↔ tjänster: discord→discord-hub-web, devtools→dev-tools-web,
   caddy→clanker-caddy, db→clanker-db. Pi-hole har ingen profil.
@@ -46,6 +60,24 @@ clanker_cmd_up() {
     shift
   done
 
+  if ((${#prof_args[@]} == 0)); then
+    if (($# > 0)) && [[ ! "$1" =~ ^- ]]; then
+      echo "clanker: okänd profil eller ogiltigt argument: $1" >&2
+      echo "clanker: kända profiler: discord devtools caddy db" >&2
+      echo "clanker: försök: clanker help  eller  clanker compose … för avancerade fall." >&2
+      exit 1
+    fi
+  fi
+
+  local has_caddy=0 i
+  for ((i = 1; i < ${#prof_args[@]}; i += 2)); do
+    if [[ "${prof_args[i]}" == caddy ]]; then
+      has_caddy=1
+      break
+    fi
+  done
+  ((has_caddy)) || prof_args+=(--profile caddy)
+
   local add_build=1
   for a in "$@"; do
     if [[ "$a" == --no-build ]]; then
@@ -53,20 +85,25 @@ clanker_cmd_up() {
       break
     fi
   done
-  local build_args=()
-  ((add_build)) && build_args=(--build)
 
-  if ((${#prof_args[@]} == 0)); then
-    if (($# > 0)) && [[ ! "$1" =~ ^- ]]; then
-      echo "clanker: okänd profil eller ogiltigt argument: $1" >&2
-      echo "clanker: kända profiler: discord devtools caddy db" >&2
-      echo "clanker: tips: använd \"clanker compose …\" för avancerade fall." >&2
-      exit 1
+  local user_has_build=0
+  for a in "$@"; do
+    if [[ "$a" == --build ]]; then
+      user_has_build=1
+      break
     fi
-    docker compose up -d "${build_args[@]}" "$@"
-  else
-    docker compose "${prof_args[@]}" up -d "${build_args[@]}" "$@"
+  done
+
+  local build_args=()
+  if ((add_build)); then
+    if ((user_has_build)); then
+      build_args=()
+    else
+      build_args=(--build)
+    fi
   fi
+
+  docker compose "${prof_args[@]}" up -d "${build_args[@]}" "$@"
 }
 
 clanker_cmd_stop() {
@@ -74,6 +111,7 @@ clanker_cmd_stop() {
   local profile="${1:-}"
   if [[ -z "$profile" ]]; then
     echo "clanker: användning: clanker stop <discord|devtools|caddy|db>" >&2
+    echo "clanker: försök: clanker stop devtools" >&2
     exit 1
   fi
   case "$profile" in
@@ -83,9 +121,128 @@ clanker_cmd_stop() {
     db) docker compose stop clanker-db ;;
     *)
       echo "clanker: okänd profil: $profile (discord devtools caddy db)" >&2
+      echo "clanker: försök: clanker help" >&2
       exit 1
       ;;
   esac
+}
+
+clanker_cmd_down() {
+  shift
+  cat >&2 <<'EOF'
+clanker: varning: docker compose down tar ned hela Compose-projektet, inklusive Pi-hole om den kördes här.
+clanker: kill kör först bort Vite och kan med CLANKER_KILL_KEEP_PIHOLE=1 i .env lämna Pi-hole igång — se docs/docker.md.
+clanker: fortsätter med docker compose down …
+EOF
+  docker compose down "$@"
+}
+
+clanker_cmd_doctor() {
+  shift
+  echo "=== clanker doctor ==="
+  local issues=0
+
+  if [[ -f .env ]]; then
+    echo "OK: .env finns i $ROOT"
+  else
+    echo "clanker: .env saknas — kopiera från .env.example om du behöver egna inställningar." >&2
+    issues=1
+  fi
+
+  # shellcheck source=clanker-vite-lib.sh
+  source "$SCRIPT_DIR/clanker-vite-lib.sh"
+  clanker_load_dotenv
+  if [[ "${CLANKER_VITE_DEV:-}" == "1" ]]; then
+    if [[ -d "$ROOT/node_modules" ]]; then
+      echo "OK: CLANKER_VITE_DEV=1 och node_modules finns"
+    else
+      echo "clanker: CLANKER_VITE_DEV=1 men node_modules saknas — kör npm install i repots rot." >&2
+      issues=1
+    fi
+  else
+    echo "Info: CLANKER_VITE_DEV är inte 1 (Vite startas inte av clanker run)"
+  fi
+
+  echo ""
+  echo "=== docker compose ps ==="
+  docker compose ps "$@" || issues=1
+
+  if ((issues)); then
+    echo "" >&2
+    echo "clanker: doctor hittade en eller flera punkter att åtgärda." >&2
+    echo "clanker: försök: clanker help" >&2
+    exit 1
+  fi
+  echo ""
+  echo "clanker doctor: inget uppenbart fel."
+}
+
+clanker_cmd_dev() {
+  shift
+  local skip_docker=0
+  local up_args=()
+  local app=""
+  while (($# > 0)); do
+    case "$1" in
+      --vite-only)
+        skip_docker=1
+        shift
+        ;;
+      --up)
+        shift
+        ;;
+      --no-build | --build)
+        up_args+=("$1")
+        shift
+        ;;
+      discord | devtools)
+        if [[ -n "$app" ]]; then
+          echo "clanker: ange bara en app (discord eller devtools)." >&2
+          echo "clanker: försök: clanker dev discord" >&2
+          exit 1
+        fi
+        app="$1"
+        shift
+        ;;
+      *)
+        echo "clanker: okänt argument för dev: $1" >&2
+        echo "clanker: användning: clanker dev <discord|devtools> [--vite-only] [--no-build|--build …]" >&2
+        echo "clanker: försök: clanker dev devtools  eller  clanker dev discord --vite-only" >&2
+        exit 1
+        ;;
+    esac
+  done
+
+  if [[ -z "$app" ]]; then
+    echo "clanker: användning: clanker dev <discord|devtools> [flaggor …]" >&2
+    echo "clanker: som standard körs clanker up <app> före Vite; --vite-only bara Vite." >&2
+    echo "clanker: försök: clanker dev discord" >&2
+    exit 1
+  fi
+
+  if ((skip_docker == 0)); then
+    "$SCRIPT_DIR/clanker" up "$app" "${up_args[@]}"
+  fi
+
+  if ! command -v npm >/dev/null 2>&1; then
+    echo "clanker: npm finns inte på PATH." >&2
+    echo "clanker: försök: installera Node.js/npm eller använd rätt PATH." >&2
+    exit 1
+  fi
+
+  if [[ ! -d "$ROOT/node_modules" ]]; then
+    echo "clanker: $ROOT/node_modules saknas." >&2
+    echo "clanker: försök: cd \"$ROOT\" && npm install" >&2
+    exit 1
+  fi
+
+  local workspace=""
+  case "$app" in
+    discord) workspace=discord-hub-web ;;
+    devtools) workspace=dev-tools-web ;;
+  esac
+
+  exec npm run dev -w "$workspace"
 }
 
 cmd="${1:-}"
@@ -107,6 +264,9 @@ case "$cmd" in
   stop)
     clanker_cmd_stop "$@"
     ;;
+  down)
+    clanker_cmd_down "$@"
+    ;;
   compose)
     shift
     docker compose "$@"
@@ -115,9 +275,15 @@ case "$cmd" in
     shift
     docker compose ps "$@"
     ;;
+  doctor)
+    clanker_cmd_doctor "$@"
+    ;;
+  dev)
+    clanker_cmd_dev "$@"
+    ;;
   *)
     echo "clanker: okänt kommando: $cmd" >&2
-    echo "clanker: kör \"clanker help\" för lista." >&2
+    echo "clanker: försök: clanker help" >&2
     exit 1
     ;;
 esac

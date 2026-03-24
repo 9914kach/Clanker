@@ -39,7 +39,7 @@ etc-dnsmasq.d/
 # Docker local overrides
 docker-compose.override.yml
 
-# Clanker scripts (Vite PID/log från clanker-run)
+# Clanker runtime (Vite PID/log från clanker-run) — inte mappen scripts/ i repot
 .clanker/
 
 # Node / frontend

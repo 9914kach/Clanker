@@ -4,12 +4,13 @@ set -euo pipefail
 SCRIPT_SOURCE="${BASH_SOURCE[0]:-$0}"
 SCRIPT_REAL="$(readlink -f "$SCRIPT_SOURCE")"
 SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_REAL")" && pwd)"
-ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# shellcheck source=clanker-root.sh
+source "$SCRIPT_DIR/clanker-root.sh"
+clanker_init_repo_root "$SCRIPT_SOURCE"
 
 # shellcheck source=clanker-vite-lib.sh
 source "$SCRIPT_DIR/clanker-vite-lib.sh"
-
-cd "$ROOT"
 
 if [[ ! -f .env ]]; then
   echo "clanker-kill: varning: .env saknas i $ROOT." >&2

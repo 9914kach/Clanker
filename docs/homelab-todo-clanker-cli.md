@@ -45,8 +45,8 @@ Användare → scripts/clanker (dispatcher)
 ## Fas 0 — Beslut
 
 - [x] (2025-03) **En huvudingång** `clanker` med delkommandon; behåll `clanker.run` / `clanker.kill` som separata skript (kompatibilitet med befintlig doc).
-- [ ] **Syntax:** ska kortformen vara `clanker up devtools` (implementerat) eller också `clanker compose up …` som primär? (båda kan finnas).
-- [ ] **`up` och `--build`:** standard `--build` för webbimages; `clanker up PROFILE --no-build` ska fungera utan dubbel `--build` (se implementation).
+- [x] (2026-03) **Syntax:** `clanker up …` / `stop` / `run` / `kill` är primärt för vardag; `clanker compose …` för rå Compose — dokumenterat i `clanker help` och [docker.md](docker.md).
+- [x] (2026-03) **`up` och `--build`:** standard `--build`; `clanker up PROFILE --no-build` fungerar; explicit `--build` från användaren dubblas inte.
 
 ---
 
@@ -54,7 +54,7 @@ Användare → scripts/clanker (dispatcher)
 
 - [x] (2025-03) Dispatcher sätter **ROOT** och **`cd` till repots rot** innan `docker compose`.
 - [x] (2025-03) **Återanvänd** befintlig [scripts/clanker-vite-lib.sh](../scripts/clanker-vite-lib.sh) via **`clanker run`** → `clanker-run` (ingen duplicering av Vite-logik i dispatchern).
-- [ ] Extra fil **`scripts/clanker-root.sh`** (endast `ROOT`/`cd`) om fler skript ska source:a samma logik — valfritt refaktor av `clanker-run` / `clanker-kill` senare.
+- [x] (2026-03) [scripts/clanker-root.sh](../scripts/clanker-root.sh) (`clanker_init_repo_root`) — source från `clanker`, `clanker-run`, `clanker-kill`.
 
 ---
 
@@ -80,7 +80,8 @@ Compose-profiler i [docker-compose.yml](../docker-compose.yml):
 - [x] (2025-03) `clanker stop PROFILE` → stoppar mappad tjänst (en profil åt gången)
 - [x] (2025-03) `clanker compose …` → vidarebefordran till `docker compose` från rot
 - [x] (2025-03) `clanker ps` → `docker compose ps`
-- [ ] `clanker down` som alias med varning (eller medvetet låta `compose down` endast via `clanker compose down`) — dokumentera tydligt vs `kill`.
+- [x] (2026-03) `clanker down` — varning + `docker compose down`; skillnad mot `kill` i [docker.md](docker.md)
+- [x] (2026-03) `clanker dev discord|devtools` (standard `up` + Vite; `--vite-only`, `--no-build`/`--build`) + tunna skript `clanker-dev-discord` / `clanker-dev-tools`
 
 ---
 
@@ -94,19 +95,22 @@ Compose-profiler i [docker-compose.yml](../docker-compose.yml):
 
 ## Fas 4 — Valfritt (nice-to-have)
 
-- [ ] **Tab completion** (`bash` / `zsh`) för profiler och delkommandon.
-- [ ] **`clanker doctor`** — snabb koll: `docker compose ps`, finns `.env`, finns `node_modules` om `CLANKER_VITE_DEV=1`.
-- [ ] Enhetliga **svenska** felmeddelanden med “försök: …”.
+- [x] (2026-03) **Tab completion** (`bash` / zsh via `bashcompinit`) — [scripts/clanker-completion.bash](../scripts/clanker-completion.bash)
+- [x] (2026-03) **`clanker doctor`** — `docker compose ps`, `.env`, `node_modules` om `CLANKER_VITE_DEV=1`
+- [x] (2026-03) Enhetliga **svenska** felmeddelanden med **försök:** … i dispatchern
 
 ---
 
 ## Klart (arkiv)
 
 - [x] (2025-03) Första version av `scripts/clanker` med `help`, `run`, `kill`, `up`, `stop`, `compose`, `ps`.
+- [x] (2026-03) Utökning: `down`, `doctor`, `clanker-root.sh`, `--build`-dedupe, completion, doc-uppdateringar.
+- [x] (2026-03) `clanker dev` (enskild Vite-app) + wrappers.
+- [x] (2026-03) **`clanker up`** / **`clanker-run`**: alltid `--profile caddy` (inte `clanker compose`).
 
 ---
 
-## Öppna frågor (flytta till Fas 0 / 2 när besvarat)
+## Beslutade frågor (tidigare öppna)
 
-- Ska `clanker run` alltid förbli den **enda** vägen till Vite + `COMPOSE_PROFILES`, eller ska `clanker up` kunna trigga Vite också? (Nu: endast `run` startar Vite.)
-- Ska `CLANKER_KILL_KEEP_PIHOLE` beskrivas i `clanker help kill` eller endast i docker.md?
+- **Vite:** `clanker run` = samma som `clanker-run` (Compose + ev. **båda** Viter via `dev:all` i bakgrunden om `CLANKER_VITE_DEV=1`). `clanker dev discord|devtools` kör **`clanker up` för profilen** och sedan **en** Vite-app i förgrund (`--vite-only` om bara Vite). `clanker up` startar inte Vite (dokumenterat i `help` och docker.md).
+- **`CLANKER_KILL_KEEP_PIHOLE`:** kort rad i `clanker help` under `kill` + full förklaring i [docker.md](docker.md) (avsnitt om `clanker.kill`).

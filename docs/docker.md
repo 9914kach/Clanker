@@ -12,7 +12,7 @@ cd ~/apps/Clanker   # anpassa sökväg efter din maskin
 
 ## Ett kommando från SSH (`clanker.run`)
 
-Skriptet [`scripts/clanker-run`](../scripts/clanker-run) byter alltid till **repots rot** och kör `docker compose up -d --build`. Vilka profiler som startas styrs av **`COMPOSE_PROFILES` i `.env`** — utan den variabeln startar du i praktiken främst tjänster utan profil (t.ex. Pi-hole). Sätt t.ex. `COMPOSE_PROFILES=discord,devtools` eller lägg till `,caddy` / `,db` enligt behov (se `.env.example`).
+Skriptet [`scripts/clanker-run`](../scripts/clanker-run) byter alltid till **repots rot** och kör `docker compose --profile caddy up -d --build` — **Caddy startas alltid** (samma som `clanker up`). Övriga profiler styrs av **`COMPOSE_PROFILES` i `.env`** (t.ex. `discord`, `devtools`, `db`). Utan `COMPOSE_PROFILES` får du alltså i praktiken Pi-hole (ingen profil) **plus** Caddy. Du behöver inte längre lägga `caddy` i `COMPOSE_PROFILES` för `clanker-run` / `clanker up`; variabeln gäller webb/db m.m. (se `.env.example`).
 
 **Vite i bakgrunden (valfritt):** sätter du **`CLANKER_VITE_DEV=1`** i `.env` och har kört **`npm install`** i roten startar skriptet efter lyckad Compose-körning även **`npm run dev:all`** (discord-hub + dev-tools) i bakgrunden med `setsid`, så Caddy kan nå `dev.clanker.*` utan separat terminal. PID sparas i **`.clanker/vite-dev.pid`** (gitignorerad), logg i **`.clanker/vite-dev.log`**. Utan `npm` eller `node_modules/` skrivs en varning och Compose påverkas inte. Om en Vite-process redan körs enligt PID-filen startas ingen ny.
 
@@ -66,20 +66,28 @@ clanker.kill
 
 ## Kommandot `clanker` (dispatcher)
 
-[`scripts/clanker`](../scripts/clanker) är en **tunn ingång** från repots rot: samma idé som `clanker.run` / `clanker.kill`, men med **delkommandon** så du slipper komma ihåg långa `docker compose --profile …`-rader. Detaljerad backlog och framtida förbättringar: [homelab-todo-clanker-cli.md](homelab-todo-clanker-cli.md).
+[`scripts/clanker`](../scripts/clanker) är en **tunn ingång** från repots rot: samma idé som `clanker.run` / `clanker.kill`, men med **delkommandon** så du slipper komma ihåg långa `docker compose --profile …`-rader. Detaljerad backlog: [homelab-todo-clanker-cli.md](homelab-todo-clanker-cli.md).
+
+**Rekommenderat:** använd `clanker up`, `clanker stop`, `clanker run` och `clanker kill` i vardagen. **`clanker up`** och **`clanker run`** lägger alltid till Compose-profilen **`caddy`** (reverse proxy). **`clanker compose …`** är rå `docker compose` och lägger **inte** till caddy automatiskt.
 
 | Kommando | Betydelse |
 |----------|-----------|
-| `clanker run` | = `./scripts/clanker-run` (Compose enligt `.env` + ev. Vite) |
-| `clanker kill` | = `./scripts/clanker-kill` |
-| `clanker up` | `docker compose up -d --build` (använder `COMPOSE_PROFILES` om satt) |
-| `clanker up devtools` | Startar en profil i taget (kan lista flera: `discord devtools caddy`) |
-| `clanker up … --no-build` | Samma som ovan men utan `--build` |
+| `clanker run` | = `./scripts/clanker-run` (**alltid** `--profile caddy` + `COMPOSE_PROFILES` / övriga tjänster + ev. Vite). **`clanker up` startar inte Vite** — bara `run` (eller manuell `npm run dev:all`). |
+| `clanker kill` | = `./scripts/clanker-kill` (Vite stoppas först, sedan `docker compose down` m.m.; se [Stäng ned](#stäng-ned-clankerkill) om Pi-hole) |
+| `clanker up` | `docker compose up -d --build` med **caddy alltid** + angivna profiler (eller bara caddy + `COMPOSE_PROFILES` om du inte listar namn) |
+| `clanker up devtools` | Startar **devtools + caddy** (du behöver inte skriva `caddy`; kan lista flera: `discord devtools`) |
+| `clanker up … --no-build` | Samma som ovan men utan `--build`; du kan också skicka `--build` explicit utan att det dubblas |
 | `clanker stop devtools` | Stoppar **en** profils container (mappning se `clanker help`) |
-| `clanker compose …` | Rå `docker compose` från rot (för avancerade fall) |
+| `clanker down` | `docker compose down` med **varning** om Pi-hole; till skillnad från `kill` körs inte Vite-nedstängning först och **`CLANKER_KILL_KEEP_PIHOLE` påverkar inte** `down` |
+| `clanker compose …` | Rå `docker compose` från rot — **ingen** automatisk caddy |
 | `clanker ps` | `docker compose ps` |
+| `clanker doctor` | Snabb koll: finns `.env`, `docker compose ps`, samt `node_modules` om `CLANKER_VITE_DEV=1` i `.env` |
+| `clanker dev discord` / `devtools` | Kör först **`clanker up <profil>`** (webbcontainer **+ caddy** alltid), sedan Vite i förgrund. **`--vite-only`** hoppar över Docker. |
+| `scripts/clanker-dev-discord`, `scripts/clanker-dev-tools` | Tunna wrappers (= `clanker dev discord` / `devtools`); valfri symlink i PATH, t.ex. `clanker.discord.dev`. |
 
 **Linux kort:** lägg en symlink i en katalog som finns i `PATH` (t.ex. `ln -sf "$HOME/apps/Clanker/scripts/clanker" /usr/local/bin/clanker`) så räcker det att skriva `clanker` var du än står. Filen måste vara körbar (`chmod +x`).
+
+**Tab completion (bash):** ladda [`scripts/clanker-completion.bash`](../scripts/clanker-completion.bash) i `~/.bashrc`, t.ex. `source "$HOME/apps/Clanker/scripts/clanker-completion.bash"` (justera sökväg). Under **zsh:** `autoload -U bashcompinit && bashcompinit` och samma `source`.
 
 ```bash
 ./scripts/clanker help
@@ -113,7 +121,7 @@ docker compose --profile discord --profile devtools --profile caddy up -d --buil
 
 **Miljö:** ha `.env` från `.env.example` om du behöver egna portar eller Pi-hole-inställningar.
 
-**Valfritt — kortare kommando:** i `.env` kan du sätta `COMPOSE_PROFILES=discord,devtools` (lägg till `,db` för Postgres, `,caddy` för reverse proxy). Sedan:
+**Valfritt — kortare kommando:** i `.env` kan du sätta `COMPOSE_PROFILES=discord,devtools` (lägg till `,db` för Postgres). Med **`clanker up`** eller **`./scripts/clanker-run`** får du **caddy utöver det** automatiskt. Om du kör **rå** `docker compose up -d` utan Clanker-skript behöver du själv lägga **`caddy`** i `COMPOSE_PROFILES` eller `--profile caddy` om du vill ha reverse proxyn. Sedan:
 
 ```bash
 docker compose up -d --build

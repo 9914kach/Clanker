@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Tunn ingång: samma som clanker dev devtools (valfri symlink t.ex. clanker.devtools.dev i PATH).
+set -euo pipefail
+SCRIPT_SOURCE="${BASH_SOURCE[0]:-$0}"
+SCRIPT_REAL="$(readlink -f "$SCRIPT_SOURCE")"
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_REAL")" && pwd)"
+exec "$SCRIPT_DIR/clanker" dev devtools "$@"

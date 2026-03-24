@@ -40,6 +40,8 @@ Uppdatera listan när du börjar eller avslutar något; flytta gärna färdiga p
 
 ## Klart (arkiv)
 
+- [x] (2026-03) **Clanker CLI-backlog** enligt [homelab-todo-clanker-cli.md](homelab-todo-clanker-cli.md): `down`, `doctor`, delad `clanker-root.sh`, tab completion, `--build`-fix, doc/README.
+
 <!-- Flytta hit när något är helt färdigt, t.ex.:
 
 - [x] (2025-03) Discord-hub frontend i Docker på Pi
