@@ -27,3 +27,7 @@ etc-dnsmasq.d/
 
 # Docker local overrides
 docker-compose.override.yml
+
+# Node / frontend
+node_modules/
+apps/discord-hub-web/dist/

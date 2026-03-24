@@ -1,0 +1,6 @@
+{
+  "name": "discord-hub-api",
+  "private": true,
+  "version": "0.0.1",
+  "description": "Backend för discord-hubben (gemensamma verktyg) — lägg till runtime och skript när du börjar."
+}

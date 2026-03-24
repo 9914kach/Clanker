@@ -1,4 +1,30 @@
 services:
+  # Discord-hub (Vite/React). Start: docker compose --profile discord up -d discord-hub-web
+  discord-hub-web:
+    profiles: ["discord"]
+    build:
+      context: .
+      dockerfile: apps/discord-hub-web/Dockerfile
+    container_name: discord-hub-web
+    ports:
+      - "${DISCORD_HUB_WEB_PORT:-4173}:80"
+    restart: unless-stopped
+
+  # PostgreSQL — aktivera när du har backend. Start: docker compose --profile db up -d clanker-db
+  clanker-db:
+    profiles: ["db"]
+    image: postgres:16-alpine
+    container_name: clanker-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-clanker}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clanker_change_me}
+      POSTGRES_DB: ${POSTGRES_DB:-clanker}
+    volumes:
+      - clanker-pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    restart: unless-stopped
+
   clanker-pihole:
     env_file:
       - .env
@@ -12,3 +38,6 @@ services:
       - "./etc-dnsmasq.d:/etc/dnsmasq.d"
     cap_add:
       - NET_ADMIN
+
+volumes:
+  clanker-pgdata:

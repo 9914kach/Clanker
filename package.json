@@ -1,0 +1,13 @@
+{
+  "name": "clanker",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w discord-hub-web",
+    "build": "npm run build -w discord-hub-web",
+    "preview": "npm run preview -w discord-hub-web",
+    "lint": "npm run lint -w discord-hub-web"
+  }
+}
