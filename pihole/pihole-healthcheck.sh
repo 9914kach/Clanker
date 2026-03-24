@@ -63,16 +63,16 @@ if [[ "${SKIP_SSH}" != "true" ]]; then
   echo
   if [[ "${SSH_HOST}" == "localhost" || "${SSH_HOST}" == "127.0.0.1" ]]; then
     echo "Kontrollerar container lokalt..."
-    remote_out="$(docker inspect -f '{{.State.Status}}' pihole 2>/dev/null || echo missing)"
+    remote_out="$(docker inspect -f '{{.State.Status}}' clanker-pihole 2>/dev/null || echo missing)"
   else
     echo "Kontrollerar container via SSH (${SSH_HOST})..."
-    remote_out="$(ssh "${SSH_HOST}" "docker inspect -f '{{.State.Status}}' pihole 2>/dev/null || echo missing" 2>&1 || true)"
+    remote_out="$(ssh "${SSH_HOST}" "docker inspect -f '{{.State.Status}}' clanker-pihole 2>/dev/null || echo missing" 2>&1 || true)"
   fi
 
   if [[ "${remote_out}" =~ running ]]; then
-    ok "Docker-container 'pihole' ar running"
+    ok "Docker-container 'clanker-pihole' ar running"
   elif [[ "${remote_out}" =~ missing ]]; then
-    warn "Kunde inte hitta container 'pihole'"
+    warn "Kunde inte hitta container 'clanker-pihole'"
   else
     warn "SSH/container-koll gav: ${remote_out}"
   fi

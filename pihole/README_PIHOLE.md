@@ -5,7 +5,7 @@ Denna guide beskriver hur din nuvarande setup fungerar och hur du snabbt kommer 
 ## 1) Översikt: hur allt fungerar
 
 - Raspberry Pi kör Docker.
-- En container (`pihole`) kör både DNS-tjänsten och Pi-hole webb-UI.
+- En container (`clanker-pihole`) kör både DNS-tjänsten och Pi-hole webb-UI.
 - Containern använder `network_mode: host`, vilket betyder att den delar nätverk med hosten.
 - Klienter i nätet använder din Pi (`192.168.0.2`) som DNS-server.
 - Pi-hole filtrerar DNS-frågor mot blocklistor (du använder HaGeZi Pro).
@@ -20,7 +20,7 @@ Kort flöde:
 ### `docker-compose.yml`
 
 - Image: `pihole/pihole:latest`
-- Containernamn: `pihole`
+- Compose-tjänst och containernamn: `clanker-pihole`
 - Nätverk: `host`
 - Auto-restart: `unless-stopped`
 - Volymer:
@@ -44,9 +44,10 @@ Det innebär att webbgränssnittet ligger på:
 
 ## 3) Kom igång (from scratch)
 
-Kör på Raspberryn i projektmappen `~/apps/pihole`:
+Kör på Raspberryn i repo-roten `~/apps/Clanker` (där `docker-compose.yml` ligger):
 
 ```bash
+cd ~/apps/Clanker
 docker compose pull
 docker compose up -d
 docker compose ps
@@ -55,7 +56,7 @@ docker compose ps
 Verifiera att containern är igång:
 
 ```bash
-docker inspect -f '{{.State.Status}}' pihole
+docker inspect -f '{{.State.Status}}' clanker-pihole
 ```
 
 Förväntat: `running`.
@@ -73,8 +74,8 @@ docker compose restart
 ### Loggar
 
 ```bash
-docker compose logs -f pihole
-docker compose logs --since=24h pihole
+docker compose logs -f clanker-pihole
+docker compose logs --since=24h clanker-pihole
 ```
 
 ### Uppdatera
@@ -93,15 +94,15 @@ Du har ett script:
 Kör:
 
 ```bash
-cd ~/apps/pihole
-./pihole-healthcheck.sh
+cd ~/apps/Clanker
+./pihole/pihole-healthcheck.sh
 ```
 
 Det kontrollerar:
 
 - att vanliga domäner resolve:ar korrekt
 - att blockerad domän faktiskt blockeras
-- att containern `pihole` kör
+- att containern `clanker-pihole` kör
 
 ## 6) Pi-hole UI: rekommenderade inställningar
 
@@ -139,13 +140,13 @@ nslookup flurry.com 192.168.0.2
 
 ## 8) Struktur i projektet
 
-- `docker-compose.yml` - containerdefinition
-- `.env` - miljöinställningar
-- `etc-pihole/` - persistent Pi-hole-data
-- `etc-dnsmasq.d/` - extra dnsmasq-konfig
-- `pihole-healthcheck.sh` - Linux healthcheck
-- `pihole-healthcheck.ps1` - Windows PowerShell healthcheck
-- `PIHOLE_5_DAGAR_STATUSCHECK.md` - checklista för uppföljning
+- `docker-compose.yml` (repo-rot) - containerdefinition; kör alltid `docker compose` därifrån
+- `.env` (repo-rot) - miljöinställningar
+- `etc-pihole/` (repo-rot) - persistent Pi-hole-data
+- `etc-dnsmasq.d/` (repo-rot) - extra dnsmasq-konfig
+- `pihole/pihole-healthcheck.sh` - Linux healthcheck
+- `pihole/pihole-healthcheck.ps1` - Windows PowerShell healthcheck
+- `pihole/PIHOLE_5_DAGAR_STATUSCHECK.md` - checklista för uppföljning
 
 ## 9) Säkerhet och backup (kort)
 
@@ -157,7 +158,7 @@ nslookup flurry.com 192.168.0.2
 
 Om du vill kunna återställa snabbt med `git clone`:
 
-- Läs `GIT_RECOVERY_GUIDE.md`
-- Kör restore med `./scripts/restore-from-repo.sh`
-- Verifiera med `./pihole-healthcheck.sh`
+- Läs `pihole/GIT_RECOVERY_GUIDE.md`
+- Kör restore med `./pihole/scripts/restore-from-repo.sh`
+- Verifiera med `./pihole/pihole-healthcheck.sh`
 

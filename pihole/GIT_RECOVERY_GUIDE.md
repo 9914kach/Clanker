@@ -4,7 +4,7 @@ Målet: kunna göra `git clone` och starta allt igen på en ny/återställd Rasp
 
 ## 1) Initiera repo (en gång)
 
-I `~/apps/pihole`:
+I repo-roten `~/apps/Clanker` (efter `git clone`):
 
 ```bash
 git init
@@ -23,10 +23,10 @@ git push -u origin main
 
 ## 2) Vad som versionshanteras
 
-- `docker-compose.yml`
-- `.env.example` (inte din riktiga `.env`)
-- `etc-pihole` viktig konfig (`pihole.toml`, adlists, dnsmasq)
-- docs + healthcheck + scripts
+- `docker-compose.yml` i repo-roten (kör `docker compose` därifrån)
+- `.env.example` i repo-roten (inte din riktiga `.env`)
+- `etc-pihole/` viktig konfig (`pihole.toml`, adlists, dnsmasq)
+- dokumentation, healthcheck och skript i `pihole/`
 
 `.gitignore` är satt för att undvika hemligheter och brus (leases, cache, TLS-filer, `cli_pw`).
 
@@ -45,11 +45,11 @@ git push
 Förutsatt att Docker redan är installerat.
 
 ```bash
-git clone <DIN_PRIVATE_GIT_URL> ~/apps/pihole
-cd ~/apps/pihole
-chmod +x scripts/*.sh pihole-healthcheck.sh
-./scripts/restore-from-repo.sh
-./pihole-healthcheck.sh
+git clone <DIN_PRIVATE_GIT_URL> ~/apps/Clanker
+cd ~/apps/Clanker
+chmod +x pihole/scripts/*.sh pihole/pihole-healthcheck.sh
+./pihole/scripts/restore-from-repo.sh
+./pihole/pihole-healthcheck.sh
 ```
 
 ## 5) Om du vill ta med allt exakt
@@ -57,8 +57,9 @@ chmod +x scripts/*.sh pihole-healthcheck.sh
 Kör en separat backup-arkivfil:
 
 ```bash
-chmod +x scripts/backup-config.sh
-./scripts/backup-config.sh
+cd ~/apps/Clanker
+chmod +x pihole/scripts/backup-config.sh
+./pihole/scripts/backup-config.sh
 ```
 
 Det skapar `backups/pihole-config-<datum>.tar.gz`.

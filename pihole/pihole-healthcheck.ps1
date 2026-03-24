@@ -57,11 +57,11 @@ if ($flurry.Ok) {
 if (-not $SkipSsh) {
     Write-Host "`nKontrollerar container via SSH ($SshHost)..." -ForegroundColor Cyan
     try {
-        $remote = ssh $SshHost "docker inspect -f '{{.State.Status}}' pihole 2>/dev/null || echo missing" 2>&1 | Out-String
+        $remote = ssh $SshHost "docker inspect -f '{{.State.Status}}' clanker-pihole 2>/dev/null || echo missing" 2>&1 | Out-String
         if ($remote -match "running") {
-            Write-Host "[OK] Docker-container 'pihole' ar running" -ForegroundColor Green
+            Write-Host "[OK] Docker-container 'clanker-pihole' ar running" -ForegroundColor Green
         } elseif ($remote -match "missing") {
-            Write-Host "[WARN] Kunde inte hitta container 'pihole'" -ForegroundColor Yellow
+            Write-Host "[WARN] Kunde inte hitta container 'clanker-pihole'" -ForegroundColor Yellow
         } else {
             Write-Host "[WARN] Okant containersvar: $($remote.Trim())" -ForegroundColor Yellow
         }

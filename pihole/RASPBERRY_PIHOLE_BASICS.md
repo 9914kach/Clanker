@@ -31,9 +31,9 @@ pwd
 5. Gå till Pi-hole-projektet och kontrollera status:
 
 ```bash
-cd ~/apps/pihole
+cd ~/apps/Clanker
 docker compose ps
-./pihole-healthcheck.sh
+./pihole/pihole-healthcheck.sh
 ```
 
 Om `clanker.local` inte fungerar, använd IP-adressen direkt i SSH-kommandot.
@@ -124,8 +124,8 @@ sudo apt install -y docker-compose-plugin
 ## 7) Skapa Pi-hole projektmapp
 
 ```bash
-mkdir -p ~/apps/pihole
-cd ~/apps/pihole
+mkdir -p ~/apps/Clanker
+cd ~/apps/Clanker
 ```
 
 Skapa `.env`:
@@ -145,12 +145,12 @@ Skapa `docker-compose.yml`:
 ```bash
 cat > docker-compose.yml << 'EOF'
 services:
-  pihole:
+  clanker-pihole:
     env_file:
       - .env
     image: pihole/pihole:latest
-    container_name: pihole
-    hostname: pihole
+    container_name: clanker-pihole
+    hostname: clanker-pihole
     network_mode: "host"
     restart: unless-stopped
     volumes:
@@ -164,12 +164,12 @@ EOF
 ## 8) Starta Pi-hole
 
 ```bash
-cd ~/apps/pihole
+cd ~/apps/Clanker
 docker compose up -d
 docker compose ps
 ```
 
-Förväntat: service `pihole` är `running`.
+Förväntat: service `clanker-pihole` är `running`.
 
 ## 9) Öppna adminpanelen
 
@@ -209,9 +209,9 @@ nslookup flurry.com 192.168.0.2
 ## 12) Vanliga kommandon
 
 ```bash
-cd ~/apps/pihole
+cd ~/apps/Clanker
 docker compose ps
-docker compose logs --since=24h pihole
+docker compose logs --since=24h clanker-pihole
 docker compose pull && docker compose up -d
 ```
 
@@ -250,19 +250,19 @@ sudo passwd <användare>
 Kör:
 
 ```bash
-docker exec -it pihole pihole setpassword
+docker exec -it clanker-pihole pihole setpassword
 ```
 
 Eller sätt ett specifikt lösenord direkt:
 
 ```bash
-docker exec -it pihole pihole setpassword "NyttStarktLosenord"
+docker exec -it clanker-pihole pihole setpassword "NyttStarktLosenord"
 ```
 
 Om du vill ta bort lösenord (inte rekommenderat):
 
 ```bash
-docker exec -it pihole pihole setpassword ""
+docker exec -it clanker-pihole pihole setpassword ""
 ```
 
 ## 16) Tips och tricks att komma ihåg
@@ -271,7 +271,7 @@ docker exec -it pihole pihole setpassword ""
 - Använd två upstream-DNS (t.ex. `1.1.1.1` + `1.0.0.1`) för redundans.
 - Exponera inte `:8080/admin` mot internet.
 - Whitelista enskilda domäner, inte hela toppdomäner.
-- Kör `docker compose logs --since=24h pihole` vid konstiga problem.
+- Kör `docker compose logs --since=24h clanker-pihole` vid konstiga problem.
 - Uppdatera med `docker compose pull && docker compose up -d` någon gång per månad.
 - Ta backup via Teleporter innan större ändringar.
 - Dokumentera ändringar (vad du vitlistat och varför) i en enkel loggfil.
@@ -281,11 +281,11 @@ docker exec -it pihole pihole setpassword ""
 Kör dessa på Raspberryn:
 
 ```bash
-cd ~/apps/pihole
+cd ~/apps/Clanker
 docker compose ps
-docker compose logs --since=30m pihole
-./pihole-healthcheck.sh
-docker inspect -f '{{.State.Status}}' pihole
+docker compose logs --since=30m clanker-pihole
+./pihole/pihole-healthcheck.sh
+docker inspect -f '{{.State.Status}}' clanker-pihole
 docker compose restart
 ```
 

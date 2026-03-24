@@ -43,16 +43,17 @@ Om både tillåtna och blockerade domäner beter sig rätt är grundfunktionen O
 
 ## 3) Verifiera container och driftstid
 
-I mappen där din `docker-compose.yml` finns, kör:
+I repo-roten `~/apps/Clanker` (där `docker-compose.yml` ligger), kör:
 
 ```bash
+cd ~/apps/Clanker
 docker compose ps
-docker compose logs --since=24h pihole
+docker compose logs --since=24h clanker-pihole
 ```
 
 Kontrollera:
 
-- Tjänsten `pihole` är `running`
+- Tjänsten `clanker-pihole` är `running`
 - Inga upprepade crash/restart-loopar
 - Inga återkommande DNSSEC- eller upstream-timeoutfel
 
