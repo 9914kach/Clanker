@@ -1,5 +1,7 @@
 # Homelab — TODO / backlog
 
+**Tills vidare:** enda backlogen är denna Markdown-fil i repot (ingen separat ticket-/PM-tjänst).
+
 Här samlas **planerade** saker som inte är pågående implementation i kod just nu.  
 Uppdatera listan när du börjar eller avslutar något; flytta gärna färdiga punkter till avsnittet längst ner så historiken finns kvar.
 

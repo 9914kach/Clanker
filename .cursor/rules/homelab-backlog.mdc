@@ -1,0 +1,15 @@
+---
+description: Läs och uppdatera homelab-backlog (Markdown) vid infra- och hub-arbete
+alwaysApply: true
+---
+
+# Homelab-backlog
+
+Repots **enda backlog** (tills vidare) ligger i `docs/homelab-todo.md`.
+
+När du arbetar med **homelab, Raspberry Pi-tjänster, Docker Compose i roten, Pi-hole, eller discord-hub** (`apps/discord-hub-*`):
+
+1. **Läs** `docs/homelab-todo.md` i början om uppgiften kan påverkas av planerade eller pågånde punkter där.
+2. **Uppdatera** filen när något som nämns där blir klart: sätt `- [x]`, lägg gärna till datum i parentes, och flytta större färdiga block till avsnittet **Klart (arkiv)** om det passar.
+
+Lägg inte in nya backlog-rader i onödan — bara när användaren bett om det eller det följer tydligt av uppgiften.
