@@ -24,6 +24,10 @@ Uppdatera listan när du börjar eller avslutar något; flytta gärna färdiga p
 
 - [ ] *(lägg till nästa funktion eller milstolpe här)*
 
+## Dev tools (`dev-tools-web`)
+
+- [ ] **Dev-server och prod** — tydlig uppdelning (t.ex. två Compose-profiler: prod med nginx/static som idag + separat dev med Vite/volym på Pi, eller prod på Pi och dev endast på laptop); dokumentera när vad ska användas och hur du startar/stänger.
+
 ## Övrigt
 
 - [ ] *(t.ex. domän + HTTPS för discord-hub, backup-rutin)*

@@ -3,6 +3,12 @@ import ReactMarkdown from "react-markdown";
 import { Link, Navigate, NavLink, useParams } from "react-router-dom";
 import remarkGfm from "remark-gfm";
 import {
+  extractFirstH1,
+  getCategoryHeading,
+  getDocNavTitle,
+  getDocPageTitle,
+} from "@/lib/docDisplay";
+import {
   getDocMarkdown,
   getDocSlugs,
   groupSlugsByCategory,
@@ -36,8 +42,9 @@ export function DocsViewer() {
           <h1 className="docs-shell__title">Dokumentation</h1>
         </header>
         <p className="docs-empty">
-          Inga markdown-filer under <code>apps/dev-tools-web/docs/</code> än.
-          Lägg till <code>.md</code> i kategorimapparna och starta om dev-servern.
+          Inga markdown-filer hittades i repot (kolla att du kör från monorepo-rot och
+          att inget felaktigt filtreras bort). Starta om dev-servern efter nya{" "}
+          <code>.md</code>-filer.
         </p>
         <BuildStamp />
       </div>
@@ -66,6 +73,8 @@ export function DocsViewer() {
     );
   }
 
+  const headingFromMd = extractFirstH1(markdown);
+
   return (
     <div className="docs-layout">
       <aside className="docs-nav" aria-label="Dokumentationsindex">
@@ -73,15 +82,18 @@ export function DocsViewer() {
           <Link to="/" className="docs-back">
             ← Start
           </Link>
-          <p className="docs-nav__hint">Byggdokumentation</p>
+          <p className="docs-nav__hint">Repo-dokumentation</p>
         </div>
         <nav>
           {[...grouped.entries()].map(([category, items]) => (
             <div key={category} className="docs-nav__group">
-              <h2 className="docs-nav__category">{category}</h2>
+              <h2 className="docs-nav__category">
+                {getCategoryHeading(category)}
+              </h2>
               <ul className="docs-nav__list">
                 {items.map((s) => {
-                  const label = s.includes("/") ? s.slice(s.indexOf("/") + 1) : s;
+                  const md = getDocMarkdown(s);
+                  const label = getDocNavTitle(s, md);
                   return (
                     <li key={s}>
                       <NavLink
@@ -103,7 +115,14 @@ export function DocsViewer() {
       </aside>
       <article className="docs-article">
         <header className="docs-article__header">
-          <h1 className="docs-article__path">{slug}</h1>
+          {headingFromMd ? null : (
+            <h1 className="docs-article__title">
+              {getDocPageTitle(slug, markdown)}
+            </h1>
+          )}
+          <p className="docs-article__path" title={slug}>
+            <code>{slug}.md</code>
+          </p>
         </header>
         <div className="docs-prose">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{markdown}</ReactMarkdown>

@@ -8,8 +8,9 @@ export function Home() {
       <header className="header">
         <h1>Dev tools</h1>
         <p className="tagline">
-          Lokala verktyg för dokumentation, checklistor, bokmärken och enkel
-          HTTP-test. Använd menyn ovan eller länkarna nedan.
+          Lokala verktyg för markdown-dokumentation från hela Clanker-repot,
+          checklistor, bokmärken och enkel HTTP-test. Använd menyn ovan eller
+          länkarna nedan.
         </p>
       </header>
       <main className="main">

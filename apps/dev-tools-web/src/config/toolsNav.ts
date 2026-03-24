@@ -16,4 +16,10 @@ export const toolsNav: ToolNavItem[] = [
   },
   { id: "links", label: "Länkar", path: "/tools/links", end: true },
   { id: "http", label: "API-test", path: "/tools/http", end: true },
+  {
+    id: "todo",
+    label: "TODO / backlog",
+    path: "/tools/todo",
+    end: true,
+  },
 ];

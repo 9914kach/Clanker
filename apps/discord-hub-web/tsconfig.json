@@ -19,7 +19,9 @@
     "noUncheckedSideEffectImports": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["src/*"],
+      "@clanker/ui/components/*": ["../../packages/ui/src/components/ui/*"],
+      "@clanker/ui/lib/*": ["../../packages/ui/src/lib/*"]
     }
   },
   "include": ["src"]

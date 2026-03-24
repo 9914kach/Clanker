@@ -2,7 +2,8 @@
   "name": "clanker",
   "private": true,
   "workspaces": [
-    "apps/*"
+    "apps/*",
+    "packages/*"
   ],
   "scripts": {
     "dev": "npm run dev -w discord-hub-web",

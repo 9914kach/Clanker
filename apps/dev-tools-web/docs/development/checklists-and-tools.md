@@ -21,3 +21,9 @@ Redigera `src/data/externalLinks.json`. Lägg aldrig lösenord eller tokens i fi
 ## API-test (HTTP)
 
 Sidan `src/tools/HttpPlaygroundPage.tsx` använder webbläsarens `fetch`. Anrop till andra domäner kräver **CORS** från servern; annars fungerar t.ex. same-origin-API:er eller en framtida proxy bättre.
+
+## TODO / backlog (homelab)
+
+Sidan `src/tools/HomelabTodoPage.tsx` (route `/tools/todo`) visar **`docs/homelab-todo.md` i repots rot** (samma fil som homelab-backlog i Cursor). Markdown laddas med statisk import `../../../../docs/homelab-todo.md?raw`; `server.fs.allow` i `vite.config.ts` tillåter sökvägen utanför app-mappen under utveckling.
+
+**Docker:** Bygg imagen med **hela repot** som context (som idag: `COPY . .` i `Dockerfile`) så både `homelab-todo.md` och docs-viewerns repo-vida `*.md`-glob finns vid build.

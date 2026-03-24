@@ -1,3 +1,12 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@source "../../../packages/ui/src";
+@source ".";
+
+@import "@clanker/ui/shadcn-theme.css";
+
 :root {
   color-scheme: dark light;
   --bg: #0f1218;
@@ -242,13 +251,22 @@ code {
   border-bottom: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
 }
 
+.docs-article__title {
+  margin: 0 0 0.4rem;
+  font-size: 1.65rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+
 .docs-article__path {
   margin: 0;
-  font-size: 1rem;
-  font-weight: 500;
+  font-size: 0.8rem;
+  font-weight: 400;
   color: var(--muted);
   font-family: ui-monospace, monospace;
   word-break: break-all;
+  opacity: 0.9;
 }
 
 .docs-prose {
@@ -526,6 +544,10 @@ code {
 .http-playground__submit:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+.homelab-todo__article {
+  padding: 1.25rem 1.5rem;
 }
 
 .http-playground__pre {

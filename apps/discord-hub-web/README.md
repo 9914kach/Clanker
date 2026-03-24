@@ -1,6 +1,6 @@
 # Discord hub — frontend (`discord-hub-web`)
 
-Vite + React + TypeScript för discord-gängets gemensamma verktyg.
+Vite + React + TypeScript för discord-gängets gemensamma verktyg. **UI:** Tailwind CSS v4, shadcn/ui via **`@clanker/ui`** (`packages/ui/`), och **Framer Motion**. Nya komponenter från shadcn: `npx shadcn@latest add …` (konfiguration i `components.json`).
 
 För **personliga / allmänna dev-verktyg** (t.ex. dokumentationsviewer) finns en separat app: `apps/dev-tools-web/`.
 
