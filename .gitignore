@@ -18,3 +18,12 @@ Thumbs.db
 # Secrets (lägg aldrig nycklar i repot)
 *.pem
 .env.local
+.env.*
+!.env.example
+
+# Pi-hole runtime data
+etc-pihole/
+etc-dnsmasq.d/
+
+# Docker local overrides
+docker-compose.override.yml
