@@ -1,0 +1,14 @@
+services:
+  pihole:
+    env_file:
+      - .env
+    image: pihole/pihole:latest
+    container_name: pihole
+    hostname: pihole
+    network_mode: "host"
+    restart: unless-stopped
+    volumes:
+      - "./etc-pihole:/etc/pihole"
+      - "./etc-dnsmasq.d:/etc/dnsmasq.d"
+    cap_add:
+      - NET_ADMIN

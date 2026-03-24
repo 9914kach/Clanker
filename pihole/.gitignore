@@ -1,0 +1,29 @@
+# Secrets / local overrides
+.env
+.env.local
+
+# Runtime / noisy files from Pi-hole
+etc-pihole/dhcp.leases
+etc-pihole/dhcp.leases.bak
+etc-pihole/listsCache/
+etc-pihole/config_backups/
+etc-pihole/migration_backup/
+etc-pihole/gravity.db
+etc-pihole/gravity_old.db
+etc-pihole/gravity_backups/
+etc-pihole/pihole-FTL.db
+etc-pihole/pihole-FTL.db-shm
+etc-pihole/pihole-FTL.db-wal
+
+# TLS and private material (do not version by default)
+etc-pihole/tls.pem
+etc-pihole/tls.crt
+etc-pihole/tls_ca.crt
+etc-pihole/cli_pw
+etc-pihole/logrotate
+
+# Local archives
+backups/*.tar.gz
+
+# Editor temp files
+*.swp
