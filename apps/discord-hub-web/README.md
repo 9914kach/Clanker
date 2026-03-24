@@ -17,6 +17,8 @@ npm run dev
 
 **OAuth / inloggning:** `discord-hub-api` måste lyssna på **port 3001** (Vite proxar `/api` dit). Antingen `npm run dev:discord-stack` från repots rot (API + webb i samma terminal), eller `npm run dev:discord-api` i en terminal och `npm run dev` i en annan. `clanker dev discord` kör `dev:discord-stack` efter `clanker up` (så båda startar). Se [apps/discord-hub-api/README.md](../discord-hub-api/README.md) för Discord-app, `DISCORD_REDIRECT_URI` och `.env`. Med **Caddy** (`http://dev.clanker.discord`) ska `DISCORD_REDIRECT_URI` och `FRONTEND_URL` använda den hosten, inte `localhost`. Hubben redirectar till `/login` tills `GET /api/auth/me` svarar OK.
 
+**Inloggad vy:** standardroute är **`/dashboard`** (root `/` redirectar dit). Profilbanner och accentfärg kommer från Discord via `GET /api/auth/me` och laddas från **Discords CDN** (`cdn.discordapp.com`); inga extra hemligheter behövs.
+
 För **både** discord-hub och `dev-tools-web` i samma terminal (t.ex. Caddy och `http://dev.clanker.discord` + `http://dev.clanker.tools`): `npm run dev:all` från roten.
 
 **Caddy / `http://dev.clanker.discord`:** om sidan blir grå, sätt **`VITE_HMR_CLIENT_PORT=80`** i repots rot-`.env` och starta om Vite (`npm run dev` eller `npm run dev:all`). Se [docs/docker.md](../../docs/docker.md#caddy-reverse-proxy).

@@ -6,10 +6,33 @@ export type SessionPayload = {
   sub: string;
   username: string;
   avatar: string | null;
+  global_name: string | null;
+  banner: string | null;
+  accent_color: number | null;
 };
 
 function secretKey(secret: string): Uint8Array {
   return new TextEncoder().encode(secret);
+}
+
+function claimStringOrNull(v: unknown): string | null {
+  if (typeof v === "string") {
+    return v;
+  }
+  if (v === null) {
+    return null;
+  }
+  return null;
+}
+
+function claimNumberOrNull(v: unknown): number | null {
+  if (typeof v === "number" && Number.isFinite(v)) {
+    return v;
+  }
+  if (v === null) {
+    return null;
+  }
+  return null;
 }
 
 export async function signSession(
@@ -20,6 +43,9 @@ export async function signSession(
   return new jose.SignJWT({
     username: payload.username,
     avatar: payload.avatar,
+    global_name: payload.global_name,
+    banner: payload.banner,
+    accent_color: payload.accent_color,
   })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(payload.sub)
@@ -42,11 +68,11 @@ export async function verifySession(
     if (typeof sub !== "string" || typeof username !== "string") {
       return null;
     }
-    const avatar =
-      typeof payload.avatar === "string" || payload.avatar === null
-        ? (payload.avatar as string | null)
-        : null;
-    return { sub, username, avatar };
+    const avatar = claimStringOrNull(payload.avatar);
+    const global_name = claimStringOrNull(payload.global_name);
+    const banner = claimStringOrNull(payload.banner);
+    const accent_color = claimNumberOrNull(payload.accent_color);
+    return { sub, username, avatar, global_name, banner, accent_color };
   } catch {
     return null;
   }

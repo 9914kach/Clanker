@@ -28,7 +28,7 @@ export default function LoginPage() {
           return;
         }
         if (res.ok) {
-          navigate("/", { replace: true });
+          navigate("/dashboard", { replace: true });
           return;
         }
         if (res.status === 401) {
