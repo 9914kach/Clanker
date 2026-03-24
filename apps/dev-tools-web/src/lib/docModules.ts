@@ -1,6 +1,7 @@
 const modules = import.meta.glob<string>("../../docs/**/*.md", {
   eager: true,
-  as: "raw",
+  query: "?raw",
+  import: "default",
 });
 
 const DOC_PREFIX = "../../docs/";

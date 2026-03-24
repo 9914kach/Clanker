@@ -1,0 +1,10 @@
+{
+  "id": "homelab-deploy",
+  "title": "Deploy / omstart (homelab)",
+  "items": [
+    { "id": "pull", "label": "docker compose pull (vid behov)" },
+    { "id": "env", "label": ".env kontrollerad (inga secrets i git)" },
+    { "id": "up", "label": "docker compose up -d --build för rätt profile" },
+    { "id": "health", "label": "Snabb kontroll av portar / health" }
+  ]
+}

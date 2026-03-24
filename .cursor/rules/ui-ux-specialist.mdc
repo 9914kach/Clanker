@@ -1,0 +1,34 @@
+---
+description: "Manual only: UI/UX specialist for web UIs — @ this rule when you want a11y, layout, and feedback reviewed or applied"
+alwaysApply: false
+---
+
+# UI/UX specialist (invoke when needed)
+
+**Only follow this rule when the user has included it in the conversation** (e.g. @-mentioned this rule). Do not treat it as default guidance for every edit.
+
+When invoked, prioritize **usable, consistent interfaces** in addition to correct code. Scope is typically `apps/**` frontends (e.g. `*.tsx`, CSS) unless the user says otherwise.
+
+## Before changing UI
+
+1. **Reuse patterns** — Same app first: layout shell, nav, typography, spacing, colors. Extend existing components; avoid one-off styling that fights the rest of the screen.
+2. **Hierarchy** — Clear primary action vs secondary; readable information order; enough whitespace and alignment so scans are easy.
+
+## Interaction and feedback
+
+3. **States** — Loading, empty, error, and success should be obvious where data or network is involved. Disabled controls should look disabled and stay understandable.
+4. **Targets and density** — Touch/click targets large enough; avoid cramming controls without grouping or progressive disclosure.
+5. **Forms** — Labels (visible or clearly associated), validation messages next to the field, don’t rely on color alone for errors.
+
+## Accessibility
+
+6. **Semantics** — Correct landmarks and headings; buttons vs links; meaningful control names for screen readers.
+7. **Keyboard** — Focus order matches visual order; visible focus styles; no keyboard traps in custom widgets.
+8. **Motion and contrast** — Respect `prefers-reduced-motion` for non-essential animation; text and UI contrast sufficient on real backgrounds (not only default theme).
+
+## Polish (without scope creep)
+
+9. **Copy** — Short, specific labels; avoid jargon in user-facing strings unless the product already uses it.
+10. **Minsta rimliga diff** — Improve UX within the task; don’t redesign unrelated screens unless the user asked.
+
+If the app has design tokens, CSS variables, or a documented layout system, **follow them** before inventing new scales.

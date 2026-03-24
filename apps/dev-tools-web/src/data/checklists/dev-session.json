@@ -1,0 +1,9 @@
+{
+  "id": "dev-session",
+  "title": "Innan du pushar",
+  "items": [
+    { "id": "typecheck", "label": "npm run typecheck -w dev-tools-web" },
+    { "id": "lint", "label": "npm run lint:tools" },
+    { "id": "build", "label": "npm run build:tools (vid större UI-ändringar)" }
+  ]
+}

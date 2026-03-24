@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { BuildStamp } from "@/components/BuildStamp";
+import { toolsNav } from "@/config/toolsNav";
 
 export function Home() {
   return (
@@ -7,32 +8,30 @@ export function Home() {
       <header className="header">
         <h1>Dev tools</h1>
         <p className="tagline">
-          Lokala verktyg för att strukturera utveckling — dokumentation, checklistor
-          och små utilities du lägger till över tid.
+          Lokala verktyg för dokumentation, checklistor, bokmärken och enkel
+          HTTP-test. Använd menyn ovan eller länkarna nedan.
         </p>
       </header>
       <main className="main">
         <section className="card">
-          <h2>Byggdokumentation</h2>
-          <p className="card__lead">
-            Markdown i <code>docs/</code> med versions- och byggstämpel så du ser
-            exakt vad som ingick i builden.
-          </p>
-          <p>
-            <Link to="/docs" className="text-link">
-              Öppna docs viewer →
-            </Link>
-          </p>
+          <h2>Verktyg</h2>
+          <ul>
+            {toolsNav.map((item) => (
+              <li key={item.id}>
+                <Link to={item.path} className="text-link">
+                  {item.label}
+                </Link>
+              </li>
+            ))}
+          </ul>
         </section>
         <section className="card card--spaced">
-          <h2>Fler verktyg</h2>
-          <ul>
-            <li>
-              Lägg nya moduler under <code>src/tools/</code> med egna routes i{" "}
-              <code>App.tsx</code>.
-            </li>
-            <li>Discord-hubben lever kvar i <code>apps/discord-hub-web/</code>.</li>
-          </ul>
+          <h2>Utöka repot</h2>
+          <p className="card__lead">
+            Se <code>docs/development/checklists-and-tools.md</code> för hur du
+            lägger till menyposter, checklistor och länkar. Discord-hubben
+            lever i <code>apps/discord-hub-web/</code>.
+          </p>
         </section>
         <BuildStamp />
       </main>

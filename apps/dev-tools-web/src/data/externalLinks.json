@@ -1,0 +1,24 @@
+{
+  "groups": [
+    {
+      "title": "Övervakning (exempel)",
+      "links": [
+        {
+          "label": "Grafana",
+          "href": "http://localhost:3000",
+          "description": "Byt href till din Grafana-instans (LAN eller tunnel)."
+        }
+      ]
+    },
+    {
+      "title": "Repo & hubbar",
+      "links": [
+        {
+          "label": "Clanker (GitHub)",
+          "href": "https://github.com/9914kach/Clanker",
+          "description": "Remote enligt rot-README; justera vid behov."
+        }
+      ]
+    }
+  ]
+}

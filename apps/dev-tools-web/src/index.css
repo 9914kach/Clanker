@@ -324,3 +324,219 @@ code {
 .docs-prose th {
   background: color-mix(in srgb, var(--surface) 70%, transparent);
 }
+
+/* App shell + top navigation */
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-topnav {
+  flex-shrink: 0;
+  background: var(--surface);
+  border-bottom: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
+}
+
+.app-topnav__inner {
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: 0.65rem 1.25rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.25rem;
+}
+
+.app-topnav__brand {
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.app-topnav__brand:hover {
+  color: var(--accent);
+}
+
+.app-topnav__brand.is-active {
+  color: var(--accent);
+}
+
+.app-topnav__links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.15rem;
+}
+
+.app-topnav__link {
+  padding: 0.35rem 0.65rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  color: color-mix(in srgb, var(--text) 88%, var(--muted));
+  text-decoration: none;
+}
+
+.app-topnav__link:hover {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  color: var(--text);
+}
+
+.app-topnav__link.is-active {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+}
+
+.app-main {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Tool pages (checklists, links, HTTP) */
+.tool-page__title {
+  margin: 0 0 0.35rem;
+  font-size: 1.75rem;
+  letter-spacing: -0.02em;
+}
+
+.tool-page__h2 {
+  margin: 0 0 0.65rem;
+  font-size: 1.1rem;
+}
+
+.tool-page__muted {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.tool-page__section-lead {
+  margin-bottom: 1rem;
+}
+
+.tool-page__section {
+  margin-bottom: 1.25rem;
+}
+
+.checklist-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.checklist-list__item {
+  margin: 0.5rem 0;
+}
+
+.checklist-list__label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  cursor: pointer;
+  color: color-mix(in srgb, var(--text) 92%, var(--muted));
+  line-height: 1.45;
+}
+
+.checklist-list__label input {
+  margin-top: 0.2rem;
+  flex-shrink: 0;
+}
+
+.links-page__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.links-page__item {
+  margin: 0.85rem 0;
+}
+
+.links-page__item:first-child {
+  margin-top: 0;
+}
+
+.links-page__desc {
+  margin: 0.35rem 0 0;
+  font-size: 0.88rem;
+}
+
+.http-playground__form .http-playground__row {
+  margin-bottom: 1rem;
+}
+
+.http-playground__row--stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.http-playground__label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 0.35rem;
+}
+
+.http-playground__row:not(.http-playground__row--stack) .http-playground__label {
+  margin-bottom: 0.35rem;
+}
+
+.http-playground__select,
+.http-playground__input,
+.http-playground__textarea {
+  width: 100%;
+  max-width: 100%;
+  padding: 0.5rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--text) 14%, transparent);
+  background: color-mix(in srgb, var(--bg) 65%, var(--surface));
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.95rem;
+}
+
+.http-playground__textarea {
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.http-playground__submit {
+  margin-top: 0.25rem;
+  padding: 0.55rem 1.1rem;
+  border-radius: 8px;
+  border: none;
+  background: color-mix(in srgb, var(--accent) 85%, var(--surface));
+  color: var(--bg);
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.http-playground__submit:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.http-playground__submit:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.http-playground__pre {
+  margin: 0.75rem 0 0;
+  padding: 1rem;
+  border-radius: 10px;
+  overflow: auto;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  background: color-mix(in srgb, var(--surface) 85%, var(--bg));
+  border: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
+  white-space: pre-wrap;
+  word-break: break-word;
+}

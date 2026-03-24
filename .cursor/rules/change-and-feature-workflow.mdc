@@ -1,0 +1,27 @@
+---
+description: Checklista för varje ändring eller ny funktion i Clanker-repot
+alwaysApply: true
+---
+
+# Ändringar och nya funktioner
+
+Följ detta **varje gång** du implementerar en buggfix, refaktor eller feature — såvida användaren uttryckligen bett om något smalare (t.ex. enbart en rad i `.gitignore`).
+
+## Innan du kodar
+
+1. **Förstå uppgiften** — Om något är oklart, ställ en kort fråga i stället för att gissa.
+2. **Hitta liknande befintlig kod** — Peka på (eller läs) minst en relevant fil: samma app (`apps/discord-hub-web`, `apps/discord-hub-api`, `apps/dev-tools-web`), samma språk/stack, eller samma mönster i repot. Utöka befintliga mönster; hitta inte på ny arkitektur utan behov.
+3. **Homelab / Docker / Pi / discord-hub** — Följ regeln **Homelab-backlog**: läs `docs/homelab-todo.md` när det kan påverkas, och uppdatera den när något där blir klart.
+
+## Under implementation
+
+4. **Minsta rimliga diff** — Ändra bara det som krävs för uppgiften. Lägg inte till “städning” eller nya filer som inte följer av uppgiften.
+5. **Inga halvfärdiga patchar** — Ersätt inte riktig kod med platshållare (`// TODO`, `// ... rest`) i levererade ändringar. Om utdata måste förkortas i chat, leverera fullständig kod i filerna.
+6. **Säkerhet och hemligheter** — Committa aldrig secrets. Använd `.env` / exempelfiler enligt befintlig konvention; var extra försiktig med auth, tokens och nätverks-exponering i Compose.
+
+## Efter implementation
+
+7. **Verifiera** — Kör relevant kommando om det finns (t.ex. `npm run build`, `npm test`, `docker compose config`) när ändringen kan påverka bygg eller runtime. Om inget finns, säg tydligt att du inte körde något och varför.
+8. **Dokumentation** — Uppdatera README eller annan befintlig doc i samma app/mapp om beteende, miljövariabler eller hur man kör något **ändrats** för en ny användare. Skapa inte nya markdown-filer bara för AI:ens skull om användaren inte bett om det.
+
+Om något i listan inte är applicerbart, nämn kort **varför** (t.ex. “ingen testsvit i denna app ännu”).
