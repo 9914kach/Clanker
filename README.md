@@ -10,6 +10,7 @@ Homeserver-repo för Raspberry Pi (Clanker) — skript, anteckningar och tjänst
 |--------|----------|
 | `apps/discord-hub-web/` | Frontend för **discord-hubben** (Vite + React + TS) — se `apps/discord-hub-web/README.md` |
 | `apps/discord-hub-api/` | Backend för samma hub — se `apps/discord-hub-api/README.md` |
+| `apps/dev-tools-web/` | **Lokala dev-verktyg** (dokumentationsviewer m.m., separat från discord-hub) — se `apps/dev-tools-web/README.md` |
 | `experiments/` | Isolerade försök och engångsskript |
 | `pihole/` | Dokumentation och skript för Pi-hole (själva Compose-filen ligger i repots rot) |
 | `docs/homelab-todo.md` | Backlog / TODO för homelab (VM, domän, osv.) |

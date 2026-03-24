@@ -1,12 +1,19 @@
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
 const appDir = path.dirname(fileURLToPath(import.meta.url));
+const pkg = JSON.parse(
+  fs.readFileSync(path.join(appDir, "package.json"), "utf-8"),
+) as { version: string };
 
-// https://vite.dev/config/
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+    __BUILD_TIME_ISO__: JSON.stringify(new Date().toISOString()),
+  },
   plugins: [react()],
   resolve: {
     alias: {
@@ -14,12 +21,7 @@ export default defineConfig({
     },
   },
   server: {
-    // När discord-hub-api kör lokalt: proxa /api till backend under utveckling
-    proxy: {
-      "/api": {
-        target: "http://127.0.0.1:3001",
-        changeOrigin: true,
-      },
-    },
+    port: 5174,
+    strictPort: false,
   },
 });

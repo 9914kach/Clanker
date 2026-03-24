@@ -10,6 +10,17 @@ services:
       - "${DISCORD_HUB_WEB_PORT:-4173}:80"
     restart: unless-stopped
 
+  # Lokala dev-verktyg (dokumentation m.m.). Start: docker compose --profile devtools up -d dev-tools-web
+  dev-tools-web:
+    profiles: ["devtools"]
+    build:
+      context: .
+      dockerfile: apps/dev-tools-web/Dockerfile
+    container_name: dev-tools-web
+    ports:
+      - "${DEV_TOOLS_WEB_PORT:-4174}:80"
+    restart: unless-stopped
+
   # PostgreSQL — aktivera när du har backend. Start: docker compose --profile db up -d clanker-db
   clanker-db:
     profiles: ["db"]

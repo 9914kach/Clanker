@@ -15,6 +15,17 @@ Thumbs.db
 *.swp
 *.swo
 
+# Cursor — local IDE/agent state (keep shared rules: .cursor/rules/)
+.cursor/*
+!.cursor/rules/
+!.cursor/rules/**
+
+# Other AI / agent local dirs (if tools create them in the repo)
+.agent/
+.claude/
+.aider*
+.specstory/
+
 # Secrets (lägg aldrig nycklar i repot)
 *.pem
 .env.local

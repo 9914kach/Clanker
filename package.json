@@ -6,8 +6,12 @@
   ],
   "scripts": {
     "dev": "npm run dev -w discord-hub-web",
+    "dev:tools": "npm run dev -w dev-tools-web",
     "build": "npm run build -w discord-hub-web",
+    "build:tools": "npm run build -w dev-tools-web",
     "preview": "npm run preview -w discord-hub-web",
-    "lint": "npm run lint -w discord-hub-web"
+    "preview:tools": "npm run preview -w dev-tools-web",
+    "lint": "npm run lint -w discord-hub-web",
+    "lint:tools": "npm run lint -w dev-tools-web"
   }
 }

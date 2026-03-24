@@ -2,6 +2,8 @@
 
 Vite + React + TypeScript för discord-gängets gemensamma verktyg.
 
+För **personliga / allmänna dev-verktyg** (t.ex. dokumentationsviewer) finns en separat app: `apps/dev-tools-web/`.
+
 ## Utveckling
 
 Från repots rot:
