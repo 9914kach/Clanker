@@ -1,4 +1,5 @@
 import { NavLink } from "react-router-dom";
+import { ModeToggle } from "@/components/mode-toggle";
 import { toolsNav } from "@/config/toolsNav";
 
 export function TopNav() {
@@ -28,6 +29,9 @@ export function TopNav() {
             </NavLink>
           ))}
         </nav>
+        <div className="ml-auto flex items-center">
+          <ModeToggle />
+        </div>
       </div>
     </header>
   );

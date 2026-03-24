@@ -15,7 +15,7 @@ Kopiera [`.env.example`](./.env.example) till **repo-roten** `.env` och/eller `a
 | `DISCORD_CLIENT_ID` | Application ID från Discord Developer Portal. |
 | `DISCORD_CLIENT_SECRET` | OAuth2 client secret. |
 | `DISCORD_REDIRECT_URI` | Måste vara **identisk** med en redirect du lagt under OAuth2 → Redirects (t.ex. `http://localhost:5173/api/auth/discord/callback`). |
-| `FRONTEND_URL` | Bas-URL till webben **utan** avslutande snedstreck (t.ex. `http://localhost:5173`). Efter lyckad inloggning redirectas användaren hit. |
+| `FRONTEND_URL` | Bas-URL till webben **utan** avslutande snedstreck (t.ex. `http://localhost:5173`). Efter lyckad inloggning redirectas användaren till `{FRONTEND_URL}/dashboard`. |
 | `SESSION_SECRET` | Hemlig nyckel för JWT-signering (t.ex. `openssl rand -hex 32`). |
 | `PORT` | Valfritt, standard `3001` (ska matcha Vite-proxyn i `discord-hub-web`). |
 
@@ -43,8 +43,8 @@ Sedan starta `discord-hub-web` (`npm run dev`). Webbläsaren anropar `/api/...` 
 | Metod | Sökväg | Beskrivning |
 |-------|--------|-------------|
 | GET | `/api/auth/discord` | Startar OAuth (redirect till Discord). |
-| GET | `/api/auth/discord/callback` | Discord callback; sätter session-cookie; redirect till `FRONTEND_URL`. |
-| GET | `/api/auth/me` | JSON `{ id, username, avatar }` eller 401. |
+| GET | `/api/auth/discord/callback` | Discord callback; sätter session-cookie; redirect till `{FRONTEND_URL}/dashboard`. |
+| GET | `/api/auth/me` | JSON med `id`, `username`, `avatar`, `global_name`, `banner`, `accent_color` (Discord `identify`) eller 401. |
 | POST | `/api/auth/logout` | Rensar session-cookie. |
 
 ## Produktion

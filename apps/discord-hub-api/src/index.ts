@@ -60,7 +60,24 @@ type DiscordUser = {
   id: string;
   username: string;
   avatar: string | null;
+  global_name: string | null;
+  banner: string | null;
+  accent_color: number | null;
 };
+
+function normalizeDiscordUser(raw: Record<string, unknown>): DiscordUser {
+  return {
+    id: String(raw.id),
+    username: String(raw.username),
+    avatar: typeof raw.avatar === "string" ? raw.avatar : null,
+    global_name: typeof raw.global_name === "string" ? raw.global_name : null,
+    banner: typeof raw.banner === "string" ? raw.banner : null,
+    accent_color:
+      typeof raw.accent_color === "number" && Number.isFinite(raw.accent_color)
+        ? raw.accent_color
+        : null,
+  };
+}
 
 async function fetchDiscordMe(accessToken: string): Promise<DiscordUser> {
   const res = await fetch("https://discord.com/api/users/@me", {
@@ -70,7 +87,8 @@ async function fetchDiscordMe(accessToken: string): Promise<DiscordUser> {
     const text = await res.text();
     throw new Error(`Discord @me failed: ${res.status} ${text}`);
   }
-  return res.json() as Promise<DiscordUser>;
+  const raw = (await res.json()) as Record<string, unknown>;
+  return normalizeDiscordUser(raw);
 }
 
 function createApp(env: AppEnv) {
@@ -113,6 +131,9 @@ function createApp(env: AppEnv) {
         sub: user.id,
         username: user.username,
         avatar: user.avatar,
+        global_name: user.global_name,
+        banner: user.banner,
+        accent_color: user.accent_color,
       });
       setCookie(c, COOKIE_NAME, token, {
         path: "/",
@@ -121,7 +142,7 @@ function createApp(env: AppEnv) {
         sameSite: "Lax",
         maxAge: SESSION_MAX_AGE,
       });
-      return c.redirect(`${env.frontendUrl}/`);
+      return c.redirect(`${env.frontendUrl}/dashboard`);
     } catch {
       return c.redirect(redirectFail);
     }
@@ -140,6 +161,9 @@ function createApp(env: AppEnv) {
       id: session.sub,
       username: session.username,
       avatar: session.avatar,
+      global_name: session.global_name,
+      banner: session.banner,
+      accent_color: session.accent_color,
     });
   });
 
