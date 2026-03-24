@@ -7,13 +7,13 @@ Denna guide beskriver hur din nuvarande setup fungerar och hur du snabbt kommer 
 - Raspberry Pi kör Docker.
 - En container (`clanker-pihole`) kör både DNS-tjänsten och Pi-hole webb-UI.
 - Containern använder `network_mode: host`, vilket betyder att den delar nätverk med hosten.
-- Klienter i nätet använder din Pi (`192.168.0.2`) som DNS-server.
+- Klienter i nätet använder din Pis LAN-IP som DNS-server (byt ut exemplet mot din egen).
 - Pi-hole filtrerar DNS-frågor mot blocklistor (du använder HaGeZi Pro).
 - Frågor som inte blockeras skickas vidare till upstream DNS (Cloudflare + DNSSEC).
 
 Kort flöde:
 
-`Klient -> Pi-hole (192.168.0.2) -> blockera/tillåt -> Cloudflare -> svar tillbaka`
+`Klient -> Pi-hole (din LAN-IP) -> blockera/tillåt -> Cloudflare -> svar tillbaka`
 
 ## 2) Din nuvarande konfig
 
@@ -40,7 +40,7 @@ Kort flöde:
 Det innebär att webbgränssnittet ligger på:
 
 - `http://<din-pi-ip>:8080/admin`
-- Exempel: `http://192.168.0.2:8080/admin`
+- Exempel (påhittad adress): `http://192.168.1.50:8080/admin`
 
 ## 3) Kom igång (from scratch)
 
@@ -115,13 +115,13 @@ Det kontrollerar:
 
 ### Problem: klienter använder inte Pi-hole
 
-Kontrollera att klienten verkligen har `192.168.0.2` som DNS.
+Kontrollera att klienten verkligen har din Pis IP som DNS (ersätt `192.168.1.50` nedan).
 
 På klient:
 
 ```bash
-nslookup google.com 192.168.0.2
-nslookup flurry.com 192.168.0.2
+nslookup google.com 192.168.1.50
+nslookup flurry.com 192.168.1.50
 ```
 
 `flurry.com` ska blockeras (t.ex. `0.0.0.0` eller `NXDOMAIN`).

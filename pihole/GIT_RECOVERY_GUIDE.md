@@ -25,7 +25,7 @@ git push -u origin main
 
 - `docker-compose.yml` i repo-roten (kör `docker compose` därifrån)
 - `.env.example` i repo-roten (inte din riktiga `.env`)
-- `etc-pihole/` viktig konfig (`pihole.toml`, adlists, dnsmasq)
+- `pihole/etc-pihole/` mallkonfig (`pihole.toml`, adlists, dnsmasq); kör `pihole setpassword` på maskinen — committa aldrig `pwhash` om repot kan bli publikt
 - dokumentation, healthcheck och skript i `pihole/`
 
 `.gitignore` är satt för att undvika hemligheter och brus (leases, cache, TLS-filer, `cli_pw`).

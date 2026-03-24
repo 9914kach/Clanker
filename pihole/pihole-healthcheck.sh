@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -u
 
-PIHOLE_IP="${1:-192.168.0.2}"
+# Första argumentet: Pi-holes IP (exempel 192.168.1.50 om du inte anger något).
+PIHOLE_IP="${1:-192.168.1.50}"
 SSH_HOST="${2:-localhost}"
 SKIP_SSH="${3:-false}"
 

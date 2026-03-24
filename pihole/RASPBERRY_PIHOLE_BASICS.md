@@ -13,10 +13,10 @@ Om Raspberryn redan är installerad och igång, börja här.
 ssh <användare>@<pi-ip>
 ```
 
-Exempel:
+Exempel (byt användare och IP mot dina):
 
 ```bash
-ssh christoffer@192.168.0.2
+ssh user@192.168.1.50
 ```
 
 3. Första gången: verifiera fingerprint och skriv exakt `yes`.
@@ -36,7 +36,7 @@ docker compose ps
 ./pihole/pihole-healthcheck.sh
 ```
 
-Om `clanker.local` inte fungerar, använd IP-adressen direkt i SSH-kommandot.
+Om `<hostname>.local` inte fungerar, använd IP-adressen direkt i SSH-kommandot.
 
 ## 0) Du behöver
 
@@ -54,7 +54,7 @@ Om `clanker.local` inte fungerar, använd IP-adressen direkt i SSH-kommandot.
    - OS: **Raspberry Pi OS Lite (64-bit)** (utan desktop räcker fint)
    - Storage: ditt microSD-kort
 3. Klicka på kugghjulet (Advanced options) och ställ in:
-   - hostname (exempel: `clanker`)
+   - hostname (exempel: `raspberrypi`)
    - enable SSH
    - username + password
    - Wi-Fi (om du inte kör kabel)
@@ -71,10 +71,10 @@ Om `clanker.local` inte fungerar, använd IP-adressen direkt i SSH-kommandot.
 
 Alternativ:
 - Kolla i routerns klientlista
-- Testa `ping clanker.local`
+- Testa `ping <hostname>.local` (t.ex. `ping raspberrypi.local`)
 - Använd nätverksskanner (t.ex. Fing)
 
-När du hittat IP (exempel `192.168.0.2`), notera den.
+När du hittat IP (exempel `192.168.1.50`), notera den.
 
 ## 4) Logga in via SSH
 
@@ -84,10 +84,10 @@ Från din dator:
 ssh <användare>@<pi-ip>
 ```
 
-Exempel:
+Exempel (byt användare och IP mot dina):
 
 ```bash
-ssh christoffer@192.168.0.2
+ssh user@192.168.1.50
 ```
 
 ## 5) Grundhärdning och uppdatering
@@ -176,7 +176,7 @@ Förväntat: service `clanker-pihole` är `running`.
 I webbläsaren:
 
 - `http://<pi-ip>:8080/admin`
-- Exempel: `http://192.168.0.2:8080/admin`
+- Exempel (påhittad adress): `http://192.168.1.50:8080/admin`
 
 Logga in med Pi-hole adminlösenord (sätt/ändra vid behov med `docker exec` om du inte redan gjort det).
 
@@ -195,13 +195,13 @@ I blocklistor:
 
 ## 11) Låt klienter använda Pi-hole
 
-På router eller per klient, sätt DNS-server till Pi:ns IP (exempel `192.168.0.2`).
+På router eller per klient, sätt DNS-server till Pi:ns IP (exempel `192.168.1.50`).
 
 Testa från klient:
 
 ```bash
-nslookup google.com 192.168.0.2
-nslookup flurry.com 192.168.0.2
+nslookup google.com 192.168.1.50
+nslookup flurry.com 192.168.1.50
 ```
 
 `google.com` ska fungera, `flurry.com` ska blockeras.

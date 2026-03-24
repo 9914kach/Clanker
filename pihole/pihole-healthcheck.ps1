@@ -1,6 +1,6 @@
 param(
-    [string]$PiHoleIP = "192.168.0.2",
-    [string]$SshHost = "christoffer@clanker",
+    [string]$PiHoleIP = "192.168.1.50",
+    [string]$SshHost = "pi@raspberrypi",
     [switch]$SkipSsh
 )
 

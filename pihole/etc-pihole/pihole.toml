@@ -154,14 +154,14 @@
   #
   # Allowed values are:
   #     true or false
-  dnssec = true ### CHANGED, default = false
+  dnssec = false
 
   # Interface to use for DNS (see also dns.listeningMode) and DHCP (if enabled). Leave
   # empty for auto-detection.
   #
   # Allowed values are:
   #     a valid interface name
-  interface = "eth0" ### CHANGED (env), default = ""
+  interface = ""
 
   # Add an A, AAAA and PTR record to the DNS. This adds a singular name to the DNS with
   # associated IPv4 (A) and IPv6 (AAAA) records
@@ -548,7 +548,7 @@
   #
   # Allowed values are:
   #     true or false
-  active = true ### CHANGED, default = false
+  active = false
 
   # Start address of the DHCP address pool
   #
@@ -556,7 +556,7 @@
   #
   # Allowed values are:
   #     A valid IPv4 address, or empty string ("")
-  start = "192.168.0.150" ### CHANGED, default = ""
+  start = ""
 
   # End address of the DHCP address pool
   #
@@ -564,7 +564,7 @@
   #
   # Allowed values are:
   #     A valid IPv4 address, or empty string ("")
-  end = "192.168.0.249" ### CHANGED, default = ""
+  end = ""
 
   # Address of the gateway to be used (typically the address of your router in a home
   # installation)
@@ -573,7 +573,7 @@
   #
   # Allowed values are:
   #     A valid IPv4 address, or empty string ("")
-  router = "192.168.0.1" ### CHANGED, default = ""
+  router = ""
 
   # The netmask used by your Pi-hole. For directly connected networks (i.e., networks on
   # which the machine running Pi-hole has an interface) the netmask is optional and may
@@ -1128,7 +1128,8 @@
     #
     # Allowed values are:
     #     A valid Pi-hole password hash
-    pwhash = "$BALLOON-SHA256$v=1$s=1024,t=32$ZoewkaEiC0wT2IPE8WPC9A==$bGrdWeTwGCRH7R1p9ZkngUFNM5q/A1WKXTmaSABJiSw=" ### CHANGED, default = ""
+    # Set locally after deploy: docker exec -it clanker-pihole pihole setpassword
+    pwhash = ""
 
     # Pi-hole 2FA TOTP secret. When set to something different than "", 2FA authentication
     # will be enforced for the API and the web interface. This setting is write-only, you
@@ -1290,7 +1291,7 @@
   #
   # Allowed values are:
   #     Any Pi-hole macvendor database
-  macvendor = "/macvendor.db" ### CHANGED, default = "/etc/pihole/macvendor.db"
+  macvendor = "/etc/pihole/macvendor.db"
 
   # An optional file containing a pcap capture of the network traffic. This file is used
   # for debugging purposes only. If you don't know what this is, you don't need it.
