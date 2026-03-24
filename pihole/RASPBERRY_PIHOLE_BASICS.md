@@ -123,6 +123,20 @@ sudo apt install -y docker-compose-plugin
 
 ## 7) Skapa Pi-hole projektmapp
 
+### Variant A: Clanker-repo (detta repo)
+
+Om du klonar [Clanker](https://github.com/9914kach/Clanker) finns `docker-compose.yml` och `.env.example` redan i **repots rot**. Du behöver inte skapa dem manuellt.
+
+```bash
+cd ~/apps/Clanker   # eller var du klonat repot
+cp .env.example .env
+# redigera .env vid behov (t.ex. nätverksinterface)
+```
+
+Gå sedan till steg 8.
+
+### Variant B: Tom katalog (from scratch)
+
 ```bash
 mkdir -p ~/apps/Clanker
 cd ~/apps/Clanker

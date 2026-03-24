@@ -27,9 +27,7 @@ tar --ignore-failed-read -czf "${ARCHIVE}" \
   etc-pihole/hosts \
   etc-dnsmasq.d \
   pihole/scripts \
-  pihole/docker-compose.yml \
   pihole/.gitignore \
-  pihole/.env.example \
   .gitignore
 
 echo "[INFO] Backup klar: ${ARCHIVE}"

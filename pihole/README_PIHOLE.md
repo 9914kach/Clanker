@@ -17,7 +17,9 @@ Kort flöde:
 
 ## 2) Din nuvarande konfig
 
-### `docker-compose.yml`
+### `docker-compose.yml` (endast i repots rot)
+
+Filen heter `docker-compose.yml` och ligger i **repots rot** (`Clanker/docker-compose.yml`), inte under `pihole/`. Volymerna `./etc-pihole` och `./etc-dnsmasq.d` är relativa **rotmappen** — kör alltid `docker compose` därifrån (se rot-`README.md`).
 
 - Image: `pihole/pihole:latest`
 - Compose-tjänst och containernamn: `clanker-pihole`
@@ -29,7 +31,9 @@ Kort flöde:
 - Capability: `NET_ADMIN`
 - Miljövariabler laddas från `.env`
 
-### `.env`
+### `.env` (repots rot)
+
+Mall: `.env.example` i repots rot. Kopiera till `.env` bredvid `docker-compose.yml`.
 
 - `TZ=Europe/Stockholm`
 - `DNSMASQ_LISTENING=all`
