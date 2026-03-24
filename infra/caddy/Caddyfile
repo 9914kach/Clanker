@@ -1,0 +1,11 @@
+# Hostnamn styrs av miljövariabler (sätts i docker-compose / .env).
+# Se docs/docker.md — du behöver DNS eller /etc/hosts som pekar hit.
+# Explicit http:// — annars försöker Caddy HTTPS (443), som vi inte exponerar i Compose.
+
+http://{$CLANKER_DISCORD_HOST} {
+	reverse_proxy discord-hub-web:80
+}
+
+http://{$CLANKER_DEVTOOLS_HOST} {
+	reverse_proxy dev-tools-web:80
+}

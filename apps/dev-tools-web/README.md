@@ -55,6 +55,8 @@ docker compose --profile devtools up -d --build dev-tools-web
 
 Öppna **http://\<värd\>:4174** (eller det du satt som `DEV_TOOLS_WEB_PORT` i `.env`).
 
+**Valfritt:** med Compose-profilen **`caddy`** når du samma build via valt värdnamn (standardfiler i [infra/caddy/Caddyfile](../../infra/caddy/Caddyfile)) — se [docs/docker.md](../../docs/docker.md#caddy-reverse-proxy).
+
 Efter **kodändringar** måste imagen byggas om så att ny `dist` hamnar i containern:
 
 ```bash

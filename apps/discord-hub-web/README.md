@@ -28,7 +28,9 @@ docker compose --profile discord up -d --build discord-hub-web
 
 Sidan når du på `http://<pi-ip>:4173` (eller porten du sätter med `DISCORD_HUB_WEB_PORT` i `.env`).
 
-TLS och domän: sätt **Caddy** eller **nginx** framför containern på värden, eller en reverse proxy på routern, med certifikat mot din domän.
+**Valfritt i repot:** Compose-profilen **`caddy`** (`clanker-caddy`, [infra/caddy/Caddyfile](../../infra/caddy/Caddyfile)) proxar till denna container via värdnamn (t.ex. port 80) — se [docs/docker.md](../../docs/docker.md#caddy-reverse-proxy).
+
+Annars för TLS/domän utanför Compose: egen **Caddy** eller **nginx** på värden, eller reverse proxy på routern, med certifikat mot din domän.
 
 ## Databas
 

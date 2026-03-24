@@ -16,6 +16,7 @@ Homeserver-repo för Raspberry Pi (Clanker) — skript, anteckningar och tjänst
 | `pihole/` | Dokumentation och skript för Pi-hole (själva Compose-filen ligger i repots rot) |
 | `docs/homelab-todo.md` | Backlog / TODO för homelab (VM, domän, osv.) |
 | `docs/docker.md` | **Docker Compose** — vanliga kommandon, profiler och exempel för Clanker |
+| `infra/caddy/` | Valfri **Caddy**-reverse proxy (HTTP, profil `caddy`) — detaljer i [docs/docker.md](docs/docker.md#caddy-reverse-proxy) |
 
 En framtida **server-/homelab-dashboard** kan få egna mappar, t.ex. `apps/clanker-hub-web` / `apps/clanker-hub-api`, och en egen Compose-profil — så den inte blandas ihop med discord-hubben.
 
