@@ -55,6 +55,21 @@ function normalizeOAuthScopes(raw: string | undefined): string {
   return s.split(/\s+/).filter(Boolean).join(" ");
 }
 
+/** Om satt måste värdet vara en postgres-anslutnings-URL (används av `pg`). */
+function parseDatabaseUrl(raw: string | undefined): string | undefined {
+  const s = raw?.trim();
+  if (!s) {
+    return undefined;
+  }
+  const head = s.slice(0, 14).toLowerCase();
+  if (!head.startsWith("postgres://") && !head.startsWith("postgresql://")) {
+    throw new Error(
+      "DATABASE_URL must start with postgres:// or postgresql:// (see apps/discord-hub-api/.env.example).",
+    );
+  }
+  return s;
+}
+
 export type DiscordOAuthPrompt = "consent" | "none";
 
 export function loadEnv() {
@@ -77,6 +92,7 @@ export function loadEnv() {
 
   const botToken = process.env.DISCORD_BOT_TOKEN?.trim();
   const discordBotToken = botToken || undefined;
+  const riotApiKey = process.env.RIOT_API_KEY?.trim() || undefined;
 
   return {
     port: Number(process.env.PORT ?? "3001"),
@@ -97,6 +113,7 @@ export function loadEnv() {
       DEFAULT_BOT_PROXY_PREFIXES,
     ),
     discordBotToken,
+    riotApiKey,
     discordHubAllowedGuildIds: parseSnowflakeList(
       process.env.DISCORD_HUB_ALLOWED_GUILD_IDS,
     ),
@@ -109,6 +126,7 @@ export function loadEnv() {
     discordGatewayIntents: parseGatewayIntents(
       process.env.DISCORD_GATEWAY_INTENTS,
     ),
+    databaseUrl: parseDatabaseUrl(process.env.DATABASE_URL),
   };
 }
 

@@ -1,6 +1,6 @@
 import { config as loadDotenv } from "dotenv";
 import { serve } from "@hono/node-server";
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import path from "node:path";
@@ -25,25 +25,38 @@ import {
 } from "./discord-gateway.js";
 import type { AppEnv } from "./env.js";
 import { loadEnv } from "./env.js";
+import {
+  getPublicProfile,
+  setProfileLeague,
+  upsertProfileFromSession,
+} from "./profile-store.js";
+import {
+  RiotApiError,
+  fetchLeaguePlayerSnapshot,
+  type LeaguePlayerSnapshot,
+  type LeagueRankPreference,
+  type LeagueRegion,
+} from "./riot-lol.js";
+import { closeDb, initDb, verifyDbConnection } from "./db.js";
 import { COOKIE_NAME, verifySession, type SessionPayload } from "./session.js";
 
 const STATE_COOKIE = "discord_oauth_state";
 const STATE_MAX_AGE = 600;
-
-type LeagueRegion = "EUW" | "EUNE" | "NA" | "KR" | "BR";
+const DISCORD_SNOWFLAKE_RE = /^\d{5,32}$/;
 
 type LeagueConnection = {
   riotId: string;
   tagLine: string;
   region: LeagueRegion;
   autoSync: boolean;
-  rankPreference: "solo" | "flex";
+  rankPreference: LeagueRankPreference;
   statusMessage: string;
   linkedAt: string;
   lastSyncRequestedAt: string | null;
 };
 
 const leagueConnections = new Map<string, LeagueConnection>();
+const leagueSnapshots = new Map<string, LeaguePlayerSnapshot>();
 
 function secureCookie(env: AppEnv): boolean {
   return env.nodeEnv === "production";
@@ -92,7 +105,7 @@ function parseLeaguePayload(raw: unknown): {
   tagLine: string;
   region: LeagueRegion;
   autoSync: boolean;
-  rankPreference: "solo" | "flex";
+  rankPreference: LeagueRankPreference;
   statusMessage: string;
 } | null {
   if (!raw || typeof raw !== "object") {
@@ -133,6 +146,53 @@ async function requireSession(
     return null;
   }
   return verifySession(env.sessionSecret, token);
+}
+
+function respondWithRiotError(c: Context, error: RiotApiError) {
+  if (error.retryAfterSeconds !== null) {
+    c.header("Retry-After", String(error.retryAfterSeconds));
+  }
+
+  if (error.code === "riot_account_not_found") {
+    return c.json(
+      {
+        error:
+          "Riot-kontot hittades inte. Kontrollera Riot ID, tagline och vald region.",
+        code: error.code,
+      },
+      404,
+    );
+  }
+
+  if (error.code === "riot_rate_limited") {
+    return c.json(
+      {
+        error:
+          "Riot API rate limit uppnådd. Vänta lite och prova synk igen.",
+        code: error.code,
+      },
+      429,
+    );
+  }
+
+  if (error.code === "riot_auth_failed") {
+    return c.json(
+      {
+        error:
+          "Riot API-nyckeln är ogiltig eller har gått ut. Uppdatera RIOT_API_KEY.",
+        code: error.code,
+      },
+      502,
+    );
+  }
+
+  return c.json(
+    {
+      error: "Riot API svarade med ett oväntat fel under synk.",
+      code: error.code,
+    },
+    502,
+  );
 }
 
 function createApp(env: AppEnv) {
@@ -179,6 +239,7 @@ function createApp(env: AppEnv) {
         banner: user.banner,
         accent_color: user.accent_color,
       };
+      upsertProfileFromSession(baseSession);
       await setOAuthCookiesAfterLogin(c, env, baseSession, exchanged);
       return c.redirect(`${env.frontendUrl}/dashboard`);
     } catch {
@@ -200,6 +261,11 @@ function createApp(env: AppEnv) {
       banner: session.banner,
       accent_color: session.accent_color,
     };
+    upsertProfileFromSession(session);
+    const existingLeagueConnection = leagueConnections.get(session.sub);
+    if (existingLeagueConnection) {
+      setProfileLeague(session.sub, existingLeagueConnection);
+    }
 
     const resolved = await resolveUserDiscordTokens(c, env, session);
     if (!resolved.ok) {
@@ -258,7 +324,8 @@ function createApp(env: AppEnv) {
     }
 
     const connection = leagueConnections.get(session.sub) ?? null;
-    return c.json({ connected: connection !== null, connection });
+    const sync = leagueSnapshots.get(session.sub) ?? null;
+    return c.json({ connected: connection !== null, connection, sync });
   });
 
   app.post("/api/integrations/league/connect", async (c) => {
@@ -291,13 +358,16 @@ function createApp(env: AppEnv) {
       lastSyncRequestedAt: null,
     };
 
+    upsertProfileFromSession(session);
     leagueConnections.set(session.sub, connection);
+    leagueSnapshots.delete(session.sub);
+    setProfileLeague(session.sub, connection);
 
     return c.json({
       connected: true,
       connection,
-      message:
-        "League-koppling sparad. Nästa steg är att ansluta Riot API och hämta match/rank-data.",
+      sync: null,
+      message: "League-koppling sparad. Kontot är redo att synkas via Riot API.",
     });
   });
 
@@ -312,18 +382,58 @@ function createApp(env: AppEnv) {
       return c.json({ error: "No linked League account" }, 404);
     }
 
+    if (!env.riotApiKey) {
+      return c.json(
+        {
+          error:
+            "RIOT_API_KEY saknas i backend-miljön. Lägg till den innan du kör synk.",
+          code: "riot_api_key_missing",
+        },
+        503,
+      );
+    }
+
     const updated: LeagueConnection = {
       ...connection,
       lastSyncRequestedAt: new Date().toISOString(),
     };
 
     leagueConnections.set(session.sub, updated);
+    upsertProfileFromSession(session);
+    setProfileLeague(session.sub, updated);
 
-    return c.json({
-      connected: true,
-      connection: updated,
-      message: "Synk förberedd. Koppla in Riot API-klient i nästa steg.",
-    });
+    try {
+      const sync = await fetchLeaguePlayerSnapshot({
+        apiKey: env.riotApiKey,
+        region: updated.region,
+        riotId: updated.riotId,
+        tagLine: updated.tagLine,
+        rankPreference: updated.rankPreference,
+        matchCount: 5,
+      });
+
+      leagueSnapshots.set(session.sub, sync);
+
+      return c.json({
+        connected: true,
+        connection: updated,
+        sync,
+        message: `Synk klar. Hämtade ${sync.recentMatches.length} matcher från Riot API.`,
+      });
+    } catch (error) {
+      if (error instanceof RiotApiError) {
+        return respondWithRiotError(c, error);
+      }
+
+      console.error("League sync failed", error);
+      return c.json(
+        {
+          error: "Okänt fel vid League-synk.",
+          code: "league_sync_failed",
+        },
+        500,
+      );
+    }
   });
 
   app.post("/api/integrations/league/disconnect", async (c) => {
@@ -332,8 +442,27 @@ function createApp(env: AppEnv) {
       return c.json({ error: "Unauthorized" }, 401);
     }
 
+    upsertProfileFromSession(session);
     leagueConnections.delete(session.sub);
+    leagueSnapshots.delete(session.sub);
+    setProfileLeague(session.sub, null);
     return c.json({ connected: false });
+  });
+
+  app.get("/api/public/profile/:userId", (c) => {
+    const userId = c.req.param("userId");
+    if (!DISCORD_SNOWFLAKE_RE.test(userId)) {
+      return c.json({ error: "Invalid user id", code: "invalid_user_id" }, 400);
+    }
+
+    const profile = getPublicProfile(userId, {
+      leagueSnapshot: leagueSnapshots.get(userId) ?? null,
+    });
+    if (!profile) {
+      return c.json({ error: "Profile not found", code: "profile_not_found" }, 404);
+    }
+
+    return c.json(profile);
   });
 
   app.all("/api/discord/*", async (c) => {
@@ -378,7 +507,7 @@ function createApp(env: AppEnv) {
       return c.json({ error: "Unauthorized" }, 401);
     }
     const guildId = c.req.param("id");
-    if (!/^\d{5,32}$/.test(guildId)) {
+    if (!DISCORD_SNOWFLAKE_RE.test(guildId)) {
       return c.json({ error: "Invalid guild id", code: "invalid_guild_id" }, 400);
     }
     const access = await assertBotGuildAccess(env, session.sub, guildId);
@@ -431,7 +560,7 @@ function createApp(env: AppEnv) {
       return c.json({ error: "Unauthorized" }, 401);
     }
     const guildId = c.req.param("id");
-    if (!/^\d{5,32}$/.test(guildId)) {
+    if (!DISCORD_SNOWFLAKE_RE.test(guildId)) {
       return c.json({ error: "Invalid guild id", code: "invalid_guild_id" }, 400);
     }
     const access = await assertBotGuildAccess(env, session.sub, guildId);
@@ -473,29 +602,53 @@ loadDotenv({
   override: true,
 });
 
-const env = loadEnv();
-const app = createApp(env);
-startDiscordGateway(env);
-
 function shutdownGateway(): void {
   getGatewayRuntime()?.stop();
 }
 
-process.once("SIGINT", () => {
+async function shutdownAndExit(code: number): Promise<void> {
   shutdownGateway();
-  process.exit(0);
-});
-process.once("SIGTERM", () => {
-  shutdownGateway();
-  process.exit(0);
-});
+  await closeDb();
+  process.exit(code);
+}
 
-serve(
-  {
-    fetch: app.fetch,
-    port: env.port,
-  },
-  (info) => {
-    console.log(`discord-hub-api listening on http://127.0.0.1:${info.port}`);
-  },
-);
+async function main(): Promise<void> {
+  const env = loadEnv();
+  initDb(env);
+  if (env.databaseUrl) {
+    try {
+      await verifyDbConnection();
+      console.log("discord-hub-api: Postgres connection OK");
+    } catch (e) {
+      console.error(
+        "discord-hub-api: DATABASE_URL is set but Postgres is not reachable. Check network, firewall, and credentials.",
+      );
+      throw e;
+    }
+  }
+
+  const app = createApp(env);
+  startDiscordGateway(env);
+
+  process.once("SIGINT", () => {
+    void shutdownAndExit(0);
+  });
+  process.once("SIGTERM", () => {
+    void shutdownAndExit(0);
+  });
+
+  serve(
+    {
+      fetch: app.fetch,
+      port: env.port,
+    },
+    (info) => {
+      console.log(`discord-hub-api listening on http://127.0.0.1:${info.port}`);
+    },
+  );
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

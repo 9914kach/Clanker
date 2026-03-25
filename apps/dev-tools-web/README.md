@@ -96,4 +96,6 @@ Profilen `devtools` måste anges — tjänsten startar inte med ett vanligt `doc
 
 Mer detalj finns i `docs/development/checklists-and-tools.md`.
 
+**Databas (om du lägger till en devtools-backend):** samma Postgres som discord-hub, **en port**, separat databasnamn — standard **`clanker_devtools`** (`POSTGRES_EXTRA_DB` i rot-`.env`). Exempel-URL: `DEVTOOLS_DATABASE_URL` i [`.env.example`](../../.env.example); översikt i [docs/docker.md](../../docs/docker.md#postgresql-kom-igång-första-gången-docker).
+
 Discord-hubben: `apps/discord-hub-web/`.

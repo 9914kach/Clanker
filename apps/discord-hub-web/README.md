@@ -17,7 +17,7 @@ npm run dev
 
 **OAuth / inloggning:** `discord-hub-api` måste lyssna på **port 3001** (Vite proxar `/api` dit). Antingen `npm run dev:discord-stack` från repots rot (API + webb i samma terminal), eller `npm run dev:discord-api` i en terminal och `npm run dev` i en annan. `clanker dev discord` kör `dev:discord-stack` efter `clanker up` (så båda startar). Se [apps/discord-hub-api/README.md](../discord-hub-api/README.md) för Discord-app, `DISCORD_REDIRECT_URI` och `.env`. Med **Caddy** (`http://dev.clanker.discord`) ska `DISCORD_REDIRECT_URI` och `FRONTEND_URL` använda den hosten, inte `localhost`. Hubben redirectar till `/login` tills `GET /api/auth/me` svarar OK.
 
-**Inloggad vy:** standardroute är **`/dashboard`** (root `/` redirectar dit). Profilbanner och accentfärg kommer från Discord via `GET /api/auth/me` och laddas från **Discords CDN** (`cdn.discordapp.com`); inga extra hemligheter behövs.
+**Inloggad vy:** standardroute är **`/dashboard`** (root `/` redirectar dit). Profilbanner och accentfärg kommer från Discord via `GET /api/auth/me` och laddas från **Discords CDN** (`cdn.discordapp.com`); inga extra hemligheter behövs. **League-koppling och synk**, **profil-kryssrutor** och **Tema och färger** når du via **`/profile/settings`**, som du öppnar från **din egen publika profil** (`/u/:userId`, knappen *Profilinställningar*) — inte från huvudmenyn. **Rank och senaste matcher** visas på den publika profilen efter lyckad synk.
 
 För **både** discord-hub och `dev-tools-web` i samma terminal (t.ex. Caddy och `http://dev.clanker.discord` + `http://dev.clanker.tools`): `npm run dev:all` från roten.
 
@@ -42,4 +42,4 @@ Annars för TLS/domän utanför Compose: egen **Caddy** eller **nginx** på vär
 
 ## Databas
 
-PostgreSQL startas separat med profilen `db` (se rot-`docker-compose.yml`). Anslutningssträng för API på samma Docker-värd: `postgresql://USER:PASS@clanker-db:5432/DB`.
+PostgreSQL startas separat med profilen `db` (se rot-`docker-compose.yml`). API i **samma Compose-nät**: `postgresql://USER:PASS@clanker-db:5432/clanker_discord` (eller ditt `POSTGRES_DB`). API på **annan värd** (t.ex. Pi mot Postgres på desktop): `DATABASE_URL` med desktopens LAN-IP — se [PostgreSQL på workstation (LAN)](../../docs/docker.md#postgresql-på-workstation-lan).

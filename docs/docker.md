@@ -110,6 +110,8 @@ docker compose --profile discord --profile devtools up -d --build
 docker compose --profile discord --profile devtools --profile db up -d --build
 ```
 
+Har du aldrig kört en databas förut? Följ [PostgreSQL: kom igång (första gången, Docker)](#postgresql-kom-igång-första-gången-docker) — du installerar inget på operativsystemet, bara startar en container.
+
 **Med Caddy** (HTTP på port 80 — prod-webb, Pi-hole-admin, samt `dev.clanker.*` mot Vite på värden om det körs):
 
 ```bash
@@ -138,7 +140,7 @@ docker compose up -d --build
 | **Discord hub** (webb, nginx-build) | Docker | `http://<din-pi>:4173` | Värdport **4173** → nginx port 80 i containern (`DISCORD_HUB_WEB_PORT`) |
 | **Dev tools** (webb, nginx-build) | Docker | `http://<din-pi>:4174` | Värdport **4174** (`DEV_TOOLS_WEB_PORT`) |
 | **Caddy** (valfritt, reverse proxy) | Docker | `http://clanker.discord`, `http://clanker.tools`, `http://clanker.pihole`, `http://dev.clanker.discord`, … (standardnamn; se [Caddy](#caddy-reverse-proxy)) | Värdport **80** eller `CADDY_HTTP_PORT`; profil **`caddy`**. Proxar även Pi-hole-admin och Vite på värden via `host.docker.internal`. |
-| **PostgreSQL** | Docker | Endast **på själva Pi:ns** loopback | **127.0.0.1:5432** på värden (ej öppet mot hela LAN som standard) (`POSTGRES_PORT`) |
+| **PostgreSQL** | Docker | **127.0.0.1** på värden som standard (ej LAN) | **127.0.0.1:5432** (`POSTGRES_PORT`, `POSTGRES_BIND_ADDRESS`). På **workstation** som DB-värd: se [PostgreSQL på workstation (LAN)](#postgresql-på-workstation-lan). |
 | **Pi-hole** (DNS + admin m.m.) | Docker, `host`-nät | Direkt på värden: `WEB_PORT` / `FTLCONF_webserver_port` (t.ex. **8080** i `.env.example`). DNS: port **53**. Via Caddy: `http://clanker.pihole` på värdens port **80** (samma ingång som övriga Caddy-namn). | Pi-hole delar Pi:ns nätverksstack. |
 
 Om klienterna i LAN **bara** använder Pis IP som DNS och Pi-hole-containern **inte** kör, försvinner namnuppslag (det kan kännas som att hela nätverket är nere även om t.ex. `ping 1.1.1.1` fungerar). Sätt gärna **sekundär DNS** i routern/DHCP eller läs mer under felsökning i [`pihole/README_PIHOLE.md`](../pihole/README_PIHOLE.md).
@@ -164,7 +166,7 @@ I `docker-compose.yml` finns fem tjänster. **Profiler** styr vilka som startar 
 | `discord-hub-web` | `discord-hub-web` | `discord` | Port **4173→80** i containern (`DISCORD_HUB_WEB_PORT` i `.env`) |
 | `dev-tools-web` | `dev-tools-web` | `devtools` | Port **4174→80** (`DEV_TOOLS_WEB_PORT`) |
 | `clanker-caddy` | `clanker-caddy` | `caddy` | HTTP på värd: `CADDY_HTTP_PORT` (standard **80**). Prod, Pi-hole-admin, dev-Vite — se [Caddy](#caddy-reverse-proxy); `extra_hosts: host.docker.internal:host-gateway`. |
-| `clanker-db` | `clanker-db` | `db` | Postgres 16, volym `clanker-pgdata`, port **127.0.0.1:5432** på värden |
+| `clanker-db` | `clanker-db` | `db` | Postgres 16, volym `clanker-pgdata`; **en** server/port, **två** databaser vid ny volym: `POSTGRES_DB` (standard **`clanker_discord`**) + `POSTGRES_EXTRA_DB` (standard `clanker_devtools`). Init: [infra/postgres/docker-entrypoint-initdb.d/](../infra/postgres/docker-entrypoint-initdb.d/). |
 | `clanker-pihole` | `clanker-pihole` | *(ingen)* | `network_mode: host` — delar Pi:ns nätverksstack |
 
 - **Ingen profil** = tjänsten ingår i “default”-uppsättningen när du kör `docker compose up` utan `--profile`.
@@ -172,13 +174,117 @@ I `docker-compose.yml` finns fem tjänster. **Profiler** styr vilka som startar 
 
 Pi-hole har ingen profil, så den startar ofta när du kör ett brett `up`. Webbapparna kräver explicit `discord` / `devtools`. **Caddy** kräver profilen `caddy`. Namnen `clanker.discord` / `clanker.tools` ger **502** om motsvarande webbcontainer inte kör; `clanker.pihole` funkar om Pi-hole lyssnar på värdens `WEB_PORT` och `CLANKER_PIHOLE_UPSTREAM` stämmer. `dev.clanker.*` ger **502** om Vite inte kör på **samma värd som Docker**.
 
+## PostgreSQL: kom igång (första gången, Docker)
+
+Du behöver **inte** ladda ner eller “installera PostgreSQL” som ett Windows/Linux-program om du redan har Docker. Compose hämtar en färdig **image** (`postgres:16-alpine`) första gången du startar tjänsten.
+
+### 1. Gå till repot
+
+```bash
+cd ~/apps/Clanker
+```
+
+(Använd sökvägen där du klonat **Clanker**.)
+
+### 2. Skapa `.env` med ett riktigt lösenord
+
+Om du inte redan har `.env` i repots rot:
+
+```bash
+cp .env.example .env
+```
+
+Redigera `.env` och **aktivera** (ta bort `#` framför) samt **byt** lösenordet:
+
+```env
+POSTGRES_USER=clanker
+POSTGRES_PASSWORD=byt_mig_starkt_lösenord
+POSTGRES_DB=clanker_discord
+POSTGRES_PORT=5432
+```
+
+- **Användarnamn** (`POSTGRES_USER`) kan vara `clanker`; **discord-databasen** heter standard **`clanker_discord`** (`POSTGRES_DB`). Det viktiga är att `POSTGRES_PASSWORD` är unikt och svårgissat.
+- **Lämna** `POSTGRES_BIND_ADDRESS` odefinierad tills du behöver att **en annan dator** (t.ex. Pi) ska ansluta — då läser du [PostgreSQL på workstation (LAN)](#postgresql-på-workstation-lan).
+- **Två appar, en Postgres:** du behöver **inte** två portar. En Postgres-instans lyssnar på **5432**; du använder **olika databasnamn** i URL:en (sista path-segmentet). Vid **första** init av volymen skapas automatiskt en extra databas enligt `POSTGRES_EXTRA_DB` (standard **`clanker_devtools`**) bredvid `POSTGRES_DB` (standard **`clanker_discord`** för discord-hub). Exempel-URL:er finns i `.env.example`.
+- **Befintlig volym** från innan init-scriptet fanns: init körs **inte** om igen. Skapa den andra databasen manuellt en gång:  
+  `docker exec -it clanker-db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c 'CREATE DATABASE clanker_devtools;'`  
+  (byt namn om du använder annat än standard.)
+- **Äldre standard `POSTGRES_DB=clanker`:** volymer som redan initierats har kvar det databasnamnet. Antingen pekar du `DATABASE_URL` mot `…/clanker`, eller du byter namn / skapar `clanker_discord` manuellt och migrerar data — **nya** installationer får standard **`clanker_discord`** från Compose.
+
+### 3. Starta bara databasen (minsta möjliga)
+
+Du behöver inte starta webb eller Pi-hole för att testa Postgres:
+
+```bash
+docker compose --profile db up -d
+```
+
+Första körningen kan ta en stund medan Docker **pull**ar `postgres:16-alpine`.
+
+### 4. Kontrollera att den kör
+
+```bash
+docker ps --filter name=clanker-db
+```
+
+Du ska se containern **clanker-db** som **Up**. Anslutning från **samma maskin** sker mot **127.0.0.1** och port **5432** (om du inte ändrat `POSTGRES_PORT`).
+
+### 5. (Valfritt) Öppna en SQL-prompt i containern
+
+```bash
+docker exec -it clanker-db psql -U clanker -d clanker_discord
+```
+
+I `psql`-prompten: skriv `\q` och Enter för att avsluta.
+
+### 6. Anslutningssträngar (discord-hub vs devtools)
+
+**Samma värd och port** — bara **sista delen** av URL:en (databasnamnet) skiljer:
+
+```text
+postgresql://clanker:DITT_LÖSENORD@127.0.0.1:5432/clanker_discord
+postgresql://clanker:DITT_LÖSENORD@127.0.0.1:5432/clanker_devtools
+```
+
+- **discord-hub-api:** `DATABASE_URL` mot `POSTGRES_DB` (standard **`clanker_discord`** om du inte ändrat).
+- **devtools-backend** (när den finns): egen variabel, t.ex. `DATABASE_URL` i den tjänsten, mot **`clanker_devtools`** (eller vad du satt som `POSTGRES_EXTRA_DB`).
+
+Kör API **i Compose** mot samma nät: byt värd till **`clanker-db`** i stället för `127.0.0.1` (se `.env.example`).
+
+### Stoppa och starta om
+
+```bash
+docker compose --profile db stop
+docker compose --profile db start
+```
+
+Ta bort containern men **behåll data** i volymen:
+
+```bash
+docker compose --profile db down
+```
+
+**Radera all databasdata** (⚠️ oåterkalleligt) kräver att du också tar bort volymen `clanker-pgdata` — se avsnitt om volymer längre ner i denna fil om du behöver det.
+
+## PostgreSQL på workstation (LAN)
+
+När **Pi** kör webb/API men Postgres ska ligga på **stationär workstation** (mer RAM, snabbare disk) kör du `clanker-db` **bara** på desktop med samma repo och `docker-compose.yml`.
+
+1. På **workstation**: samma `.env`-värden för `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` som API:t ska använda.
+2. Sätt **`POSTGRES_BIND_ADDRESS=0.0.0.0`** om klienter på LAN (t.ex. Pi) ska ansluta direkt. Standard **`127.0.0.1`** är säkrast om allt som pratar med DB kör på samma maskin.
+3. Starta endast databasen: `docker compose --profile db up -d`
+4. **Brandvägg** på workstation: begränsa **5432/tcp** till Pis IP (eller betrott subnet), inte mot hela internet. Använd **starkt** `POSTGRES_PASSWORD`.
+5. På **Pi** (eller var respektive API körs): två URL:er med **samma** host/port men olika databasnamn, t.ex. `…/clanker_discord` och `…/clanker_devtools` (eller dina `POSTGRES_DB` / `POSTGRES_EXTRA_DB`). Starta **inte** profilen **`db`** på Pi — då får du en **tom lokal** Postgres i stället för workstationens data.
+
+**Utan att exponera Postgres mot LAN:** kör Postgres på workstation med standard **127.0.0.1** och öppna en **SSH-tunnel** från Pi (`ssh -L 5432:127.0.0.1:5432 användare@workstation`). Sätt då `DATABASE_URL` mot **`127.0.0.1:5432`** på Pi-sidan.
+
 ## Miljövariabler (`.env`)
 
 Kopiera `.env.example` → `.env` och justera. För Docker är bland annat detta relevant:
 
 - `DISCORD_HUB_WEB_PORT`, `DEV_TOOLS_WEB_PORT` — vilken port på **värden** som mappas till nginx i containern.
 - Caddy (profil `caddy`): `CADDY_HTTP_PORT`, prod- och dev-värdnamn/upstreams, `CLANKER_PIHOLE_HOST`, `CLANKER_PIHOLE_UPSTREAM` (ska matcha Pi-holes `WEB_PORT`) — se [Caddy](#caddy-reverse-proxy).
-- Postgres: `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_PORT` (när du använder profilen `db`).
+- Postgres: `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_EXTRA_DB` (andra databasen vid **ny** volym; standard `clanker_devtools`), `POSTGRES_PORT`, `POSTGRES_BIND_ADDRESS` (när du använder profilen `db`).
 - Pi-hole läser `env_file: .env` — se Pi-hole-dokumentation och repots egna guider under `pihole/`.
 
 ## Caddy (reverse proxy)
