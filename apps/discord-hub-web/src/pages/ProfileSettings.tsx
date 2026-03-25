@@ -7,7 +7,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useCallback, useEffect, useState } from "react";
-import { Link, Navigate } from "react-router-dom";
+import { Link, Navigate, useLocation } from "react-router-dom";
 import { Button } from "@clanker/ui/components/button";
 import {
   Card,
@@ -98,6 +98,7 @@ async function parseJson<T>(res: Response): Promise<T | null> {
 
 export default function ProfileSettingsPage() {
   const { me } = useHubLayout();
+  const location = useLocation();
   const [leagueForm, setLeagueForm] = useState<LeagueForm>(defaultLeagueForm);
   const [leagueMessage, setLeagueMessage] = useState("");
   const [leagueBusy, setLeagueBusy] = useState(false);
@@ -141,6 +142,16 @@ export default function ProfileSettingsPage() {
       void refreshLeague();
     }
   }, [me.status, refreshLeague]);
+
+  useEffect(() => {
+    if (location.hash !== "#league") {
+      return;
+    }
+    const id = window.setTimeout(() => {
+      document.getElementById("league")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+    return () => window.clearTimeout(id);
+  }, [location.hash, location.pathname]);
 
   const submitLeagueConnect = async () => {
     setLeagueBusy(true);
@@ -328,7 +339,7 @@ export default function ProfileSettingsPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card id="league" className="scroll-mt-28">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <FontAwesomeIcon icon={faLink} /> Synka League of Legends

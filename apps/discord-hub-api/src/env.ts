@@ -50,6 +50,27 @@ function truthyEnv(name: string): boolean {
   return v === "1" || v === "true" || v === "yes";
 }
 
+function falsyEnv(name: string): boolean {
+  const v = process.env[name]?.trim().toLowerCase();
+  return v === "0" || v === "false" || v === "no";
+}
+
+/**
+ * Session- och OAuth-cookies: `Secure`-flagga. I `NODE_ENV=production` är den
+ * true som standard (kräver HTTPS). Sätt `COOKIE_SECURE=0` om du kör prod-läge
+ * över HTTP (t.ex. homelab utan TLS) — annars ignoreras state-cookien och
+ * inloggning faller tillbaka till `/login?error=oauth`.
+ */
+function parseCookieSecure(nodeEnv: string): boolean {
+  if (truthyEnv("COOKIE_SECURE")) {
+    return true;
+  }
+  if (falsyEnv("COOKIE_SECURE")) {
+    return false;
+  }
+  return nodeEnv === "production";
+}
+
 function normalizeOAuthScopes(raw: string | undefined): string {
   const s = raw?.trim() || "identify";
   return s.split(/\s+/).filter(Boolean).join(" ");
@@ -94,6 +115,11 @@ export function loadEnv() {
   const discordBotToken = botToken || undefined;
   const riotApiKey = process.env.RIOT_API_KEY?.trim() || undefined;
 
+  const nodeEnv = process.env.NODE_ENV ?? "development";
+  const cookieSecure = parseCookieSecure(nodeEnv);
+  const oauthCallbackVerboseLog =
+    nodeEnv !== "production" || truthyEnv("DISCORD_OAUTH_DEBUG");
+
   return {
     port: Number(process.env.PORT ?? "3001"),
     discordClientId: process.env.DISCORD_CLIENT_ID!.trim(),
@@ -101,7 +127,9 @@ export function loadEnv() {
     discordRedirectUri: process.env.DISCORD_REDIRECT_URI!.trim(),
     sessionSecret: process.env.SESSION_SECRET!.trim(),
     frontendUrl: process.env.FRONTEND_URL!.trim().replace(/\/$/, ""),
-    nodeEnv: process.env.NODE_ENV ?? "development",
+    nodeEnv,
+    cookieSecure,
+    oauthCallbackVerboseLog,
     discordOAuthScopes: normalizeOAuthScopes(process.env.DISCORD_OAUTH_SCOPES),
     discordOAuthPrompt,
     discordUserProxyPrefixes: parseCommaSeparatedPrefixes(

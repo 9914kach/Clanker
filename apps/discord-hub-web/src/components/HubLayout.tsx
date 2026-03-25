@@ -13,7 +13,6 @@ import {
   MenubarMenu,
   MenubarTrigger,
 } from "@clanker/ui/components/menubar";
-import { Separator } from "@clanker/ui/components/separator";
 import { cn } from "@clanker/ui/lib/utils";
 import HubLiveTicker from "@/components/HubLiveTicker";
 import { ModeToggle } from "@/components/mode-toggle";
@@ -204,7 +203,7 @@ export default function HubLayout() {
                         end
                         className={({ isActive }) => linkClassName(isActive)}
                       >
-                        Översikt
+                        Hem
                       </NavLink>
                     </MenubarTrigger>
                   </MenubarMenu>
@@ -227,11 +226,20 @@ export default function HubLayout() {
                   </MenubarMenu>
 
                   <MenubarMenu>
-                    <MenubarTrigger asChild>
-                      <NavLink to="/" className={({ isActive }) => linkClassName(isActive)}>
-                        Hem
-                      </NavLink>
-                    </MenubarTrigger>
+                    {me.status === "user" ? (
+                      <MenubarTrigger asChild>
+                        <NavLink
+                          to="/profile/settings#league"
+                          className={({ isActive }) => linkClassName(isActive)}
+                        >
+                          League
+                        </NavLink>
+                      </MenubarTrigger>
+                    ) : (
+                      <MenubarTrigger className="cursor-not-allowed text-muted-foreground opacity-60">
+                        League
+                      </MenubarTrigger>
+                    )}
                   </MenubarMenu>
 
                   <MenubarMenu>
@@ -245,10 +253,10 @@ export default function HubLayout() {
                       </MenubarItem>
                       {profilePath ? (
                         <MenubarItem asChild>
-                          <Link to={profilePath}>Publik profil</Link>
+                          <Link to="/profile/settings">Profilinställningar</Link>
                         </MenubarItem>
                       ) : (
-                        <MenubarItem disabled>Publik profil</MenubarItem>
+                        <MenubarItem disabled>Profilinställningar</MenubarItem>
                       )}
                       <MenubarItem disabled>Fler verktyg kommer snart</MenubarItem>
                     </MenubarContent>
@@ -273,7 +281,6 @@ export default function HubLayout() {
                     )}
                     aria-hidden={isCompact ? undefined : true}
                   >
-                    <Separator orientation="vertical" className="h-5 shrink-0" />
                     <div className="min-w-0 flex-1">
                       <HubLiveTicker variant="compact" />
                     </div>

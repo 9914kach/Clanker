@@ -3,7 +3,6 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
-import { Button } from "@clanker/ui/components/button";
 import {
   Card,
   CardContent,
@@ -188,26 +187,6 @@ export default function DashboardPage() {
       >
         <h1 className="text-3xl font-semibold tracking-tight">Discord hub</h1>
         <p className="mt-2 text-muted-foreground">Verktyg för discord-gänget — fler moduler kommer här.</p>
-        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div className="flex max-w-md min-w-0 flex-1 flex-col gap-2">
-            <p className="text-muted-foreground text-sm">
-              Diagramfärger (chart-1–5) och primärknapp följer valt färgtema i temamenyn.
-            </p>
-            <div
-              className="ring-border flex h-2.5 overflow-hidden rounded-full ring-1"
-              aria-hidden
-            >
-              <span className="min-w-0 flex-1 bg-chart-1" />
-              <span className="min-w-0 flex-1 bg-chart-2" />
-              <span className="min-w-0 flex-1 bg-chart-3" />
-              <span className="min-w-0 flex-1 bg-chart-4" />
-              <span className="min-w-0 flex-1 bg-chart-5" />
-            </div>
-          </div>
-          <Button type="button" className="shrink-0">
-            Primärfärg (exempel)
-          </Button>
-        </div>
       </motion.header>
 
       {me.status === "user" && HUB_GUILD_ID ? (

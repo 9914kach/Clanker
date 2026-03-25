@@ -14,8 +14,10 @@ Kopiera [`.env.example`](./.env.example) till **repo-roten** `.env` och/eller `a
 |----------|-------------|
 | `DISCORD_CLIENT_ID` | Application ID från Discord Developer Portal. |
 | `DISCORD_CLIENT_SECRET` | OAuth2 client secret. |
-| `DISCORD_REDIRECT_URI` | Måste vara **identisk** med en redirect du lagt under OAuth2 → Redirects (t.ex. `http://localhost:5173/api/auth/discord/callback`). |
+| `DISCORD_REDIRECT_URI` | Måste vara **identisk** med en redirect du lagt under OAuth2 → Redirects (t.ex. `http://localhost:5173/api/auth/discord/callback`). Med Caddy/`http://dev.clanker.discord`: använd **samma host** här och i portalen (inte `localhost`). |
 | `FRONTEND_URL` | Bas-URL till webben **utan** avslutande snedstreck (t.ex. `http://localhost:5173`). Efter lyckad inloggning redirectas användaren till `{FRONTEND_URL}/dashboard`. |
+| `COOKIE_SECURE` | Valfritt. `1`/`true`: alltid `Secure` på cookies. `0`/`false`: aldrig `Secure`. Om osett: `Secure` endast när `NODE_ENV=production`. **HTTP + production** utan denna → inloggning misslyckas (state-cookie sparas inte); sätt `COOKIE_SECURE=0` i homelab utan TLS. |
+| `DISCORD_OAUTH_DEBUG` | Valfritt. `1`/`true`: logga OAuth-callbackfel till stderr även i production (felsökning). I development loggas fel alltid. |
 | `SESSION_SECRET` | Hemlig nyckel för JWT-signering (t.ex. `openssl rand -hex 32`). Används också för att härleda AES-nyckel till OAuth-cookien om `DISCORD_TOKEN_ENCRYPTION_KEY` saknas. |
 | `DISCORD_OAUTH_SCOPES` | Valfritt. Blankstegsseparerade [OAuth2-scopes](https://docs.discord.com/developers/topics/oauth2#shared-resources-oauth2-scopes). Standard: `identify`. **Ändring kräver ny inloggning** för befintliga användare. |
 | `DISCORD_OAUTH_PROMPT` | Valfritt: `consent` eller `none` (se Discord). |
@@ -41,6 +43,15 @@ Kopiera [`.env.example`](./.env.example) till **repo-roten** `.env` och/eller `a
 6. För live **voice** räcker oftast **GUILD_VOICE_STATES** (samt GUILDS) — motsvarar preset `voice` för `DISCORD_GATEWAY_INTENTS`.
 
 OAuth-användare och bot-token är **olika** saker; hubben exponerar aldrig bot-token till webbläsaren.
+
+### Inloggning misslyckas (`/login?error=oauth`)
+
+Webbläsaren skickas hit om callbacken avvisar state, Discord skickar `error=`, eller token-/användarhämtning misslyckas. Kontrollera i ordning:
+
+1. **Discord Developer Portal → OAuth2 → Redirects** — exakt samma sträng som `DISCORD_REDIRECT_URI` (ingen avvikande snedstreck, `http` vs `https`, eller host).
+2. **`FRONTEND_URL`** — samma host som du faktiskt öppnar hubben i (t.ex. `http://dev.clanker.discord`, inte `localhost`, om du surfar via Caddy).
+3. **`NODE_ENV=production` över HTTP** — sätt `COOKIE_SECURE=0` så state-cookien kan sparas (annars ignoreras den av webbläsaren).
+4. Terminalen där **discord-hub-api** kör: vid utveckling (eller med `DISCORD_OAUTH_DEBUG=1`) skrivs en kort orsak till stderr.
 
 ### Säkerhet och loggning
 

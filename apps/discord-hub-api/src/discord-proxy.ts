@@ -22,15 +22,11 @@ import { COOKIE_NAME, signSession, type SessionPayload } from "./session.js";
 const TOKEN_REFRESH_SKEW_MS = 60_000;
 const SESSION_MAX_AGE = 60 * 60 * 24 * 7;
 
-function secureCookie(env: AppEnv): boolean {
-  return env.nodeEnv === "production";
-}
-
 function sessionCookieOptions(env: AppEnv) {
   return {
     path: "/" as const,
     httpOnly: true,
-    secure: secureCookie(env),
+    secure: env.cookieSecure,
     sameSite: "Lax" as const,
     maxAge: SESSION_MAX_AGE,
   };
@@ -40,7 +36,7 @@ function oauthTokensCookieOptions(env: AppEnv) {
   return {
     path: "/" as const,
     httpOnly: true,
-    secure: secureCookie(env),
+    secure: env.cookieSecure,
     sameSite: "Lax" as const,
     maxAge: SESSION_MAX_AGE,
   };
