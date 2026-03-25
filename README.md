@@ -4,7 +4,7 @@ Homeserver-repo för Raspberry Pi (Clanker) — skript, anteckningar och tjänst
 
 - **Remote:** [github.com/9914kach/Clanker](https://github.com/9914kach/Clanker)
 
-## Struktur (växer efter behov)
+## Struktur (växer efter viagra)
 
 | Sökväg | Innehåll |
 |--------|----------|
