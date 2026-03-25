@@ -9,6 +9,10 @@ export type SessionPayload = {
   global_name: string | null;
   banner: string | null;
   accent_color: number | null;
+  /** OAuth scopes from token response. */
+  discordScopes?: string[];
+  /** When the Discord access token expires (ISO 8601). */
+  discordAuthExpires?: string;
 };
 
 function secretKey(secret: string): Uint8Array {
@@ -40,13 +44,20 @@ export async function signSession(
   payload: SessionPayload,
 ): Promise<string> {
   const key = secretKey(secret);
-  return new jose.SignJWT({
+  const claims: Record<string, unknown> = {
     username: payload.username,
     avatar: payload.avatar,
     global_name: payload.global_name,
     banner: payload.banner,
     accent_color: payload.accent_color,
-  })
+  };
+  if (payload.discordScopes?.length) {
+    claims.discordScopes = payload.discordScopes;
+  }
+  if (payload.discordAuthExpires) {
+    claims.discordAuthExpires = payload.discordAuthExpires;
+  }
+  return new jose.SignJWT(claims)
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(payload.sub)
     .setIssuedAt()
@@ -72,7 +83,25 @@ export async function verifySession(
     const global_name = claimStringOrNull(payload.global_name);
     const banner = claimStringOrNull(payload.banner);
     const accent_color = claimNumberOrNull(payload.accent_color);
-    return { sub, username, avatar, global_name, banner, accent_color };
+    let discordScopes: string[] | undefined;
+    const ds = payload.discordScopes;
+    if (Array.isArray(ds) && ds.every((s) => typeof s === "string")) {
+      discordScopes = ds as string[];
+    }
+    const discordAuthExpires =
+      typeof payload.discordAuthExpires === "string"
+        ? payload.discordAuthExpires
+        : undefined;
+    return {
+      sub,
+      username,
+      avatar,
+      global_name,
+      banner,
+      accent_color,
+      discordScopes,
+      discordAuthExpires,
+    };
   } catch {
     return null;
   }
