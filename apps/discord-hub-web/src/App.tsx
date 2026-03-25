@@ -5,6 +5,7 @@ import HomePage from "@/pages/Home";
 import LoginPage from "@/pages/Login";
 import ProfileSettingsPage from "@/pages/ProfileSettings";
 import PublicProfilePage from "@/pages/PublicProfile";
+import SpinTheWheelPage from "@/pages/SpinTheWheel";
 
 export default function App() {
   return (
@@ -15,6 +16,7 @@ export default function App() {
         <Route element={<HubLayout />}>
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/profile/settings" element={<ProfileSettingsPage />} />
+          <Route path="/tools/spin-the-wheel" element={<SpinTheWheelPage />} />
           <Route path="/u/:userId" element={<PublicProfilePage />} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

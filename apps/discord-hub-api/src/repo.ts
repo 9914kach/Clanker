@@ -194,3 +194,210 @@ export async function deleteLeagueSnapshot(userId: string): Promise<void> {
     userId,
   ]);
 }
+
+export type WheelGroupRow = {
+  id: string;
+  owner_user_id: string;
+  name: string;
+  participants: any;
+  created_at: string;
+  updated_at: string;
+};
+
+export type WheelSessionRow = {
+  id: string;
+  owner_user_id: string;
+  group_id: string | null;
+  seed: string | null;
+  team_count: number;
+  team_mode: "balanced" | "equal";
+  participants: any;
+  winner: string | null;
+  teams: any;
+  created_at: string;
+};
+
+export async function listWheelGroups(
+  ownerUserId: string,
+): Promise<Array<Pick<WheelGroupRow, "id" | "name" | "participants" | "created_at" | "updated_at">>> {
+  const pool = getPool();
+  if (!pool) return [];
+  const r = await pool.query<
+    Pick<WheelGroupRow, "id" | "name" | "participants" | "created_at" | "updated_at">
+  >(
+    `
+    SELECT id, name, participants, created_at::timestamptz as created_at, updated_at::timestamptz as updated_at
+      FROM wheel_groups
+     WHERE owner_user_id = $1
+     ORDER BY updated_at DESC
+     LIMIT 50
+    `,
+    [ownerUserId],
+  );
+  return r.rows.map((row) => ({
+    ...row,
+    created_at: new Date(String(row.created_at)).toISOString(),
+    updated_at: new Date(String(row.updated_at)).toISOString(),
+  }));
+}
+
+export async function getWheelGroup(
+  ownerUserId: string,
+  id: string,
+): Promise<Pick<WheelGroupRow, "id" | "name" | "participants" | "created_at" | "updated_at"> | null> {
+  const pool = getPool();
+  if (!pool) return null;
+  const r = await pool.query<
+    Pick<WheelGroupRow, "id" | "name" | "participants" | "created_at" | "updated_at">
+  >(
+    `
+    SELECT id, name, participants, created_at::timestamptz as created_at, updated_at::timestamptz as updated_at
+      FROM wheel_groups
+     WHERE owner_user_id = $1 AND id = $2
+     LIMIT 1
+    `,
+    [ownerUserId, id],
+  );
+  const row = r.rows[0];
+  if (!row) return null;
+  return {
+    ...row,
+    created_at: new Date(String(row.created_at)).toISOString(),
+    updated_at: new Date(String(row.updated_at)).toISOString(),
+  };
+}
+
+export async function createWheelGroup(params: {
+  id: string;
+  ownerUserId: string;
+  name: string;
+  participants: string[];
+}): Promise<void> {
+  const pool = getPool();
+  if (!pool) return;
+  await pool.query(
+    `
+    INSERT INTO wheel_groups (id, owner_user_id, name, participants)
+    VALUES ($1, $2, $3, $4::jsonb)
+    `,
+    [params.id, params.ownerUserId, params.name, JSON.stringify(params.participants)],
+  );
+}
+
+export async function updateWheelGroup(params: {
+  id: string;
+  ownerUserId: string;
+  name: string;
+  participants: string[];
+}): Promise<boolean> {
+  const pool = getPool();
+  if (!pool) return false;
+  const r = await pool.query(
+    `
+    UPDATE wheel_groups
+       SET name = $3,
+           participants = $4::jsonb
+     WHERE owner_user_id = $1 AND id = $2
+    `,
+    [params.ownerUserId, params.id, params.name, JSON.stringify(params.participants)],
+  );
+  return (r.rowCount ?? 0) > 0;
+}
+
+export async function deleteWheelGroup(
+  ownerUserId: string,
+  id: string,
+): Promise<boolean> {
+  const pool = getPool();
+  if (!pool) return false;
+  const r = await pool.query(
+    `DELETE FROM wheel_groups WHERE owner_user_id = $1 AND id = $2`,
+    [ownerUserId, id],
+  );
+  return (r.rowCount ?? 0) > 0;
+}
+
+export async function createWheelSession(params: {
+  id: string;
+  ownerUserId: string;
+  groupId: string | null;
+  seed: string | null;
+  teamCount: number;
+  teamMode: "balanced" | "equal";
+  participants: string[];
+  winner: string | null;
+  teams: string[][];
+}): Promise<void> {
+  const pool = getPool();
+  if (!pool) return;
+  await pool.query(
+    `
+    INSERT INTO wheel_sessions
+      (id, owner_user_id, group_id, seed, team_count, team_mode, participants, winner, teams)
+    VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9::jsonb)
+    `,
+    [
+      params.id,
+      params.ownerUserId,
+      params.groupId,
+      params.seed,
+      params.teamCount,
+      params.teamMode,
+      JSON.stringify(params.participants),
+      params.winner,
+      JSON.stringify(params.teams),
+    ],
+  );
+}
+
+export async function listRecentWheelSessions(
+  ownerUserId: string,
+  limit: number,
+): Promise<
+  Array<
+    Pick<
+      WheelSessionRow,
+      | "id"
+      | "group_id"
+      | "seed"
+      | "team_count"
+      | "team_mode"
+      | "participants"
+      | "winner"
+      | "teams"
+      | "created_at"
+    >
+  >
+> {
+  const pool = getPool();
+  if (!pool) return [];
+  const safeLimit = Math.max(1, Math.min(50, Math.floor(limit)));
+  const r = await pool.query<
+    Pick<
+      WheelSessionRow,
+      | "id"
+      | "group_id"
+      | "seed"
+      | "team_count"
+      | "team_mode"
+      | "participants"
+      | "winner"
+      | "teams"
+      | "created_at"
+    >
+  >(
+    `
+    SELECT id, group_id, seed, team_count, team_mode, participants, winner, teams,
+           created_at::timestamptz as created_at
+      FROM wheel_sessions
+     WHERE owner_user_id = $1
+     ORDER BY created_at DESC
+     LIMIT $2
+    `,
+    [ownerUserId, safeLimit],
+  );
+  return r.rows.map((row) => ({
+    ...row,
+    created_at: new Date(String(row.created_at)).toISOString(),
+  }));
+}

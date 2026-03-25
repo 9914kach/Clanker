@@ -288,6 +288,26 @@ export default function DashboardPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
+              <FontAwesomeIcon icon={faGamepad} /> Spin the Wheel
+            </CardTitle>
+            <CardDescription>Dela upp i lag och lotta fram vinnare.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-2 text-sm text-muted-foreground">
+            <p>
+              Gå till{" "}
+              <Link
+                to="/tools/spin-the-wheel"
+                className="text-foreground underline-offset-4 hover:underline"
+              >
+                verktyget
+              </Link>{" "}
+              för att skapa randomiserade lag eller dra en spelare från en deltagarlista.
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
               <FontAwesomeIcon icon={faShieldHalved} /> Status
             </CardTitle>
             <CardDescription>Snabbstatus för kontot.</CardDescription>

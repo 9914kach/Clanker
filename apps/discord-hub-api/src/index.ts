@@ -2,9 +2,10 @@ import { config as loadDotenv } from "dotenv";
 import { serve } from "@hono/node-server";
 import { Hono, type Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
-import { randomBytes, timingSafeEqual } from "node:crypto";
+import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { z } from "zod";
 import { fetchGuildSummary } from "./bot-guild-summary.js";
 import { assertBotGuildAccess } from "./bot-guild-access.js";
 import {
@@ -34,12 +35,19 @@ import {
 } from "./riot-lol.js";
 import { closeDb, initDb, verifyDbConnection } from "./db.js";
 import {
+  createWheelGroup,
+  createWheelSession,
   deleteLeagueConnection,
   deleteLeagueSnapshot,
+  deleteWheelGroup,
   getLeagueConnection,
   getLeagueSnapshot,
+  getWheelGroup,
+  listRecentWheelSessions,
+  listWheelGroups,
   upsertLeagueConnection,
   upsertLeagueSnapshot,
+  updateWheelGroup,
 } from "./repo.js";
 import { COOKIE_NAME, verifySession, type SessionPayload } from "./session.js";
 
@@ -311,6 +319,243 @@ function createApp(env: AppEnv) {
     deleteCookie(c, COOKIE_NAME, { path: "/" });
     deleteCookie(c, DISCORD_OAUTH_TOKENS_COOKIE, { path: "/" });
     return c.body(null, 204);
+  });
+
+  const WheelParticipant = z.string().trim().min(1).max(48);
+  const WheelParticipants = z.array(WheelParticipant).min(1).max(64);
+
+  function normalizeWheelParticipants(list: string[]): string[] {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const raw of list) {
+      const name = raw.trim();
+      if (!name) continue;
+      const key = name.toLocaleLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(name);
+      if (out.length >= 64) break;
+    }
+    return out;
+  }
+
+  app.get("/api/wheel/groups", async (c) => {
+    const session = await requireSession(env, getCookie(c, COOKIE_NAME));
+    if (!session) return c.json({ error: "Unauthorized" }, 401);
+    await upsertProfileFromSession(session);
+
+    const groups = await listWheelGroups(session.sub);
+    return c.json({
+      groups: groups.map((g) => ({
+        id: g.id,
+        name: g.name,
+        participants: Array.isArray(g.participants) ? (g.participants as string[]) : [],
+        createdAt: g.created_at,
+        updatedAt: g.updated_at,
+      })),
+    });
+  });
+
+  app.get("/api/wheel/groups/:id", async (c) => {
+    const session = await requireSession(env, getCookie(c, COOKIE_NAME));
+    if (!session) return c.json({ error: "Unauthorized" }, 401);
+    await upsertProfileFromSession(session);
+
+    const id = c.req.param("id");
+    if (!id || id.length > 64) return c.json({ error: "Invalid id" }, 400);
+    const group = await getWheelGroup(session.sub, id);
+    if (!group) return c.json({ error: "Not found" }, 404);
+
+    return c.json({
+      group: {
+        id: group.id,
+        name: group.name,
+        participants: Array.isArray(group.participants)
+          ? (group.participants as string[])
+          : [],
+        createdAt: group.created_at,
+        updatedAt: group.updated_at,
+      },
+    });
+  });
+
+  app.post("/api/wheel/groups", async (c) => {
+    const session = await requireSession(env, getCookie(c, COOKIE_NAME));
+    if (!session) return c.json({ error: "Unauthorized" }, 401);
+    await upsertProfileFromSession(session);
+
+    let rawPayload: unknown;
+    try {
+      rawPayload = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid JSON" }, 400);
+    }
+
+    const schema = z.object({
+      name: z.string().trim().min(1).max(64),
+      participants: WheelParticipants,
+    });
+
+    const parsed = schema.safeParse(rawPayload);
+    if (!parsed.success) {
+      return c.json({ error: "Invalid payload" }, 400);
+    }
+
+    const id = randomUUID();
+    const participants = normalizeWheelParticipants(parsed.data.participants);
+    if (participants.length === 0) return c.json({ error: "No participants" }, 400);
+
+    await createWheelGroup({
+      id,
+      ownerUserId: session.sub,
+      name: parsed.data.name,
+      participants,
+    });
+
+    return c.json({ id }, 201);
+  });
+
+  app.put("/api/wheel/groups/:id", async (c) => {
+    const session = await requireSession(env, getCookie(c, COOKIE_NAME));
+    if (!session) return c.json({ error: "Unauthorized" }, 401);
+    await upsertProfileFromSession(session);
+
+    const id = c.req.param("id");
+    if (!id || id.length > 64) return c.json({ error: "Invalid id" }, 400);
+
+    let rawPayload: unknown;
+    try {
+      rawPayload = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid JSON" }, 400);
+    }
+
+    const schema = z.object({
+      name: z.string().trim().min(1).max(64),
+      participants: WheelParticipants,
+    });
+    const parsed = schema.safeParse(rawPayload);
+    if (!parsed.success) return c.json({ error: "Invalid payload" }, 400);
+
+    const participants = normalizeWheelParticipants(parsed.data.participants);
+    if (participants.length === 0) return c.json({ error: "No participants" }, 400);
+
+    const ok = await updateWheelGroup({
+      id,
+      ownerUserId: session.sub,
+      name: parsed.data.name,
+      participants,
+    });
+    if (!ok) return c.json({ error: "Not found" }, 404);
+    return c.body(null, 204);
+  });
+
+  app.delete("/api/wheel/groups/:id", async (c) => {
+    const session = await requireSession(env, getCookie(c, COOKIE_NAME));
+    if (!session) return c.json({ error: "Unauthorized" }, 401);
+    await upsertProfileFromSession(session);
+
+    const id = c.req.param("id");
+    if (!id || id.length > 64) return c.json({ error: "Invalid id" }, 400);
+    const ok = await deleteWheelGroup(session.sub, id);
+    if (!ok) return c.json({ error: "Not found" }, 404);
+    return c.body(null, 204);
+  });
+
+  app.get("/api/wheel/sessions/recent", async (c) => {
+    const session = await requireSession(env, getCookie(c, COOKIE_NAME));
+    if (!session) return c.json({ error: "Unauthorized" }, 401);
+    await upsertProfileFromSession(session);
+
+    const limitRaw = c.req.query("limit");
+    const limit = limitRaw ? Number(limitRaw) : 12;
+    const sessions = await listRecentWheelSessions(session.sub, Number.isFinite(limit) ? limit : 12);
+    return c.json({
+      sessions: sessions.map((s) => ({
+        id: s.id,
+        groupId: s.group_id,
+        seed: s.seed,
+        teamCount: s.team_count,
+        teamMode: s.team_mode,
+        participants: Array.isArray(s.participants) ? (s.participants as string[]) : [],
+        winner: s.winner,
+        teams: Array.isArray(s.teams) ? (s.teams as string[][]) : [],
+        createdAt: s.created_at,
+      })),
+    });
+  });
+
+  app.post("/api/wheel/sessions", async (c) => {
+    const session = await requireSession(env, getCookie(c, COOKIE_NAME));
+    if (!session) return c.json({ error: "Unauthorized" }, 401);
+    await upsertProfileFromSession(session);
+
+    let rawPayload: unknown;
+    try {
+      rawPayload = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid JSON" }, 400);
+    }
+
+    const schema = z.object({
+      groupId: z.string().trim().min(8).max(64).nullable().optional(),
+      seed: z.string().trim().min(1).max(128).nullable().optional(),
+      teamCount: z.number().int().min(1).max(16),
+      teamMode: z.enum(["balanced", "equal"]),
+      participants: WheelParticipants,
+      winner: z.string().trim().min(1).max(48).nullable().optional(),
+      teams: z.array(z.array(WheelParticipant)).min(1).max(16),
+    });
+
+    const parsed = schema.safeParse(rawPayload);
+    if (!parsed.success) return c.json({ error: "Invalid payload" }, 400);
+
+    const participants = normalizeWheelParticipants(parsed.data.participants);
+    if (participants.length === 0) return c.json({ error: "No participants" }, 400);
+
+    const normalizedTeams = parsed.data.teams
+      .map((t) => normalizeWheelParticipants(t))
+      .slice(0, parsed.data.teamCount);
+
+    const flattened = normalizedTeams.flat();
+    const participantKey = new Set(participants.map((p) => p.toLocaleLowerCase()));
+    const uniqueTeamKey = new Set<string>();
+
+    for (const p of flattened) {
+      const k = p.toLocaleLowerCase();
+      if (!participantKey.has(k)) {
+        return c.json({ error: "Teams contain unknown participants" }, 400);
+      }
+      if (uniqueTeamKey.has(k)) {
+        return c.json({ error: "Teams contain duplicates" }, 400);
+      }
+      uniqueTeamKey.add(k);
+    }
+
+    if (uniqueTeamKey.size !== participantKey.size) {
+      return c.json({ error: "Teams do not cover all participants" }, 400);
+    }
+
+    const winner = parsed.data.winner?.trim() ? parsed.data.winner.trim() : null;
+    if (winner) {
+      const wk = winner.toLocaleLowerCase();
+      if (!participantKey.has(wk)) return c.json({ error: "Winner not in participants" }, 400);
+    }
+
+    const id = randomUUID();
+    await createWheelSession({
+      id,
+      ownerUserId: session.sub,
+      groupId: parsed.data.groupId ?? null,
+      seed: parsed.data.seed ?? null,
+      teamCount: parsed.data.teamCount,
+      teamMode: parsed.data.teamMode,
+      participants,
+      winner,
+      teams: normalizedTeams,
+    });
+
+    return c.json({ id }, 201);
   });
 
   app.get("/api/integrations/league/status", async (c) => {

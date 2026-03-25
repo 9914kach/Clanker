@@ -88,7 +88,7 @@ export default function HubLayout() {
 
   const linkClassName = (isActive: boolean) =>
     cn(
-      "inline-flex items-center rounded-md px-2.5 py-1.5 text-sm font-medium transition hover:bg-muted",
+      "inline-flex items-center rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors duration-150 hover:bg-muted",
       isActive && "bg-muted",
     );
 
@@ -97,7 +97,7 @@ export default function HubLayout() {
         <NavLink
           to={profilePath!}
           className={cn(
-            "flex items-center rounded-lg transition hover:bg-muted",
+            "flex items-center rounded-lg transition-colors duration-150 hover:bg-muted",
             compact ? "gap-2 px-1.5 py-1" : "gap-2 px-2 py-1",
           )}
         >
@@ -195,7 +195,7 @@ export default function HubLayout() {
                 tuckNavUnderCollapsedTitle ? "-translate-y-1 pb-0" : "translate-y-0 pb-1",
               )}
             >
-              <div className="flex min-w-max items-center gap-3 pr-1">
+              <div className="flex min-w-0 items-center gap-3 pr-1">
                 <Menubar className={menuClassName}>
                   <MenubarMenu>
                     <MenubarTrigger asChild>
@@ -240,6 +240,9 @@ export default function HubLayout() {
                       <MenubarItem asChild>
                         <Link to="/dashboard">Hubben</Link>
                       </MenubarItem>
+                      <MenubarItem asChild>
+                        <Link to="/tools/spin-the-wheel">Spin the Wheel</Link>
+                      </MenubarItem>
                       {profilePath ? (
                         <MenubarItem asChild>
                           <Link to={profilePath}>Publik profil</Link>
@@ -252,14 +255,23 @@ export default function HubLayout() {
                   </MenubarMenu>
                 </Menubar>
 
+                <div
+                  className={cn(
+                    "hidden h-px overflow-hidden bg-border/50 md:block transition-[max-width,opacity] duration-300 ease-out",
+                    isCompact ? "pointer-events-none max-w-0 flex-none opacity-0" : "max-w-none flex-1 opacity-100",
+                  )}
+                  aria-hidden="true"
+                />
+
                 {SHOW_HUB_LIVE_TICKER ? (
                   <div
                     className={cn(
-                      "hidden min-w-[15rem] max-w-[24rem] flex-1 items-center gap-3 overflow-hidden md:flex",
+                      "hidden items-center gap-3 overflow-hidden md:flex transition-[max-width,opacity,transform] duration-300 ease-out",
                       isCompact
-                        ? "translate-y-0 opacity-100"
-                        : "pointer-events-none translate-y-1 opacity-0",
+                        ? "max-w-[24rem] flex-1 translate-y-0 opacity-100"
+                        : "pointer-events-none max-w-0 flex-none translate-y-1 opacity-0",
                     )}
+                    aria-hidden={isCompact ? undefined : true}
                   >
                     <Separator orientation="vertical" className="h-5 shrink-0" />
                     <div className="min-w-0 flex-1">
