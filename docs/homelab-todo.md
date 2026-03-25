@@ -22,6 +22,7 @@ Uppdatera listan när du börjar eller avslutar något; flytta gärna färdiga p
 
 ## Discord hub
 
+- **Postgres:** körs på **workstation** (Compose-profil `db` där); Pi/API använder `DATABASE_URL` mot desktopens LAN-IP (eller SSH-tunnel). Se [docker.md — PostgreSQL på workstation (LAN)](docker.md#postgresql-på-workstation-lan).
 - [ ] *(lägg till nästa funktion eller milstolpe här)*
 
 ## Dev tools (`dev-tools-web`)

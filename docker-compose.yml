@@ -51,11 +51,15 @@ services:
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-clanker}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clanker_change_me}
-      POSTGRES_DB: ${POSTGRES_DB:-clanker}
+      POSTGRES_DB: ${POSTGRES_DB:-clanker_discord}
+      # Andra databasen på samma server/port (skapas vid första init av volymen; se infra/postgres/docker-entrypoint-initdb.d/).
+      POSTGRES_EXTRA_DB: ${POSTGRES_EXTRA_DB:-clanker_devtools}
     volumes:
       - clanker-pgdata:/var/lib/postgresql/data
+      - ./infra/postgres/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d:ro
     ports:
-      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+      # Standard 127.0.0.1 (endast localhost). På workstation mot LAN: POSTGRES_BIND_ADDRESS=0.0.0.0 + brandvägg.
+      - "${POSTGRES_BIND_ADDRESS:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"
     restart: unless-stopped
 
   clanker-pihole:

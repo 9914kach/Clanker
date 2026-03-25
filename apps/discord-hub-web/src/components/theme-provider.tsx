@@ -6,7 +6,10 @@ import {
   type ReactNode,
 } from "react";
 
-export type ColorPalette = "green" | "violett-neutral";
+export type ColorPalette =
+  | "green"
+  | "terminal-dark-russian"
+  | "violett-neutral";
 
 type Theme = "dark" | "light" | "system";
 
@@ -47,7 +50,11 @@ export function ThemeProvider({
     const stored = localStorage.getItem(
       paletteStorageKey(storageKey),
     ) as ColorPalette | null;
-    if (stored === "green" || stored === "violett-neutral") {
+    if (
+      stored === "green" ||
+      stored === "terminal-dark-russian" ||
+      stored === "violett-neutral"
+    ) {
       return stored;
     }
     return defaultColorPalette;

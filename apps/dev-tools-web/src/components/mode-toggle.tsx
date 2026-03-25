@@ -31,6 +31,12 @@ const PALETTE_PREVIEW: Record<ColorPalette, readonly string[]> = {
     "oklch(0.723 0.219 149.579)",
     "oklch(0.627 0.194 149.214)",
   ],
+  "terminal-dark-russian": [
+    "hsl(0 80% 42%)",
+    "hsl(0 0% 35%)",
+    "hsl(0 0% 55%)",
+    "hsl(0 80% 30%)",
+  ],
 };
 
 function PaletteSwatchPreview({ palette }: { palette: ColorPalette }) {
@@ -100,6 +106,18 @@ export function ModeToggle() {
               </span>
             </div>
             <PaletteSwatchPreview palette="green" />
+          </DropdownMenuRadioItem>
+          <DropdownMenuRadioItem
+            value="terminal-dark-russian"
+            className="items-center gap-2"
+          >
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span>Terminal Dark Russian</span>
+              <span className="text-muted-foreground text-xs">
+                tweakcn · hög kontrast
+              </span>
+            </div>
+            <PaletteSwatchPreview palette="terminal-dark-russian" />
           </DropdownMenuRadioItem>
         </DropdownMenuRadioGroup>
       </DropdownMenuContent>

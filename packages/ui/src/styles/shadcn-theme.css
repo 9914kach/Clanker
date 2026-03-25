@@ -195,6 +195,89 @@ html.dark[data-palette="green"] {
   --sidebar-ring: oklch(0.405 0.101 131.063);
 }
 
+/* Terminal Dark Russian — tweakcn (https://tweakcn.com/themes/cmmlji09u000004l8eafw35j1) */
+html[data-palette="terminal-dark-russian"] {
+  font-family:
+    "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+}
+
+html.light[data-palette="terminal-dark-russian"] {
+  --radius: 0rem;
+  --background: hsl(0 0% 88%);
+  --foreground: hsl(0 0% 5%);
+  --card: hsl(0 0% 85%);
+  --card-foreground: hsl(0 0% 5%);
+  --popover: hsl(0 0% 85%);
+  --popover-foreground: hsl(0 0% 5%);
+  --primary: hsl(0 75% 35%);
+  --primary-foreground: hsl(0 0% 100%);
+  --secondary: hsl(0 0% 25%);
+  --secondary-foreground: hsl(0 0% 95%);
+  --muted: hsl(0 0% 80%);
+  --muted-foreground: hsl(0 0% 30%);
+  --accent: hsl(0 60% 40%);
+  --accent-foreground: hsl(0 0% 100%);
+  --destructive: hsl(0 80% 30%);
+  --destructive-foreground: hsl(0 0% 100%);
+  --warning: hsl(38 92% 50%);
+  --warning-foreground: hsl(0 0% 8%);
+  --border: hsl(0 0% 10%);
+  --input: hsl(0 0% 82%);
+  --ring: hsl(0 75% 35%);
+  --chart-1: hsl(0 70% 40%);
+  --chart-2: hsl(0 0% 20%);
+  --chart-3: hsl(0 0% 40%);
+  --chart-4: hsl(0 70% 25%);
+  --chart-5: hsl(0 0% 10%);
+  --sidebar: hsl(0 0% 85%);
+  --sidebar-foreground: hsl(0 0% 5%);
+  --sidebar-primary: hsl(0 75% 35%);
+  --sidebar-primary-foreground: hsl(0 0% 100%);
+  --sidebar-accent: hsl(0 0% 75%);
+  --sidebar-accent-foreground: hsl(0 75% 35%);
+  --sidebar-border: hsl(0 0% 20%);
+  --sidebar-ring: hsl(0 75% 35%);
+}
+
+html.dark[data-palette="terminal-dark-russian"] {
+  --radius: 0rem;
+  --background: hsl(0 0% 2%);
+  --foreground: hsl(0 0% 92%);
+  --card: hsl(0 0% 5%);
+  --card-foreground: hsl(0 0% 92%);
+  --popover: hsl(0 0% 5%);
+  --popover-foreground: hsl(0 0% 92%);
+  --primary: hsl(0 80% 42%);
+  --primary-foreground: hsl(0 0% 100%);
+  --secondary: hsl(0 0% 12%);
+  --secondary-foreground: hsl(0 0% 90%);
+  --muted: hsl(0 0% 10%);
+  --muted-foreground: hsl(0 0% 50%);
+  --accent: hsl(0 70% 30%);
+  --accent-foreground: hsl(0 0% 100%);
+  --destructive: hsl(0 90% 25%);
+  --destructive-foreground: hsl(0 0% 100%);
+  --warning: hsl(38 88% 48%);
+  --warning-foreground: hsl(0 0% 8%);
+  --border: hsl(0 0% 25%);
+  --input: hsl(0 0% 8%);
+  --ring: hsl(0 80% 42%);
+  --chart-1: hsl(0 80% 42%);
+  --chart-2: hsl(0 0% 35%);
+  --chart-3: hsl(0 0% 55%);
+  --chart-4: hsl(0 80% 30%);
+  --chart-5: hsl(0 0% 15%);
+  --sidebar: hsl(0 0% 4%);
+  --sidebar-foreground: hsl(0 0% 85%);
+  --sidebar-primary: hsl(0 80% 42%);
+  --sidebar-primary-foreground: hsl(0 0% 100%);
+  --sidebar-accent: hsl(0 0% 10%);
+  --sidebar-accent-foreground: hsl(0 80% 50%);
+  --sidebar-border: hsl(0 0% 20%);
+  --sidebar-ring: hsl(0 80% 42%);
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

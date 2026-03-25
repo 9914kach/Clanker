@@ -1,32 +1,62 @@
 import { config as loadDotenv } from "dotenv";
 import { serve } from "@hono/node-server";
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { fetchGuildSummary } from "./bot-guild-summary.js";
+import { assertBotGuildAccess } from "./bot-guild-access.js";
+import {
+  exchangeAuthorizationCode,
+  fetchDiscordOAuth2Me,
+  fetchDiscordUsersMe,
+} from "./discord-rest.js";
+import {
+  proxyBotDiscordApi,
+  proxyUserDiscordApi,
+  resolveUserDiscordTokens,
+  setOAuthCookiesAfterLogin,
+} from "./discord-proxy.js";
+import { DISCORD_OAUTH_TOKENS_COOKIE } from "./discord-tokens.js";
+import {
+  getGatewayRuntime,
+  startDiscordGateway,
+} from "./discord-gateway.js";
 import type { AppEnv } from "./env.js";
 import { loadEnv } from "./env.js";
-import { COOKIE_NAME, signSession, verifySession, type SessionPayload } from "./session.js";
+import {
+  getPublicProfile,
+  setProfileLeague,
+  upsertProfileFromSession,
+} from "./profile-store.js";
+import {
+  RiotApiError,
+  fetchLeaguePlayerSnapshot,
+  type LeaguePlayerSnapshot,
+  type LeagueRankPreference,
+  type LeagueRegion,
+} from "./riot-lol.js";
+import { closeDb, initDb, verifyDbConnection } from "./db.js";
+import { COOKIE_NAME, verifySession, type SessionPayload } from "./session.js";
 
 const STATE_COOKIE = "discord_oauth_state";
 const STATE_MAX_AGE = 600;
-const SESSION_MAX_AGE = 60 * 60 * 24 * 7;
-
-type LeagueRegion = "EUW" | "EUNE" | "NA" | "KR" | "BR";
+const DISCORD_SNOWFLAKE_RE = /^\d{5,32}$/;
 
 type LeagueConnection = {
   riotId: string;
   tagLine: string;
   region: LeagueRegion;
   autoSync: boolean;
-  rankPreference: "solo" | "flex";
+  rankPreference: LeagueRankPreference;
   statusMessage: string;
   linkedAt: string;
   lastSyncRequestedAt: string | null;
 };
 
 const leagueConnections = new Map<string, LeagueConnection>();
+const leagueSnapshots = new Map<string, LeaguePlayerSnapshot>();
 
 function secureCookie(env: AppEnv): boolean {
   return env.nodeEnv === "production";
@@ -37,70 +67,24 @@ function discordAuthorizeUrl(env: AppEnv, state: string): string {
     client_id: env.discordClientId,
     redirect_uri: env.discordRedirectUri,
     response_type: "code",
-    scope: "identify",
+    scope: env.discordOAuthScopes,
     state,
   });
-  return `https://discord.com/api/oauth2/authorize?${params.toString()}`;
-}
-
-async function exchangeCode(
-  env: AppEnv,
-  code: string,
-): Promise<{ access_token: string }> {
-  const body = new URLSearchParams({
-    client_id: env.discordClientId,
-    client_secret: env.discordClientSecret,
-    grant_type: "authorization_code",
-    code,
-    redirect_uri: env.discordRedirectUri,
-  });
-  const res = await fetch("https://discord.com/api/oauth2/token", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: body.toString(),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Discord token exchange failed: ${res.status} ${text}`);
+  if (env.discordOAuthPrompt) {
+    params.set("prompt", env.discordOAuthPrompt);
   }
-  return res.json() as Promise<{ access_token: string }>;
+  return `https://discord.com/oauth2/authorize?${params.toString()}`;
 }
 
-type DiscordUser = {
-  id: string;
-  username: string;
-  avatar: string | null;
-  global_name: string | null;
-  banner: string | null;
-  accent_color: number | null;
-};
-
-function normalizeDiscordUser(raw: Record<string, unknown>): DiscordUser {
-  return {
-    id: String(raw.id),
-    username: String(raw.username),
-    avatar: typeof raw.avatar === "string" ? raw.avatar : null,
-    global_name: typeof raw.global_name === "string" ? raw.global_name : null,
-    banner: typeof raw.banner === "string" ? raw.banner : null,
-    accent_color:
-      typeof raw.accent_color === "number" && Number.isFinite(raw.accent_color)
-        ? raw.accent_color
-        : null,
-  };
-}
-
-async function fetchDiscordMe(accessToken: string): Promise<DiscordUser> {
-  const res = await fetch("https://discord.com/api/users/@me", {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Discord @me failed: ${res.status} ${text}`);
+function extractProxySuffix(fullPath: string, mount: string): string | null {
+  if (fullPath === mount || fullPath === `${mount}/`) {
+    return "";
   }
-  const raw = (await res.json()) as Record<string, unknown>;
-  return normalizeDiscordUser(raw);
+  const withSlash = `${mount}/`;
+  if (!fullPath.startsWith(withSlash)) {
+    return null;
+  }
+  return fullPath.slice(withSlash.length);
 }
 
 function parseLeagueRegion(value: unknown): LeagueRegion | null {
@@ -121,7 +105,7 @@ function parseLeaguePayload(raw: unknown): {
   tagLine: string;
   region: LeagueRegion;
   autoSync: boolean;
-  rankPreference: "solo" | "flex";
+  rankPreference: LeagueRankPreference;
   statusMessage: string;
 } | null {
   if (!raw || typeof raw !== "object") {
@@ -164,6 +148,53 @@ async function requireSession(
   return verifySession(env.sessionSecret, token);
 }
 
+function respondWithRiotError(c: Context, error: RiotApiError) {
+  if (error.retryAfterSeconds !== null) {
+    c.header("Retry-After", String(error.retryAfterSeconds));
+  }
+
+  if (error.code === "riot_account_not_found") {
+    return c.json(
+      {
+        error:
+          "Riot-kontot hittades inte. Kontrollera Riot ID, tagline och vald region.",
+        code: error.code,
+      },
+      404,
+    );
+  }
+
+  if (error.code === "riot_rate_limited") {
+    return c.json(
+      {
+        error:
+          "Riot API rate limit uppnådd. Vänta lite och prova synk igen.",
+        code: error.code,
+      },
+      429,
+    );
+  }
+
+  if (error.code === "riot_auth_failed") {
+    return c.json(
+      {
+        error:
+          "Riot API-nyckeln är ogiltig eller har gått ut. Uppdatera RIOT_API_KEY.",
+        code: error.code,
+      },
+      502,
+    );
+  }
+
+  return c.json(
+    {
+      error: "Riot API svarade med ett oväntat fel under synk.",
+      code: error.code,
+    },
+    502,
+  );
+}
+
 function createApp(env: AppEnv) {
   const app = new Hono();
 
@@ -198,23 +229,18 @@ function createApp(env: AppEnv) {
     }
 
     try {
-      const { access_token } = await exchangeCode(env, code);
-      const user = await fetchDiscordMe(access_token);
-      const token = await signSession(env.sessionSecret, {
+      const exchanged = await exchangeAuthorizationCode(env, code);
+      const user = await fetchDiscordUsersMe(exchanged.access_token);
+      const baseSession = {
         sub: user.id,
         username: user.username,
         avatar: user.avatar,
         global_name: user.global_name,
         banner: user.banner,
         accent_color: user.accent_color,
-      });
-      setCookie(c, COOKIE_NAME, token, {
-        path: "/",
-        httpOnly: true,
-        secure: secureCookie(env),
-        sameSite: "Lax",
-        maxAge: SESSION_MAX_AGE,
-      });
+      };
+      upsertProfileFromSession(baseSession);
+      await setOAuthCookiesAfterLogin(c, env, baseSession, exchanged);
       return c.redirect(`${env.frontendUrl}/dashboard`);
     } catch {
       return c.redirect(redirectFail);
@@ -226,18 +252,68 @@ function createApp(env: AppEnv) {
     if (!session) {
       return c.json({ error: "Unauthorized" }, 401);
     }
-    return c.json({
+
+    const base = {
       id: session.sub,
       username: session.username,
       avatar: session.avatar,
       global_name: session.global_name,
       banner: session.banner,
       accent_color: session.accent_color,
-    });
+    };
+    upsertProfileFromSession(session);
+    const existingLeagueConnection = leagueConnections.get(session.sub);
+    if (existingLeagueConnection) {
+      setProfileLeague(session.sub, existingLeagueConnection);
+    }
+
+    const resolved = await resolveUserDiscordTokens(c, env, session);
+    if (!resolved.ok) {
+      return c.json({
+        ...base,
+        discord: {
+          application: null,
+          scopes: session.discordScopes ?? [],
+          expires: session.discordAuthExpires ?? null,
+          live: false,
+        },
+      });
+    }
+
+    try {
+      const oauth = await fetchDiscordOAuth2Me(resolved.payload.access_token);
+      return c.json({
+        ...base,
+        discord: {
+          application: {
+            id: oauth.application.id,
+            name: oauth.application.name ?? "",
+          },
+          scopes: oauth.scopes,
+          expires: oauth.expires,
+          live: true,
+        },
+      });
+    } catch {
+      return c.json({
+        ...base,
+        discord: {
+          application: null,
+          scopes:
+            session.discordScopes ??
+            resolved.payload.scope.split(/\s+/).filter(Boolean),
+          expires:
+            session.discordAuthExpires ??
+            new Date(resolved.payload.expires_at_ms).toISOString(),
+          live: false,
+        },
+      });
+    }
   });
 
   app.post("/api/auth/logout", (c) => {
     deleteCookie(c, COOKIE_NAME, { path: "/" });
+    deleteCookie(c, DISCORD_OAUTH_TOKENS_COOKIE, { path: "/" });
     return c.body(null, 204);
   });
 
@@ -248,7 +324,8 @@ function createApp(env: AppEnv) {
     }
 
     const connection = leagueConnections.get(session.sub) ?? null;
-    return c.json({ connected: connection !== null, connection });
+    const sync = leagueSnapshots.get(session.sub) ?? null;
+    return c.json({ connected: connection !== null, connection, sync });
   });
 
   app.post("/api/integrations/league/connect", async (c) => {
@@ -281,13 +358,16 @@ function createApp(env: AppEnv) {
       lastSyncRequestedAt: null,
     };
 
+    upsertProfileFromSession(session);
     leagueConnections.set(session.sub, connection);
+    leagueSnapshots.delete(session.sub);
+    setProfileLeague(session.sub, connection);
 
     return c.json({
       connected: true,
       connection,
-      message:
-        "League-koppling sparad. Nästa steg är att ansluta Riot API och hämta match/rank-data.",
+      sync: null,
+      message: "League-koppling sparad. Kontot är redo att synkas via Riot API.",
     });
   });
 
@@ -302,18 +382,58 @@ function createApp(env: AppEnv) {
       return c.json({ error: "No linked League account" }, 404);
     }
 
+    if (!env.riotApiKey) {
+      return c.json(
+        {
+          error:
+            "RIOT_API_KEY saknas i backend-miljön. Lägg till den innan du kör synk.",
+          code: "riot_api_key_missing",
+        },
+        503,
+      );
+    }
+
     const updated: LeagueConnection = {
       ...connection,
       lastSyncRequestedAt: new Date().toISOString(),
     };
 
     leagueConnections.set(session.sub, updated);
+    upsertProfileFromSession(session);
+    setProfileLeague(session.sub, updated);
 
-    return c.json({
-      connected: true,
-      connection: updated,
-      message: "Synk förberedd. Koppla in Riot API-klient i nästa steg.",
-    });
+    try {
+      const sync = await fetchLeaguePlayerSnapshot({
+        apiKey: env.riotApiKey,
+        region: updated.region,
+        riotId: updated.riotId,
+        tagLine: updated.tagLine,
+        rankPreference: updated.rankPreference,
+        matchCount: 5,
+      });
+
+      leagueSnapshots.set(session.sub, sync);
+
+      return c.json({
+        connected: true,
+        connection: updated,
+        sync,
+        message: `Synk klar. Hämtade ${sync.recentMatches.length} matcher från Riot API.`,
+      });
+    } catch (error) {
+      if (error instanceof RiotApiError) {
+        return respondWithRiotError(c, error);
+      }
+
+      console.error("League sync failed", error);
+      return c.json(
+        {
+          error: "Okänt fel vid League-synk.",
+          code: "league_sync_failed",
+        },
+        500,
+      );
+    }
   });
 
   app.post("/api/integrations/league/disconnect", async (c) => {
@@ -322,8 +442,144 @@ function createApp(env: AppEnv) {
       return c.json({ error: "Unauthorized" }, 401);
     }
 
+    upsertProfileFromSession(session);
     leagueConnections.delete(session.sub);
+    leagueSnapshots.delete(session.sub);
+    setProfileLeague(session.sub, null);
     return c.json({ connected: false });
+  });
+
+  app.get("/api/public/profile/:userId", (c) => {
+    const userId = c.req.param("userId");
+    if (!DISCORD_SNOWFLAKE_RE.test(userId)) {
+      return c.json({ error: "Invalid user id", code: "invalid_user_id" }, 400);
+    }
+
+    const profile = getPublicProfile(userId, {
+      leagueSnapshot: leagueSnapshots.get(userId) ?? null,
+    });
+    if (!profile) {
+      return c.json({ error: "Profile not found", code: "profile_not_found" }, 404);
+    }
+
+    return c.json(profile);
+  });
+
+  app.all("/api/discord/*", async (c) => {
+    const token = getCookie(c, COOKIE_NAME);
+    if (!token) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    const session = await verifySession(env.sessionSecret, token);
+    if (!session) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    const star = extractProxySuffix(c.req.path, "/api/discord");
+    if (star === null || star === "") {
+      return c.json({ error: "Missing path" }, 400);
+    }
+    return proxyUserDiscordApi(c, env, session, star);
+  });
+
+  app.all("/api/bot/discord/*", async (c) => {
+    const token = getCookie(c, COOKIE_NAME);
+    if (!token) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    const session = await verifySession(env.sessionSecret, token);
+    if (!session) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    const star = extractProxySuffix(c.req.path, "/api/bot/discord");
+    if (star === null || star === "") {
+      return c.json({ error: "Missing path" }, 400);
+    }
+    return proxyBotDiscordApi(c, env, star);
+  });
+
+  app.get("/api/bot/guild/:id/summary", async (c) => {
+    const token = getCookie(c, COOKIE_NAME);
+    if (!token) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    const session = await verifySession(env.sessionSecret, token);
+    if (!session) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    const guildId = c.req.param("id");
+    if (!DISCORD_SNOWFLAKE_RE.test(guildId)) {
+      return c.json({ error: "Invalid guild id", code: "invalid_guild_id" }, 400);
+    }
+    const access = await assertBotGuildAccess(env, session.sub, guildId);
+    if (!access.ok) {
+      return c.json(access.body, access.status);
+    }
+    const r = await fetchGuildSummary(env.discordBotToken!, guildId);
+    if (!r.ok) {
+      const e = r.error;
+      const status =
+        e.status === 404 ? 404 : e.status === 403 ? 403 : e.status === 504 ? 504 : 502;
+      return c.json({ error: e.message, code: e.code }, status);
+    }
+    return c.json(r.summary);
+  });
+
+  app.get("/api/bot/live/health", async (c) => {
+    const token = getCookie(c, COOKIE_NAME);
+    if (!token) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    const session = await verifySession(env.sessionSecret, token);
+    if (!session) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    const rt = getGatewayRuntime();
+    if (!rt) {
+      return c.json({
+        gateway_connected: false,
+        last_heartbeat_ack_at: null,
+        last_dispatch_at: null,
+        guilds_subscribed: env.discordGatewayGuildIds,
+        reconnect_attempt: 0,
+        intents: env.discordGatewayIntents,
+        degraded: true,
+        degraded_reason:
+          "Gateway not running — set DISCORD_BOT_TOKEN and non-empty DISCORD_GATEWAY_GUILD_IDS",
+      });
+    }
+    return c.json(rt.getHealth());
+  });
+
+  app.get("/api/bot/live/guild/:id", async (c) => {
+    const token = getCookie(c, COOKIE_NAME);
+    if (!token) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    const session = await verifySession(env.sessionSecret, token);
+    if (!session) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    const guildId = c.req.param("id");
+    if (!DISCORD_SNOWFLAKE_RE.test(guildId)) {
+      return c.json({ error: "Invalid guild id", code: "invalid_guild_id" }, 400);
+    }
+    const access = await assertBotGuildAccess(env, session.sub, guildId);
+    if (!access.ok) {
+      return c.json(access.body, access.status);
+    }
+    const rt = getGatewayRuntime();
+    if (!rt) {
+      return c.json({
+        guild_id: guildId,
+        gateway_connected: false,
+        gateway_degraded: true,
+        gateway_degraded_reason:
+          "Gateway not running — set DISCORD_BOT_TOKEN and DISCORD_GATEWAY_GUILD_IDS",
+        last_event_at: null,
+        voice_users: [],
+      });
+    }
+    return c.json(rt.getGuildLive(guildId));
   });
 
   return app;
@@ -346,15 +602,53 @@ loadDotenv({
   override: true,
 });
 
-const env = loadEnv();
-const app = createApp(env);
+function shutdownGateway(): void {
+  getGatewayRuntime()?.stop();
+}
 
-serve(
-  {
-    fetch: app.fetch,
-    port: env.port,
-  },
-  (info) => {
-    console.log(`discord-hub-api listening on http://127.0.0.1:${info.port}`);
-  },
-);
+async function shutdownAndExit(code: number): Promise<void> {
+  shutdownGateway();
+  await closeDb();
+  process.exit(code);
+}
+
+async function main(): Promise<void> {
+  const env = loadEnv();
+  initDb(env);
+  if (env.databaseUrl) {
+    try {
+      await verifyDbConnection();
+      console.log("discord-hub-api: Postgres connection OK");
+    } catch (e) {
+      console.error(
+        "discord-hub-api: DATABASE_URL is set but Postgres is not reachable. Check network, firewall, and credentials.",
+      );
+      throw e;
+    }
+  }
+
+  const app = createApp(env);
+  startDiscordGateway(env);
+
+  process.once("SIGINT", () => {
+    void shutdownAndExit(0);
+  });
+  process.once("SIGTERM", () => {
+    void shutdownAndExit(0);
+  });
+
+  serve(
+    {
+      fetch: app.fetch,
+      port: env.port,
+    },
+    (info) => {
+      console.log(`discord-hub-api listening on http://127.0.0.1:${info.port}`);
+    },
+  );
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

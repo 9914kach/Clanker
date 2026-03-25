@@ -7,6 +7,77 @@
 
 @import "@clanker/ui/shadcn-theme.css";
 
+@keyframes hub-live-ticker-marquee {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+
+  to {
+    transform: translate3d(calc(-50% - (var(--hub-live-gap, 0.9rem) / 2)), 0, 0);
+  }
+}
+
+.hub-live-ticker-track {
+  animation: hub-live-ticker-marquee 52s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hub-live-ticker-track {
+    animation: none;
+    transform: none;
+  }
+}
+
+/* Edge fades for hub ticker: wide multi-stop oklab blend (avoids banding from mask + short two-stop gradients). */
+.hub-live-ticker-wrap {
+  position: relative;
+  isolation: isolate;
+}
+
+.hub-live-ticker-wrap::before,
+.hub-live-ticker-wrap::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 10;
+  width: min(4rem, 24%);
+  pointer-events: none;
+}
+
+.hub-live-ticker-wrap[data-compact="true"]::before,
+.hub-live-ticker-wrap[data-compact="true"]::after {
+  width: min(3.25rem, 22%);
+}
+
+.hub-live-ticker-wrap::before {
+  left: 0;
+  background: linear-gradient(
+    90deg,
+    var(--background) 0%,
+    color-mix(in oklab, var(--background) 94%, transparent) 22%,
+    color-mix(in oklab, var(--background) 78%, transparent) 42%,
+    color-mix(in oklab, var(--background) 52%, transparent) 58%,
+    color-mix(in oklab, var(--background) 28%, transparent) 74%,
+    color-mix(in oklab, var(--background) 10%, transparent) 88%,
+    transparent 100%
+  );
+}
+
+.hub-live-ticker-wrap::after {
+  right: 0;
+  background: linear-gradient(
+    270deg,
+    var(--background) 0%,
+    color-mix(in oklab, var(--background) 94%, transparent) 22%,
+    color-mix(in oklab, var(--background) 78%, transparent) 42%,
+    color-mix(in oklab, var(--background) 52%, transparent) 58%,
+    color-mix(in oklab, var(--background) 28%, transparent) 74%,
+    color-mix(in oklab, var(--background) 10%, transparent) 88%,
+    transparent 100%
+  );
+}
+
 code {
   @apply rounded-md bg-muted px-1.5 py-0.5 text-sm text-primary;
 }
