@@ -29,7 +29,7 @@ Kopiera [`.env.example`](./.env.example) till **repo-roten** `.env` och/eller `a
 | `DISCORD_GATEWAY_INTENTS` | Valfritt. `minimal` (bara GUILDS), `voice` (GUILDS + GUILD_VOICE_STATES, standard), `presence` (inkl. GUILD_PRESENCES, **privileged**), eller decimalt bitmask. Se [Gateway intents](https://discord.com/developers/docs/topics/gateway#gateway-intents). |
 | `DISCORD_TOKEN_ENCRYPTION_KEY` | Valfritt. Minst 32 UTF-8 byte; dedikerad nyckel för krypterad OAuth-cookie (`discord_oauth_tokens`). |
 | `PORT` | Valfritt, standard `3001` (ska matcha Vite-proxyn i `discord-hub-web`). |
-| `DATABASE_URL` | Valfritt. `postgresql://…` eller `postgres://…`. Om satt ansluter API:t vid start och kör `SELECT 1`; misslyckad anslutning stoppar processen. Profil-/League-data ligger fortfarande i minne tills migrering till DB sker. Se rot-`.env.example` och [docker.md](../../docs/docker.md#postgresql-på-workstation-lan). |
+| `DATABASE_URL` | `postgresql://…` eller `postgres://…`. Krävs för Postgres-persistens. API:t verifierar anslutningen vid start. Se rot-`.env.example` och [docker.md](../../docs/docker.md#postgresql-på-workstation-lan). |
 
 ## Discord-applikation och bot (Fas 0 — drift)
 
@@ -140,7 +140,23 @@ Discord-svar via generisk bot-proxy returneras med samma statuskropp; relevanta 
 
 När en synkad Riot-snapshot finns i minnet för användaren är `stats.league` i stället `available: true`, `source: "riot_sync"` och innehåller bland annat `fetchedAt`, `preferredRank`, `leagueEntries`, `recentMatches` och `account` (utan `puuid`). Utan kopplat League-konto är `source: "not_configured"`.
 
-Profilerna byggs upp i minnet när användaren loggar in, hämtar `GET /api/auth/me`, eller kopplar sitt League-konto. Det gör första versionen snabb att bygga vidare på, men den saknar persistens över omstarter.
+### Persistens och migrationer
+
+Profilidentitet/visibilitet, League-koppling och senaste Riot-snapshot lagras i **PostgreSQL** när `DATABASE_URL` är satt.
+
+Migrationer ligger under `apps/discord-hub-api/migrations/` och körs med:
+
+```bash
+npm run migrate -w discord-hub-api
+```
+
+Efter en lyckad migrering:
+
+- `profiles` innehåller Discord-identitet + visibility.
+- `league_connections` innehåller Riot ID, region m.m.
+- `league_snapshots` innehåller senaste snapshot som JSONB.
+
+API-hanterare uppdaterar tabellerna automatiskt: inloggning uppdaterar profilen; connect/sync/disconnect hanterar League-data. Publik profil (`GET /api/public/profile/:userId`) byggs från databasen.
 
 ## Riot / League policy
 

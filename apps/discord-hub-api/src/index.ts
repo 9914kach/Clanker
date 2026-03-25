@@ -25,19 +25,22 @@ import {
 } from "./discord-gateway.js";
 import type { AppEnv } from "./env.js";
 import { loadEnv } from "./env.js";
-import {
-  getPublicProfile,
-  setProfileLeague,
-  upsertProfileFromSession,
-} from "./profile-store.js";
+import { getPublicProfile, upsertProfileFromSession } from "./profile-store.js";
 import {
   RiotApiError,
   fetchLeaguePlayerSnapshot,
-  type LeaguePlayerSnapshot,
   type LeagueRankPreference,
   type LeagueRegion,
 } from "./riot-lol.js";
 import { closeDb, initDb, verifyDbConnection } from "./db.js";
+import {
+  deleteLeagueConnection,
+  deleteLeagueSnapshot,
+  getLeagueConnection,
+  getLeagueSnapshot,
+  upsertLeagueConnection,
+  upsertLeagueSnapshot,
+} from "./repo.js";
 import { COOKIE_NAME, verifySession, type SessionPayload } from "./session.js";
 
 const STATE_COOKIE = "discord_oauth_state";
@@ -54,9 +57,6 @@ type LeagueConnection = {
   linkedAt: string;
   lastSyncRequestedAt: string | null;
 };
-
-const leagueConnections = new Map<string, LeagueConnection>();
-const leagueSnapshots = new Map<string, LeaguePlayerSnapshot>();
 
 function secureCookie(env: AppEnv): boolean {
   return env.nodeEnv === "production";
@@ -261,11 +261,7 @@ function createApp(env: AppEnv) {
       banner: session.banner,
       accent_color: session.accent_color,
     };
-    upsertProfileFromSession(session);
-    const existingLeagueConnection = leagueConnections.get(session.sub);
-    if (existingLeagueConnection) {
-      setProfileLeague(session.sub, existingLeagueConnection);
-    }
+    await upsertProfileFromSession(session);
 
     const resolved = await resolveUserDiscordTokens(c, env, session);
     if (!resolved.ok) {
@@ -323,8 +319,21 @@ function createApp(env: AppEnv) {
       return c.json({ error: "Unauthorized" }, 401);
     }
 
-    const connection = leagueConnections.get(session.sub) ?? null;
-    const sync = leagueSnapshots.get(session.sub) ?? null;
+    const dbConn = await getLeagueConnection(session.sub);
+    const connection =
+      dbConn === null
+        ? null
+        : {
+            riotId: dbConn.riot_id,
+            tagLine: dbConn.tag_line,
+            region: dbConn.region,
+            autoSync: dbConn.auto_sync,
+            rankPreference: dbConn.rank_preference,
+            statusMessage: dbConn.status_message,
+            linkedAt: dbConn.linked_at,
+            lastSyncRequestedAt: dbConn.last_sync_requested_at,
+          };
+    const sync = await getLeagueSnapshot(session.sub);
     return c.json({ connected: connection !== null, connection, sync });
   });
 
@@ -358,10 +367,18 @@ function createApp(env: AppEnv) {
       lastSyncRequestedAt: null,
     };
 
-    upsertProfileFromSession(session);
-    leagueConnections.set(session.sub, connection);
-    leagueSnapshots.delete(session.sub);
-    setProfileLeague(session.sub, connection);
+    await upsertProfileFromSession(session);
+    await upsertLeagueConnection(session.sub, {
+      riot_id: connection.riotId,
+      tag_line: connection.tagLine,
+      region: connection.region,
+      auto_sync: connection.autoSync,
+      rank_preference: connection.rankPreference,
+      status_message: connection.statusMessage,
+      linked_at: connection.linkedAt,
+      last_sync_requested_at: connection.lastSyncRequestedAt,
+    });
+    await deleteLeagueSnapshot(session.sub);
 
     return c.json({
       connected: true,
@@ -377,7 +394,19 @@ function createApp(env: AppEnv) {
       return c.json({ error: "Unauthorized" }, 401);
     }
 
-    const connection = leagueConnections.get(session.sub);
+    const dbConn = await getLeagueConnection(session.sub);
+    const connection = dbConn
+      ? ({
+          riotId: dbConn.riot_id,
+          tagLine: dbConn.tag_line,
+          region: dbConn.region,
+          autoSync: dbConn.auto_sync,
+          rankPreference: dbConn.rank_preference,
+          statusMessage: dbConn.status_message,
+          linkedAt: dbConn.linked_at,
+          lastSyncRequestedAt: dbConn.last_sync_requested_at,
+        } satisfies LeagueConnection)
+      : null;
     if (!connection) {
       return c.json({ error: "No linked League account" }, 404);
     }
@@ -398,9 +427,17 @@ function createApp(env: AppEnv) {
       lastSyncRequestedAt: new Date().toISOString(),
     };
 
-    leagueConnections.set(session.sub, updated);
-    upsertProfileFromSession(session);
-    setProfileLeague(session.sub, updated);
+    await upsertProfileFromSession(session);
+    await upsertLeagueConnection(session.sub, {
+      riot_id: updated.riotId,
+      tag_line: updated.tagLine,
+      region: updated.region,
+      auto_sync: updated.autoSync,
+      rank_preference: updated.rankPreference,
+      status_message: updated.statusMessage,
+      linked_at: updated.linkedAt,
+      last_sync_requested_at: updated.lastSyncRequestedAt,
+    });
 
     try {
       const sync = await fetchLeaguePlayerSnapshot({
@@ -412,7 +449,7 @@ function createApp(env: AppEnv) {
         matchCount: 5,
       });
 
-      leagueSnapshots.set(session.sub, sync);
+      await upsertLeagueSnapshot(session.sub, sync);
 
       return c.json({
         connected: true,
@@ -442,22 +479,19 @@ function createApp(env: AppEnv) {
       return c.json({ error: "Unauthorized" }, 401);
     }
 
-    upsertProfileFromSession(session);
-    leagueConnections.delete(session.sub);
-    leagueSnapshots.delete(session.sub);
-    setProfileLeague(session.sub, null);
+    await upsertProfileFromSession(session);
+    await deleteLeagueConnection(session.sub);
+    await deleteLeagueSnapshot(session.sub);
     return c.json({ connected: false });
   });
 
-  app.get("/api/public/profile/:userId", (c) => {
+  app.get("/api/public/profile/:userId", async (c) => {
     const userId = c.req.param("userId");
     if (!DISCORD_SNOWFLAKE_RE.test(userId)) {
       return c.json({ error: "Invalid user id", code: "invalid_user_id" }, 400);
     }
 
-    const profile = getPublicProfile(userId, {
-      leagueSnapshot: leagueSnapshots.get(userId) ?? null,
-    });
+    const profile = await getPublicProfile(userId);
     if (!profile) {
       return c.json({ error: "Profile not found", code: "profile_not_found" }, 404);
     }

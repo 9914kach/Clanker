@@ -1,5 +1,11 @@
 import type { LeaguePlayerSnapshot } from "./riot-lol.js";
 import type { SessionPayload } from "./session.js";
+import {
+  getLeagueConnection,
+  getLeagueSnapshot,
+  getProfileById,
+  upsertProfileFromSession as repoUpsertProfileFromSession,
+} from "./repo.js";
 
 export type PublicLeagueProfile = {
   riotId: string;
@@ -79,95 +85,47 @@ export function buildPublicLeagueStats(
 
 type ProfileVisibility = "public" | "private";
 
-type ProfileRecord = {
-  user: PublicProfileDTO["user"];
-  league: PublicLeagueProfile | null;
-  visibility: ProfileVisibility;
-};
-
-type LeagueConnectionLike = {
-  riotId: string;
-  tagLine: string;
-  region: PublicLeagueProfile["region"];
-  linkedAt: string;
-  lastSyncRequestedAt: string | null;
-};
-
-const profileByUserId = new Map<string, ProfileRecord>();
-
-function toUserProfile(session: SessionPayload): PublicProfileDTO["user"] {
-  return {
-    id: session.sub,
-    username: session.username,
-    global_name: session.global_name,
-    avatar: session.avatar,
-    banner: session.banner,
-    accent_color: session.accent_color,
-  };
-}
-
-function toPublicLeagueProfile(
-  connection: LeagueConnectionLike | null,
-): PublicLeagueProfile | null {
-  if (!connection) {
-    return null;
-  }
-
-  return {
-    riotId: connection.riotId,
-    tagLine: connection.tagLine,
-    region: connection.region,
-    linkedAt: connection.linkedAt,
-    lastSyncRequestedAt: connection.lastSyncRequestedAt,
-  };
-}
-
-export function upsertProfileFromSession(
+export async function upsertProfileFromSession(
   session: SessionPayload,
   visibility: ProfileVisibility = "public",
-): void {
-  const existing = profileByUserId.get(session.sub);
-  profileByUserId.set(session.sub, {
-    user: toUserProfile(session),
-    league: existing?.league ?? null,
-    visibility: existing?.visibility ?? visibility,
-  });
+): Promise<void> {
+  await repoUpsertProfileFromSession(session, visibility);
 }
 
-export function setProfileLeague(
+export async function getPublicProfile(
   userId: string,
-  connection: LeagueConnectionLike | null,
-): void {
-  const existing = profileByUserId.get(userId);
-  if (!existing) {
-    return;
-  }
-
-  profileByUserId.set(userId, {
-    ...existing,
-    league: toPublicLeagueProfile(connection),
-  });
-}
-
-export function getPublicProfile(
-  userId: string,
-  options?: { leagueSnapshot: LeaguePlayerSnapshot | null },
-): PublicProfileDTO | null {
-  const record = profileByUserId.get(userId);
-  if (!record || record.visibility !== "public") {
+): Promise<PublicProfileDTO | null> {
+  const profile = await getProfileById(userId);
+  if (!profile || profile.visibility !== "public") {
     return null;
   }
-
-  const leagueSnapshot = options?.leagueSnapshot ?? null;
+  const connection = await getLeagueConnection(userId);
+  const league: PublicLeagueProfile | null = connection
+    ? {
+        riotId: connection.riot_id,
+        tagLine: connection.tag_line,
+        region: connection.region,
+        linkedAt: connection.linked_at,
+        lastSyncRequestedAt: connection.last_sync_requested_at,
+      }
+    : null;
+  const snapshot = await getLeagueSnapshot(userId);
 
   return {
-    user: record.user,
+    user: {
+      id: profile.user_id,
+      username: profile.username,
+      global_name: profile.global_name,
+      avatar: profile.avatar,
+      banner: profile.banner,
+      accent_color: profile.accent_color,
+    },
     integrations: {
-      league: record.league,
+      league,
       steam: null,
     },
     stats: {
-      league: buildPublicLeagueStats(record.league, leagueSnapshot),
+      league: buildPublicLeagueStats(league, snapshot),
     },
   };
 }
