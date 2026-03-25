@@ -7,20 +7,32 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AppEnv } from "./env.js";
 import { loadEnv } from "./env.js";
-import { COOKIE_NAME, signSession, verifySession } from "./session.js";
+import { COOKIE_NAME, signSession, verifySession, type SessionPayload } from "./session.js";
 
 const STATE_COOKIE = "discord_oauth_state";
 const STATE_MAX_AGE = 600;
 const SESSION_MAX_AGE = 60 * 60 * 24 * 7;
 
+type LeagueRegion = "EUW" | "EUNE" | "NA" | "KR" | "BR";
+
+type LeagueConnection = {
+  riotId: string;
+  tagLine: string;
+  region: LeagueRegion;
+  autoSync: boolean;
+  rankPreference: "solo" | "flex";
+  statusMessage: string;
+  linkedAt: string;
+  lastSyncRequestedAt: string | null;
+};
+
+const leagueConnections = new Map<string, LeagueConnection>();
+
 function secureCookie(env: AppEnv): boolean {
   return env.nodeEnv === "production";
 }
 
-function discordAuthorizeUrl(
-  env: AppEnv,
-  state: string,
-): string {
+function discordAuthorizeUrl(env: AppEnv, state: string): string {
   const params = new URLSearchParams({
     client_id: env.discordClientId,
     redirect_uri: env.discordRedirectUri,
@@ -91,6 +103,67 @@ async function fetchDiscordMe(accessToken: string): Promise<DiscordUser> {
   return normalizeDiscordUser(raw);
 }
 
+function parseLeagueRegion(value: unknown): LeagueRegion | null {
+  if (
+    value === "EUW" ||
+    value === "EUNE" ||
+    value === "NA" ||
+    value === "KR" ||
+    value === "BR"
+  ) {
+    return value;
+  }
+  return null;
+}
+
+function parseLeaguePayload(raw: unknown): {
+  riotId: string;
+  tagLine: string;
+  region: LeagueRegion;
+  autoSync: boolean;
+  rankPreference: "solo" | "flex";
+  statusMessage: string;
+} | null {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+
+  const payload = raw as Record<string, unknown>;
+  const riotId = typeof payload.riotId === "string" ? payload.riotId.trim() : "";
+  const tagLine =
+    typeof payload.tagLine === "string"
+      ? payload.tagLine.trim().replace(/^#/, "")
+      : "";
+  const region = parseLeagueRegion(payload.region);
+  const autoSync = payload.autoSync === true;
+  const rankPreference = payload.rankPreference === "flex" ? "flex" : "solo";
+  const statusMessage =
+    typeof payload.statusMessage === "string" ? payload.statusMessage.trim() : "";
+
+  if (!riotId || !tagLine || !region) {
+    return null;
+  }
+
+  return {
+    riotId,
+    tagLine,
+    region,
+    autoSync,
+    rankPreference,
+    statusMessage,
+  };
+}
+
+async function requireSession(
+  env: AppEnv,
+  token: string | undefined,
+): Promise<SessionPayload | null> {
+  if (!token) {
+    return null;
+  }
+  return verifySession(env.sessionSecret, token);
+}
+
 function createApp(env: AppEnv) {
   const app = new Hono();
 
@@ -149,11 +222,7 @@ function createApp(env: AppEnv) {
   });
 
   app.get("/api/auth/me", async (c) => {
-    const token = getCookie(c, COOKIE_NAME);
-    if (!token) {
-      return c.json({ error: "Unauthorized" }, 401);
-    }
-    const session = await verifySession(env.sessionSecret, token);
+    const session = await requireSession(env, getCookie(c, COOKIE_NAME));
     if (!session) {
       return c.json({ error: "Unauthorized" }, 401);
     }
@@ -170,6 +239,91 @@ function createApp(env: AppEnv) {
   app.post("/api/auth/logout", (c) => {
     deleteCookie(c, COOKIE_NAME, { path: "/" });
     return c.body(null, 204);
+  });
+
+  app.get("/api/integrations/league/status", async (c) => {
+    const session = await requireSession(env, getCookie(c, COOKIE_NAME));
+    if (!session) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    const connection = leagueConnections.get(session.sub) ?? null;
+    return c.json({ connected: connection !== null, connection });
+  });
+
+  app.post("/api/integrations/league/connect", async (c) => {
+    const session = await requireSession(env, getCookie(c, COOKIE_NAME));
+    if (!session) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    let rawPayload: unknown;
+    try {
+      rawPayload = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid JSON" }, 400);
+    }
+
+    const parsed = parseLeaguePayload(rawPayload);
+    if (!parsed) {
+      return c.json(
+        {
+          error:
+            "Ogiltig payload. Kräver riotId, tagLine och region (EUW/EUNE/NA/KR/BR).",
+        },
+        400,
+      );
+    }
+
+    const connection: LeagueConnection = {
+      ...parsed,
+      linkedAt: new Date().toISOString(),
+      lastSyncRequestedAt: null,
+    };
+
+    leagueConnections.set(session.sub, connection);
+
+    return c.json({
+      connected: true,
+      connection,
+      message:
+        "League-koppling sparad. Nästa steg är att ansluta Riot API och hämta match/rank-data.",
+    });
+  });
+
+  app.post("/api/integrations/league/sync", async (c) => {
+    const session = await requireSession(env, getCookie(c, COOKIE_NAME));
+    if (!session) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    const connection = leagueConnections.get(session.sub);
+    if (!connection) {
+      return c.json({ error: "No linked League account" }, 404);
+    }
+
+    const updated: LeagueConnection = {
+      ...connection,
+      lastSyncRequestedAt: new Date().toISOString(),
+    };
+
+    leagueConnections.set(session.sub, updated);
+
+    return c.json({
+      connected: true,
+      connection: updated,
+      message: "Synk förberedd. Koppla in Riot API-klient i nästa steg.",
+    });
+  });
+
+  app.post("/api/integrations/league/disconnect", async (c) => {
+    const session = await requireSession(env, getCookie(c, COOKIE_NAME));
+    if (!session) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    leagueConnections.delete(session.sub);
+    return c.json({ connected: false });
   });
 
   return app;
