@@ -2,9 +2,9 @@
 
 Den här genomgången beskriver hur nätet ser ut utifrån det som finns i repot och den lokala konfig som gick att verifiera. Den är skriven för att kunna delas med någon som vill förstå hur ditt homelab fungerar idag.
 
-## Live-läge på denna PC
+## Verifierat från denna PC
 
-Det som faktiskt gick att verifiera i terminal på den här maskinen när dokumentet togs fram:
+Det som faktiskt gick att verifiera från din PC när dokumentet togs fram:
 
 - `docker compose ps` visar att `clanker-db` och `clanker-pihole` kör just nu.
 - `clanker-pihole` är `healthy`.
@@ -13,8 +13,23 @@ Det som faktiskt gick att verifiera i terminal på den här maskinen när dokume
 - Den levande Pi-hole-containern har `dhcp.active = false`.
 - Den levande Pi-hole-containern har webbport `8080`.
 - Den levande Pi-hole-containern har fortfarande `etc_dnsmasq_d = false`, så extra filer i `/etc/dnsmasq.d/` ser inte ut att vara aktiverade i nuvarande live-konfig.
+- `http://192.168.0.2:8080/admin/login` svarar med HTTP `200`.
+- `http://192.168.0.2:8080/admin/settings/dhcp` svarar med HTTP `200`.
+- `http://clanker.pihole/admin/login` svarar också med HTTP `200`.
+- `http://clanker.discord` svarar med HTTP `200`.
+- `http://clanker.tools` svarar med HTTP `200`.
+- `http://dev.clanker.discord` svarar med HTTP `200`.
+- `http://dev.clanker.tools` svarar, men med HTTP `403`, alltså inte den förväntade app-sidan just nu.
+- `192.168.0.2:22` svarar på SSH från din PC.
+- Alla hostnamnen `clanker.pihole`, `clanker.discord`, `clanker.tools`, `dev.clanker.discord` och `dev.clanker.tools` resolve:ar på din PC till `127.0.0.1`.
 
-Det här är viktigt, eftersom det betyder att repots dokumentation och den verkliga körande containern inte är helt identiska på alla punkter, särskilt för upstream-DNS.
+Det här är viktigt, eftersom det finns två separata perspektiv i din miljö:
+
+- en lokal Docker-miljö på PC:n som går att inspektera direkt med `docker exec`
+- den faktiska Raspberryn i nätet, som du når via `192.168.0.2` och `clanker.pihole`
+- lokala hostnamn på din PC som i praktiken resolve:ar till `127.0.0.1` och går via Caddy
+
+För nätverksrundownen är Raspberryn och de adresser som klienterna faktiskt använder viktigast.
 
 ## Kort version
 
@@ -63,6 +78,19 @@ Pi-hole är nätets DNS-filter och kör i containern `clanker-pihole`. Den anvä
 - Pi-hole delar inte Docker bridge-nät med de andra tjänsterna, utan beter sig mer som en host-process.
 
 Det gör Pi-hole lämplig som central DNS för klienterna i LAN:et.
+
+### Pi-hole-URL:er som är verifierade från din PC
+
+Följande adresser går till Pi-hole:
+
+- `http://192.168.0.2:8080/admin/login`
+- `http://192.168.0.2:8080/admin/settings/dhcp`
+- `http://clanker.pihole/admin/login`
+
+Tolkning:
+
+- `192.168.0.2:8080` är den direkta adressen till Pi-hole-admin på Raspberryn.
+- `clanker.pihole` resolve:ar till `127.0.0.1` på din PC och går via Caddy, men leder fortfarande till Pi-hole-admin.
 
 ### Caddy
 
@@ -122,16 +150,26 @@ Så om du beskriver nuläget för någon annan bör du säga att den levande mil
 
 ## DHCP: vad som går att säga säkert
 
-Det finns två konkurrerande signaler i repot:
+Det finns flera signaler här, och de säger inte exakt samma sak:
 
 - `pihole/etc-pihole/pihole.toml` säger att Pi-holes DHCP är avstängt: `dhcp.active = false`.
 - Den genererade `pihole/etc-pihole/dnsmasq.conf` innehåller fortfarande DHCP-rader med range `192.168.0.150-192.168.0.249` och router `192.168.0.1`.
+- Pi-hole-UI-bilden visar att DHCP är aktiverat i den Pi-hole-instans du tittar på, med:
+  - range `192.168.0.150` till `192.168.0.249`
+  - router `192.168.0.1`
+  - netmask automatisk
+  - IPv6-stöd av
+  - rapid commit av
+  - advertise DNS server multiple times av
+  - ignore unknown DHCP clients av
 
-Den säkraste tolkningen är därför:
+Den mest rimliga tolkningen just nu är därför:
 
 - Repo:t visar att Pi-hole kan användas som DHCP-server.
-- Den aktuella checkade huvudkonfigurationen säger att DHCP just nu inte ska vara aktiv.
-- De gamla DHCP-raderna i `dnsmasq.conf` ser ut som tidigare eller genererade rester och ska inte ensam användas som sanning för nuvarande läge.
+- UI:t för den Pi-hole du faktiskt använder i nätet visar att DHCP är aktiverat.
+- De checkade filerna i repo:t verkar inte helt spegla den Raspberry-instans som klienterna faktiskt pratar med.
+
+Om du ska beskriva nuläget för din kompis är det därför bättre att säga att Pi-hole i praktiken verkar dela ut DHCP i nätet, och att DHCP-poolen enligt UI:t är `192.168.0.150-192.168.0.249` med gateway `192.168.0.1`.
 
 ### Viktig reservation om fallback-DNS
 
@@ -178,12 +216,22 @@ Så här ska det förstås:
 - `clanker.pihole` är bara en proxy till Pi-holes webb-UI på hostens port 8080.
 - `dev.clanker.*` är dev-namn som Caddy skickar till Vite på samma värd.
 
-För att detta ska fungera måste namnen resolve:a till den adress där Caddy lyssnar. Dokumentationen nämner två vanliga sätt:
+Från din PC är detta nu verifierat:
 
-- DNS i nätet pekar namnen mot Pi:n.
-- eller klientens `hosts`-fil pekar namnen mot rätt IP.
+- `clanker.pihole` -> `127.0.0.1`
+- `clanker.discord` -> `127.0.0.1`
+- `clanker.tools` -> `127.0.0.1`
+- `dev.clanker.discord` -> `127.0.0.1`
+- `dev.clanker.tools` -> `127.0.0.1`
 
-Repo:t visar däremot inga definitiva lokala DNS-records för just `clanker.discord` eller `clanker.pihole`, så exakt hur namnen löses i ditt nät behöver verifieras live.
+Det betyder att hostnamnen på just din PC inte pekar direkt på Raspberryns LAN-IP, utan på en lokal lyssnare som sedan proxar vidare. Headers från `curl -I` visar `Via: 1.1 Caddy`, så Caddy är faktiskt inblandad i svaren för dessa hostnamn.
+
+Det som också är verifierat från din PC:
+
+- `http://clanker.discord` ger `200 OK` via `nginx` bakom Caddy.
+- `http://clanker.tools` ger `200 OK` via `nginx` bakom Caddy.
+- `http://dev.clanker.discord` ger `200 OK` via Caddy.
+- `http://dev.clanker.tools` ger `403 Forbidden` via Caddy just nu, så den adressen finns men serverar inte rätt innehåll i nuläget.
 
 ## Hur trafikflödena ser ut i praktiken
 
@@ -198,6 +246,10 @@ Repo:t visar däremot inga definitiva lokala DNS-records för just `clanker.disc
 ### 3. Pi-hole admin via Caddy
 
 `Klient -> http://clanker.pihole -> Caddy -> host.docker.internal:8080 -> Pi-hole webserver`
+
+### 3a. DHCP-inställningar direkt
+
+`Klient -> http://192.168.0.2:8080/admin/settings/dhcp -> Pi-hole DHCP-konfiguration`
 
 ### 4. Prod-webb via Caddy
 
@@ -236,16 +288,46 @@ När du kör dev via Caddy kan HMR behöva `VITE_HMR_CLIENT_PORT=80`, annars kan
 - Repo:t beskriver Cloudflare som upstream, men den live-körande Pi-hole-containern använder just nu Google DNS.
 - Lokal Pi-hole-domän är `lan`.
 - Din lokala `.env` öppnar Postgres mot LAN med `POSTGRES_BIND_ADDRESS=0.0.0.0`.
-- Pi-hole DHCP är avstängt i den live-körande containern.
+- Raspberryns Pi-hole-UI visar DHCP aktiverat med range `192.168.0.150-192.168.0.249`.
 - Extra `/etc/dnsmasq.d`-filer är inte aktiverade i den live-körande containern.
+- `192.168.0.2` är en fungerande adress till Raspberryn för både Pi-hole-UI och SSH från din PC.
+- Alla verifierade `clanker.*`-namn resolve:ar till `127.0.0.1` på din PC.
+- `clanker.discord`, `clanker.tools` och `dev.clanker.discord` fungerar från din PC.
+- `dev.clanker.tools` finns, men ger `403 Forbidden` i nuläget.
+- `8.8.8.8:53`, `8.8.4.4:53`, `1.1.1.1:53` och `1.0.0.1:53` svarar från din PC.
 
 ### Saker som bör verifieras live innan du presenterar dem som absoluta sanningar
 
-- Om Pi-hole faktiskt delar ut DHCP just nu.
 - Om extra filer i `etc-dnsmasq.d` verkligen används i live-miljön.
-- Om `clanker.*`-namnen löses via router, Pi-hole local DNS eller hosts-filer på klienterna.
+- Hur `clanker.*`-namnen sätts upp på andra klienter än just din PC, eftersom din PC nu är verifierad att använda `127.0.0.1` för dem.
 - Om root-volymerna `./etc-pihole` och `./etc-dnsmasq.d` på maskinen exakt motsvarar de filer som ligger under `pihole/` i git.
 - Om DNSSEC är aktivt live, eftersom docs och checkade konfigfiler inte är helt samstämmiga.
+- Om den lokala Docker-Pi-hole på PC:n alls är tänkt att vara del av samma nätbild som Raspberryns Pi-hole, eller bara är en separat utvecklings-/testinstans.
+- Varför `dev.clanker.tools` ger `403` i stället för appen just nu.
+
+## Quick guide: SSH in på Raspberryn
+
+Från din PC fungerar Raspberryn på `192.168.0.2` över SSH.
+
+Standardkommando:
+
+```bash
+ssh <ditt-pi-användarnamn>@192.168.0.2
+```
+
+Exempel om användaren heter `pi`:
+
+```bash
+ssh pi@192.168.0.2
+```
+
+Bra att känna till:
+
+- `192.168.0.2` är den direkta IP-adressen som också används för Pi-hole-admin på `:8080`.
+- `clanker.pihole` är verifierad som HTTP-adress till Pi-hole, men på just din PC resolve:ar den till `127.0.0.1` och går via lokal Caddy.
+- Dokumentet utgår från IP-adressen `192.168.0.2` för SSH eftersom det är den som är direkt verifierad för port `22`.
+- Om du vill in i DHCP-inställningarna i browsern använder du `http://192.168.0.2:8080/admin/settings/dhcp`.
+- Om du bara vill till login-sidan för Pi-hole fungerar både `http://192.168.0.2:8080/admin/login` och `http://clanker.pihole/admin/login`.
 
 ## Bra sammanfattning att ge till din kompis
 
