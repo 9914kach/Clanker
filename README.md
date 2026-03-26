@@ -7,7 +7,7 @@ Homeserver-repo för Raspberry Pi (Clanker) — skript, anteckningar och tjänst
 ## Struktur (växer efter behov)
 
 | Sökväg | Innehåll |
-|--------|----------|
+| ------ | -------- |
 | `apps/discord-hub-web/` | Frontend för **discord-hubben** (Vite + React + TS, Tailwind + shadcn + Motion) — se `apps/discord-hub-web/README.md` |
 | `apps/discord-hub-api/` | Backend för samma hub — se `apps/discord-hub-api/README.md` |
 | `apps/dev-tools-web/` | **Lokala dev-verktyg** (dokumentationsviewer m.m., separat från discord-hub; samma UI-grund som discord-hub) — **start:** se [apps/dev-tools-web/README.md](apps/dev-tools-web/README.md) (`npm run dev:tools`, eller `npm run dev:all` tillsammans med discord-hub; Docker-profil `devtools`) |
@@ -16,6 +16,7 @@ Homeserver-repo för Raspberry Pi (Clanker) — skript, anteckningar och tjänst
 | `experiments/` | Isolerade försök och engångsskript |
 | `pihole/` | Dokumentation och skript för Pi-hole (själva Compose-filen ligger i repots rot) |
 | `docs/homelab-todo.md` | Backlog / TODO för homelab (VM, domän, osv.) |
+| `docs/homelab-network-rundown.md` | Sammanfattning av nuvarande nätverk: Pi-hole, DNS/DHCP, portar, Caddy och trafikflöden |
 | `docs/docker.md` | **Docker Compose** — vanliga kommandon, profiler och exempel för Clanker |
 | `infra/caddy/` | Valfri **Caddy**-reverse proxy (HTTP, profil `caddy`) — detaljer i [docs/docker.md](docs/docker.md#caddy-reverse-proxy) |
 

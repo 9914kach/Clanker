@@ -13,9 +13,20 @@ import {
   MenubarMenu,
   MenubarTrigger,
 } from "@clanker/ui/components/menubar";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuLabel,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@clanker/ui/components/context-menu";
 import { cn } from "@clanker/ui/lib/utils";
+import HubDock from "@/components/HubDock";
 import HubLiveTicker from "@/components/HubLiveTicker";
+import { useHubToasts } from "@/components/HubToastProvider";
 import { ModeToggle } from "@/components/mode-toggle";
+import { HUB_ME_TOOL, HUB_TOOLS } from "@/config/hub-tools";
 import { apiUrl } from "@/config";
 import type { HubLayoutContextValue, HubProfile, HubSessionState } from "@/hooks/use-hub-layout";
 import { discordAvatarUrl } from "@/lib/discordCdn";
@@ -25,6 +36,7 @@ const SHOW_HUB_LIVE_TICKER = true;
 
 export default function HubLayout() {
   const navigate = useNavigate();
+  const toasts = useHubToasts();
   const [me, setMe] = useState<HubSessionState>({ status: "loading" });
   const [isCompact, setIsCompact] = useState(false);
 
@@ -93,29 +105,61 @@ export default function HubLayout() {
 
   const renderIdentity = (compact: boolean) =>
     me.status === "user" ? (
-        <NavLink
-          to={profilePath!}
-          className={cn(
-            "flex items-center rounded-lg transition-colors duration-150 hover:bg-muted",
-            compact ? "gap-2 px-1.5 py-1" : "gap-2 px-2 py-1",
-          )}
-        >
-          <Avatar size={compact ? "default" : "lg"}>
-            <AvatarImage
-              src={discordAvatarUrl(me.profile.id, me.profile.avatar, 64)}
-              alt=""
-            />
-            <AvatarFallback>
-              {(displayName ?? me.profile.username).slice(0, 2).toUpperCase()}
-            </AvatarFallback>
-          </Avatar>
-          <div className={cn("min-w-0 flex-col", compact ? "hidden lg:flex" : "hidden md:flex")}>
-            <span className="truncate text-sm font-medium">{displayName}</span>
-            <span className="truncate text-xs text-muted-foreground">
-              @{me.profile.username}
-            </span>
-          </div>
-        </NavLink>
+        <ContextMenu>
+          <ContextMenuTrigger asChild>
+            <NavLink
+              to={profilePath!}
+              className={cn(
+                "flex items-center rounded-lg transition-colors duration-150 hover:bg-muted",
+                compact ? "gap-2 px-1.5 py-1" : "gap-2 px-2 py-1",
+              )}
+              title="Right-click for system options."
+            >
+              <Avatar size={compact ? "default" : "lg"}>
+                <AvatarImage
+                  src={discordAvatarUrl(me.profile.id, me.profile.avatar, 64)}
+                  alt=""
+                />
+                <AvatarFallback>
+                  {(displayName ?? me.profile.username).slice(0, 2).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <div className={cn("min-w-0 flex-col", compact ? "hidden lg:flex" : "hidden md:flex")}>
+                <span className="truncate text-sm font-medium">{displayName}</span>
+                <span className="truncate text-xs text-muted-foreground">
+                  @{me.profile.username}
+                </span>
+              </div>
+            </NavLink>
+          </ContextMenuTrigger>
+
+          <ContextMenuContent>
+            <ContextMenuLabel>Identity</ContextMenuLabel>
+            <ContextMenuItem
+              onSelect={() => {
+                void navigator.clipboard.writeText(me.profile.id);
+                toasts.push({ kind: "info", title: "Copied", message: `Discord ID: ${me.profile.id}` });
+              }}
+            >
+              Copy Discord ID
+            </ContextMenuItem>
+            <ContextMenuItem
+              onSelect={() => {
+                void navigator.clipboard.writeText(`@${me.profile.username}`);
+                toasts.push({ kind: "info", title: "Copied", message: `@${me.profile.username}` });
+              }}
+            >
+              Copy handle
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+            <ContextMenuItem onSelect={() => navigate(profilePath!)}>Open profile</ContextMenuItem>
+            <ContextMenuItem onSelect={() => navigate("/profile/settings")}>Open settings</ContextMenuItem>
+            <ContextMenuSeparator />
+            <ContextMenuItem variant="destructive" onSelect={logout}>
+              Log out
+            </ContextMenuItem>
+          </ContextMenuContent>
+        </ContextMenu>
       ) : (
         <div className="hidden text-sm text-muted-foreground md:block">
           {me.status === "loading"
@@ -243,22 +287,21 @@ export default function HubLayout() {
                   </MenubarMenu>
 
                   <MenubarMenu>
-                    <MenubarTrigger>Verktyg</MenubarTrigger>
+                    <MenubarTrigger>Tools</MenubarTrigger>
                     <MenubarContent>
-                      <MenubarItem asChild>
-                        <Link to="/dashboard">Hubben</Link>
-                      </MenubarItem>
-                      <MenubarItem asChild>
-                        <Link to="/tools/spin-the-wheel">Spin the Wheel</Link>
-                      </MenubarItem>
+                      {HUB_TOOLS.map((tool) => (
+                        <MenubarItem key={tool.id} asChild>
+                          <Link to={tool.path}>{tool.label}</Link>
+                        </MenubarItem>
+                      ))}
                       {profilePath ? (
                         <MenubarItem asChild>
-                          <Link to="/profile/settings">Profilinställningar</Link>
+                          <Link to={profilePath}>Me</Link>
                         </MenubarItem>
                       ) : (
-                        <MenubarItem disabled>Profilinställningar</MenubarItem>
+                        <MenubarItem disabled>Me</MenubarItem>
                       )}
-                      <MenubarItem disabled>Fler verktyg kommer snart</MenubarItem>
+                      <MenubarItem disabled>More modules soon. Probably.</MenubarItem>
                     </MenubarContent>
                   </MenubarMenu>
                 </Menubar>
@@ -292,9 +335,21 @@ export default function HubLayout() {
         </div>
       </header>
 
-      <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-5 py-8">
+      <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-5 py-8 pb-28">
         <Outlet context={contextValue} />
       </main>
+
+      <HubDock
+        tools={HUB_TOOLS}
+        meTool={
+          profilePath
+            ? {
+                ...HUB_ME_TOOL,
+                path: profilePath,
+              }
+            : null
+        }
+      />
     </div>
   );
 }

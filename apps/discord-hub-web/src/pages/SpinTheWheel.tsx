@@ -2,8 +2,17 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { Button } from "@clanker/ui/components/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@clanker/ui/components/card";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuLabel,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@clanker/ui/components/context-menu";
 import { Separator } from "@clanker/ui/components/separator";
 import SpinWheel from "@/components/SpinWheel";
+import { useHubToasts } from "@/components/HubToastProvider";
 import { apiUrl } from "@/config";
 import { useHubLayout } from "@/hooks/use-hub-layout";
 import { buildTeams, makeRng, makeSeed, normalizeParticipants, pickIndex, type TeamMode } from "@/lib/spin-the-wheel";
@@ -53,9 +62,11 @@ async function readApiError(res: Response): Promise<string> {
 
 export default function SpinTheWheelPage() {
   const { me } = useHubLayout();
+  const toasts = useHubToasts();
 
   const [rawParticipants, setRawParticipants] = useState("");
   const participants = useMemo(() => normalizeParticipants(rawParticipants), [rawParticipants]);
+  const [cursedNames, setCursedNames] = useState<Set<string>>(() => new Set());
 
   const [teamCount, setTeamCount] = useState(2);
   const [teamMode, setTeamMode] = useState<TeamMode>("balanced");
@@ -103,17 +114,20 @@ export default function SpinTheWheelPage() {
     try {
       const res = await fetch(apiUrl("/api/wheel/groups"), { credentials: "include" });
       if (!res.ok) {
-        setApiError(await readApiError(res));
+        const msg = await readApiError(res);
+        setApiError(msg);
+        toasts.push({ kind: "error", title: "Couldn’t load groups", message: msg });
         return;
       }
       const data = (await res.json()) as { groups: ApiWheelGroup[] };
       setGroups(Array.isArray(data.groups) ? data.groups : []);
     } catch {
       setApiError("Kunde inte nå backend.");
+      toasts.push({ kind: "error", title: "Backend unreachable", message: "The hub API didn’t answer." });
     } finally {
       setGroupsLoading(false);
     }
-  }, []);
+  }, [toasts]);
 
   const refreshSessions = useCallback(async () => {
     setSessionsLoading(true);
@@ -122,17 +136,20 @@ export default function SpinTheWheelPage() {
         credentials: "include",
       });
       if (!res.ok) {
-        setApiError(await readApiError(res));
+        const msg = await readApiError(res);
+        setApiError(msg);
+        toasts.push({ kind: "error", title: "Couldn’t load sessions", message: msg });
         return;
       }
       const data = (await res.json()) as { sessions: ApiWheelSession[] };
       setSessions(Array.isArray(data.sessions) ? data.sessions : []);
     } catch {
       setApiError("Kunde inte nå backend.");
+      toasts.push({ kind: "error", title: "Backend unreachable", message: "The hub API didn’t answer." });
     } finally {
       setSessionsLoading(false);
     }
-  }, []);
+  }, [toasts]);
 
   useEffect(() => {
     if (me.status !== "user") return;
@@ -205,18 +222,22 @@ export default function SpinTheWheelPage() {
                 }),
               });
               if (!res.ok) {
-                setApiError(await readApiError(res));
+                const msg = await readApiError(res);
+                setApiError(msg);
+                toasts.push({ kind: "error", title: "Couldn’t save session", message: msg });
                 return;
               }
+              toasts.push({ kind: "success", title: "Session saved", message: winner ? `Winner: ${winner}` : "Teams recorded." });
               void refreshSessions();
             } catch {
               setApiError("Kunde inte nå backend.");
+              toasts.push({ kind: "error", title: "Couldn’t save session", message: "Backend unreachable." });
             }
           })();
         }
       }
     },
-    [autoSaveSessions, isReady, participants, refreshSessions, rotationDeg, seed, selectedGroupId, shuffleSalt, spinSalt, spinning, teamCount, teamMode],
+    [autoSaveSessions, isReady, participants, refreshSessions, rotationDeg, seed, selectedGroupId, shuffleSalt, spinSalt, spinning, teamCount, teamMode, toasts],
   );
 
   const onWheelAnimationComplete = useCallback(() => {
@@ -260,16 +281,20 @@ export default function SpinTheWheelPage() {
             }),
           });
           if (!res.ok) {
-            setApiError(await readApiError(res));
+            const msg = await readApiError(res);
+            setApiError(msg);
+            toasts.push({ kind: "error", title: "Couldn’t save session", message: msg });
             return;
           }
+          toasts.push({ kind: "success", title: "Session saved", message: "Teams recorded." });
           void refreshSessions();
         } catch {
           setApiError("Kunde inte nå backend.");
+          toasts.push({ kind: "error", title: "Couldn’t save session", message: "Backend unreachable." });
         }
       })();
     }
-  }, [autoSaveSessions, participants, refreshSessions, seed, selectedGroupId, shuffleSalt, teamCount, teamMode]);
+  }, [autoSaveSessions, participants, refreshSessions, seed, selectedGroupId, shuffleSalt, teamCount, teamMode, toasts]);
 
   const makeTeamsNow = useCallback(() => {
     if (participants.length === 0) return;
@@ -302,16 +327,20 @@ export default function SpinTheWheelPage() {
             }),
           });
           if (!res.ok) {
-            setApiError(await readApiError(res));
+            const msg = await readApiError(res);
+            setApiError(msg);
+            toasts.push({ kind: "error", title: "Couldn’t save session", message: msg });
             return;
           }
+          toasts.push({ kind: "success", title: "Session saved", message: "Teams recorded." });
           void refreshSessions();
         } catch {
           setApiError("Kunde inte nå backend.");
+          toasts.push({ kind: "error", title: "Couldn’t save session", message: "Backend unreachable." });
         }
       })();
     }
-  }, [autoSaveSessions, participants, refreshSessions, seed, selectedGroupId, shuffleSalt, teamCount, teamMode]);
+  }, [autoSaveSessions, participants, refreshSessions, seed, selectedGroupId, shuffleSalt, teamCount, teamMode, toasts]);
 
   const removeParticipant = useCallback(
     (name: string) => {
@@ -319,6 +348,24 @@ export default function SpinTheWheelPage() {
       setRawParticipants(next.join("\n"));
     },
     [participants],
+  );
+
+  const toggleCursed = useCallback(
+    (name: string) => {
+      setCursedNames((prev) => {
+        const next = new Set(prev);
+        const key = name.toLocaleLowerCase();
+        if (next.has(key)) {
+          next.delete(key);
+          toasts.push({ kind: "info", title: "Curse lifted", message: name });
+        } else {
+          next.add(key);
+          toasts.push({ kind: "chaos", title: "Marked as cursed", message: name });
+        }
+        return next;
+      });
+    },
+    [toasts],
   );
 
   const clearSelectedGroup = useCallback(() => {
@@ -364,15 +411,19 @@ export default function SpinTheWheelPage() {
         body: JSON.stringify({ name, participants }),
       });
       if (!res.ok) {
-        setApiError(await readApiError(res));
+        const msg = await readApiError(res);
+        setApiError(msg);
+        toasts.push({ kind: "error", title: "Couldn’t save group", message: msg });
         return;
       }
       clearSelectedGroup();
       await refreshGroups();
+      toasts.push({ kind: "success", title: "Group saved", message: name });
     } catch {
       setApiError("Kunde inte nå backend.");
+      toasts.push({ kind: "error", title: "Couldn’t save group", message: "Backend unreachable." });
     }
-  }, [clearSelectedGroup, groupName, participants, refreshGroups]);
+  }, [clearSelectedGroup, groupName, participants, refreshGroups, toasts]);
 
   const updateGroup = useCallback(async () => {
     if (!selectedGroupId) return;
@@ -386,14 +437,18 @@ export default function SpinTheWheelPage() {
         body: JSON.stringify({ name, participants }),
       });
       if (!res.ok) {
-        setApiError(await readApiError(res));
+        const msg = await readApiError(res);
+        setApiError(msg);
+        toasts.push({ kind: "error", title: "Couldn’t update group", message: msg });
         return;
       }
       await refreshGroups();
+      toasts.push({ kind: "success", title: "Group updated", message: name });
     } catch {
       setApiError("Kunde inte nå backend.");
+      toasts.push({ kind: "error", title: "Couldn’t update group", message: "Backend unreachable." });
     }
-  }, [groupName, participants, refreshGroups, selectedGroupId]);
+  }, [groupName, participants, refreshGroups, selectedGroupId, toasts]);
 
   const deleteGroup = useCallback(async (id: string) => {
     setApiError(null);
@@ -403,15 +458,19 @@ export default function SpinTheWheelPage() {
         credentials: "include",
       });
       if (!res.ok) {
-        setApiError(await readApiError(res));
+        const msg = await readApiError(res);
+        setApiError(msg);
+        toasts.push({ kind: "error", title: "Couldn’t delete group", message: msg });
         return;
       }
       if (selectedGroupId === id) clearSelectedGroup();
       await refreshGroups();
+      toasts.push({ kind: "chaos", title: "Group deleted", message: "Gone. Reduced to atoms." });
     } catch {
       setApiError("Kunde inte nå backend.");
+      toasts.push({ kind: "error", title: "Couldn’t delete group", message: "Backend unreachable." });
     }
-  }, [clearSelectedGroup, refreshGroups, selectedGroupId]);
+  }, [clearSelectedGroup, refreshGroups, selectedGroupId, toasts]);
 
   if (me.status === "loading") return <div>Laddar…</div>;
   if (me.status === "guest") return <Navigate to="/login" replace />;
@@ -462,16 +521,55 @@ export default function SpinTheWheelPage() {
               {participants.length > 0 ? (
                 <div className="flex flex-wrap gap-2">
                   {participants.map((p) => (
-                    <button
-                      key={p}
-                      type="button"
-                      onClick={() => removeParticipant(p)}
-                      className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-sm transition hover:bg-muted"
-                      title="Ta bort"
-                    >
-                      <span className="max-w-[16rem] truncate">{p}</span>
-                      <span className="text-muted-foreground">×</span>
-                    </button>
+                    <ContextMenu key={p}>
+                      <ContextMenuTrigger asChild>
+                        <button
+                          type="button"
+                          onClick={() => removeParticipant(p)}
+                          className={[
+                            "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm transition",
+                            "hover:bg-muted active:scale-[0.99]",
+                            cursedNames.has(p.toLocaleLowerCase())
+                              ? "border-warning/60 bg-warning/10"
+                              : "border-border bg-card",
+                          ].join(" ")}
+                          title="Click to remove. Right-click for more crimes."
+                        >
+                          <span className="max-w-[16rem] truncate">{p}</span>
+                          <span className="text-muted-foreground">×</span>
+                        </button>
+                      </ContextMenuTrigger>
+
+                      <ContextMenuContent>
+                        <ContextMenuLabel>Participant</ContextMenuLabel>
+                        <ContextMenuItem onSelect={() => removeParticipant(p)}>
+                          Remove
+                        </ContextMenuItem>
+                        <ContextMenuItem
+                          onSelect={() => {
+                            void navigator.clipboard.writeText(p);
+                            toasts.push({ kind: "info", title: "Copied", message: p });
+                          }}
+                        >
+                          Copy name
+                        </ContextMenuItem>
+                        <ContextMenuSeparator />
+                        <ContextMenuItem onSelect={() => toggleCursed(p)}>
+                          {cursedNames.has(p.toLocaleLowerCase()) ? "Uncurse" : "Mark as cursed"}
+                        </ContextMenuItem>
+                        <ContextMenuItem
+                          onSelect={() =>
+                            toasts.push({
+                              kind: "chaos",
+                              title: "Accusation filed",
+                              message: `${p} is now under investigation.`,
+                            })
+                          }
+                        >
+                          Accuse (ceremonial)
+                        </ContextMenuItem>
+                      </ContextMenuContent>
+                    </ContextMenu>
                   ))}
                 </div>
               ) : null}
@@ -536,7 +634,10 @@ export default function SpinTheWheelPage() {
                       type="button"
                       size="sm"
                       variant="outline"
-                      onClick={() => navigator.clipboard.writeText(seedUsed)}
+                      onClick={() => {
+                        void navigator.clipboard.writeText(seedUsed);
+                        toasts.push({ kind: "info", title: "Seed copied", message: seedUsed });
+                      }}
                     >
                       Kopiera
                     </Button>
