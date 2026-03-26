@@ -1,0 +1,48 @@
+# Syncthing ignore rules for this repo.
+# Goal: keep sync fast and avoid syncing generated / heavy / secret files.
+#
+# Syntax is similar to .gitignore. See Syncthing docs for details.
+
+# VCS
+.git/
+
+# Dependencies
+**/node_modules/
+
+# Build outputs
+**/dist/
+**/build/
+**/out/
+**/.next/
+**/.nuxt/
+**/.svelte-kit/
+
+# Tooling caches
+**/.cache/
+**/.turbo/
+**/.vite/
+**/.parcel-cache/
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+
+# Logs and temp
+**/*.log
+tmp/
+**/tmp/
+temp/
+**/temp/
+
+# OS / editor noise
+**/.DS_Store
+**/Thumbs.db
+**/*.swp
+**/*.swo
+**/*.tmp
+
+# Secrets / local env (adjust if you intentionally want these on the Pi)
+.env
+.env.*
+**/.env
+**/.env.*
+
