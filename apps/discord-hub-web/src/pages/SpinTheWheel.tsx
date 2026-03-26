@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
+import { Badge } from "@clanker/ui/components/badge";
 import { Button } from "@clanker/ui/components/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@clanker/ui/components/card";
 import {
@@ -10,11 +11,17 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@clanker/ui/components/context-menu";
+import { Input } from "@clanker/ui/components/input";
 import { Separator } from "@clanker/ui/components/separator";
+import { Switch } from "@clanker/ui/components/switch";
+import { Textarea } from "@clanker/ui/components/textarea";
+import { useHubAudio } from "@/components/HubAudioProvider";
 import SpinWheel from "@/components/SpinWheel";
 import { useHubToasts } from "@/components/HubToastProvider";
 import { apiUrl } from "@/config";
 import { useHubLayout } from "@/hooks/use-hub-layout";
+import { buildWheelCollabDraft, useWheelCollab } from "@/hooks/use-wheel-collab";
+import { normalizeWheelCollabRoom, type WheelCollabAction } from "@/lib/hub-collab";
 import { buildTeams, makeRng, makeSeed, normalizeParticipants, pickIndex, type TeamMode } from "@/lib/spin-the-wheel";
 
 type ApiWheelGroup = {
@@ -60,9 +67,28 @@ async function readApiError(res: Response): Promise<string> {
   return `${res.status} ${res.statusText}`.trim();
 }
 
+function computeRotationForWinner(
+  currentRotation: number,
+  winnerIndex: number,
+  participantCount: number,
+  extraSpins = 7,
+) {
+  if (participantCount <= 0 || winnerIndex < 0) {
+    return currentRotation;
+  }
+
+  const sliceDeg = 360 / participantCount;
+  const normalizedTarget = (((-(winnerIndex + 0.5) * sliceDeg) % 360) + 360) % 360;
+  const currentNorm = (((currentRotation % 360) + 360) % 360) % 360;
+  let delta = normalizedTarget - currentNorm;
+  if (delta < 0) delta += 360;
+  return currentRotation + extraSpins * 360 + delta;
+}
+
 export default function SpinTheWheelPage() {
   const { me } = useHubLayout();
   const toasts = useHubToasts();
+  const { play } = useHubAudio();
 
   const [rawParticipants, setRawParticipants] = useState("");
   const participants = useMemo(() => normalizeParticipants(rawParticipants), [rawParticipants]);
@@ -90,6 +116,67 @@ export default function SpinTheWheelPage() {
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [groupName, setGroupName] = useState("");
   const [autoSaveSessions, setAutoSaveSessions] = useState(true);
+  const [collabEnabled, setCollabEnabled] = useState(false);
+  const [collabRoomInput, setCollabRoomInput] = useState("neutralen-wheel");
+
+  const collabDraft = useMemo(
+    () =>
+      buildWheelCollabDraft({
+        rawParticipants,
+        teamCount,
+        teamMode,
+        seed,
+      }),
+    [rawParticipants, seed, teamCount, teamMode],
+  );
+
+  const applyRemoteDraft = useCallback((draft: typeof collabDraft) => {
+    setRawParticipants(draft.rawParticipants);
+    setTeamCount(draft.teamCount);
+    setTeamMode(draft.teamMode);
+    setSeed(draft.seed);
+  }, []);
+
+  const applyRemoteAction = useCallback(
+    (action: WheelCollabAction) => {
+      setRawParticipants(action.participants.join("\n"));
+      setSeedUsed(action.seedUsed);
+      setTeams(action.teams);
+      const winnerIndex =
+        action.winner !== null ? action.participants.indexOf(action.winner) : -1;
+
+      if (action.kind === "spin" && winnerIndex >= 0) {
+        setWinnerName(null);
+        setHighlightIndex(winnerIndex);
+        setSpinning(true);
+        setRotationDeg((prev) =>
+          computeRotationForWinner(prev, winnerIndex, action.participants.length),
+        );
+      } else {
+        setSpinning(false);
+        setHighlightIndex(winnerIndex >= 0 ? winnerIndex : null);
+        setWinnerName(action.winner);
+      }
+
+      if (me.status === "user" && action.triggeredById !== me.profile.id) {
+        toasts.push({
+          kind: "info",
+          title: "Room update",
+          message: `${action.triggeredByName} updated the shared wheel.`,
+        });
+      }
+    },
+    [me, toasts],
+  );
+
+  const collab = useWheelCollab({
+    enabled: collabEnabled && me.status === "user",
+    roomInput: collabRoomInput,
+    me: me.status === "user" ? me.profile : null,
+    draft: collabDraft,
+    onRemoteDraft: applyRemoteDraft,
+    onRemoteAction: applyRemoteAction,
+  });
 
   useEffect(() => {
     try {
@@ -174,20 +261,25 @@ export default function SpinTheWheelPage() {
       if (!isReady || spinning) return;
 
       const seedForAction = seed.trim() ? seed.trim() : makeSeed();
-      setSeedUsed(seedForAction);
       const nextSpinSalt = spinSalt + 1;
+      const nextShuffleSalt = shuffleSalt;
+      setSeedUsed(seedForAction);
       setSpinSalt(nextSpinSalt);
+      play(opts.alsoMakeTeams ? "confirm" : "panel");
       const rng = makeRng([seedForAction, `spin:${nextSpinSalt}`].join(":"));
       const winnerIndex = pickIndex(participants.length, rng);
       setHighlightIndex(winnerIndex);
-
-      const sliceDeg = 360 / participants.length;
-      const normalizedTarget = (((-(winnerIndex + 0.5) * sliceDeg) % 360) + 360) % 360;
-      const currentNorm = (((rotationDeg % 360) + 360) % 360) % 360;
-      let delta = normalizedTarget - currentNorm;
-      if (delta < 0) delta += 360;
       const extraSpins = 6 + Math.floor(rng() * 4);
-      const finalRotation = rotationDeg + extraSpins * 360 + delta;
+      const finalRotation = computeRotationForWinner(
+        rotationDeg,
+        winnerIndex,
+        participants.length,
+        extraSpins,
+      );
+
+      let actionTeams: string[][] = [];
+      let actionSeedUsed = seedForAction;
+      const winner = participants[winnerIndex] ?? null;
 
       setWinnerName(null);
       setSpinning(true);
@@ -199,12 +291,13 @@ export default function SpinTheWheelPage() {
           teamCount,
           mode: teamMode,
           seed: seedForAction,
-          salt: `teams:${shuffleSalt}`,
+          salt: `teams:${nextShuffleSalt}`,
         });
         setSeedUsed(used);
         setTeams(nextTeams);
+        actionTeams = nextTeams;
+        actionSeedUsed = used;
         if (autoSaveSessions && nextTeams.length > 0) {
-          const winner = participants[winnerIndex] ?? null;
           void (async () => {
             try {
               const res = await fetch(apiUrl("/api/wheel/sessions"), {
@@ -236,8 +329,22 @@ export default function SpinTheWheelPage() {
           })();
         }
       }
+
+      if (collab.connected && me.status === "user") {
+        collab.publishAction({
+          id: crypto.randomUUID(),
+          kind: "spin",
+          participants,
+          winner,
+          teams: actionTeams,
+          seedUsed: actionSeedUsed,
+          triggeredById: me.profile.id,
+          triggeredByName: me.profile.global_name ?? me.profile.username,
+          createdAt: new Date().toISOString(),
+        });
+      }
     },
-    [autoSaveSessions, isReady, participants, refreshSessions, rotationDeg, seed, selectedGroupId, shuffleSalt, spinSalt, spinning, teamCount, teamMode, toasts],
+    [autoSaveSessions, collab, isReady, me, participants, play, refreshSessions, rotationDeg, seed, selectedGroupId, shuffleSalt, spinSalt, spinning, teamCount, teamMode, toasts],
   );
 
   const onWheelAnimationComplete = useCallback(() => {
@@ -254,6 +361,7 @@ export default function SpinTheWheelPage() {
     setSeedUsed(seedForAction);
     const nextSalt = shuffleSalt + 1;
     setShuffleSalt(nextSalt);
+    play("panel");
     const { seedUsed: used, teams: nextTeams } = buildTeams({
       participants,
       teamCount,
@@ -263,6 +371,19 @@ export default function SpinTheWheelPage() {
     });
     setSeedUsed(used);
     setTeams(nextTeams);
+    if (collab.connected && me.status === "user") {
+      collab.publishAction({
+        id: crypto.randomUUID(),
+        kind: "teams",
+        participants,
+        winner: null,
+        teams: nextTeams,
+        seedUsed: used,
+        triggeredById: me.profile.id,
+        triggeredByName: me.profile.global_name ?? me.profile.username,
+        createdAt: new Date().toISOString(),
+      });
+    }
     if (autoSaveSessions && nextTeams.length > 0) {
       void (async () => {
         try {
@@ -294,12 +415,13 @@ export default function SpinTheWheelPage() {
         }
       })();
     }
-  }, [autoSaveSessions, participants, refreshSessions, seed, selectedGroupId, shuffleSalt, teamCount, teamMode, toasts]);
+  }, [autoSaveSessions, collab, me, participants, play, refreshSessions, seed, selectedGroupId, shuffleSalt, teamCount, teamMode, toasts]);
 
   const makeTeamsNow = useCallback(() => {
     if (participants.length === 0) return;
     const seedForAction = seed.trim() ? seed.trim() : makeSeed();
     setSeedUsed(seedForAction);
+    play("panel");
     const { seedUsed: used, teams: nextTeams } = buildTeams({
       participants,
       teamCount,
@@ -309,6 +431,19 @@ export default function SpinTheWheelPage() {
     });
     setSeedUsed(used);
     setTeams(nextTeams);
+    if (collab.connected && me.status === "user") {
+      collab.publishAction({
+        id: crypto.randomUUID(),
+        kind: "teams",
+        participants,
+        winner: null,
+        teams: nextTeams,
+        seedUsed: used,
+        triggeredById: me.profile.id,
+        triggeredByName: me.profile.global_name ?? me.profile.username,
+        createdAt: new Date().toISOString(),
+      });
+    }
     if (autoSaveSessions && nextTeams.length > 0) {
       void (async () => {
         try {
@@ -340,7 +475,7 @@ export default function SpinTheWheelPage() {
         }
       })();
     }
-  }, [autoSaveSessions, participants, refreshSessions, seed, selectedGroupId, shuffleSalt, teamCount, teamMode, toasts]);
+  }, [autoSaveSessions, collab, me, participants, play, refreshSessions, seed, selectedGroupId, shuffleSalt, teamCount, teamMode, toasts]);
 
   const removeParticipant = useCallback(
     (name: string) => {
@@ -485,6 +620,64 @@ export default function SpinTheWheelPage() {
         </p>
       </div>
 
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            Shared wheel beta
+            <Badge variant={collab.connected ? "secondary" : "outline"}>
+              {collab.connected ? "connected" : collab.status}
+            </Badge>
+            {collab.synced ? <Badge variant="outline">synced</Badge> : null}
+          </CardTitle>
+          <CardDescription>
+            Realtime-rum med Yjs/y-websocket. Draften synkas live och spins/team-resultat broadcastas till alla i rummet.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1fr)_auto]">
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium">Room</label>
+              <Input
+                value={collabRoomInput}
+                onChange={(event) => setCollabRoomInput(normalizeWheelCollabRoom(event.target.value))}
+                placeholder="neutralen-wheel"
+              />
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+              <span>{collab.presence.length} närvarande i rummet</span>
+              {collab.presence.map((peer) => (
+                <Badge key={`${peer.userId}-${peer.clientId}`} variant="outline">
+                  {peer.name}
+                </Badge>
+              ))}
+            </div>
+          </div>
+          <div className="flex flex-col items-start justify-between gap-3 rounded-xl border border-border/60 bg-card p-3">
+            <label className="flex items-center gap-3 text-sm font-medium">
+              <Switch checked={collabEnabled} onCheckedChange={setCollabEnabled} />
+              <span>Realtime enabled</span>
+            </label>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  void navigator.clipboard.writeText(collab.room || collabRoomInput);
+                  toasts.push({
+                    kind: "info",
+                    title: "Room copied",
+                    message: collab.room || collabRoomInput,
+                  });
+                }}
+              >
+                Kopiera room
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
         <div className="flex flex-col gap-6">
           <Card>
@@ -493,7 +686,7 @@ export default function SpinTheWheelPage() {
               <CardDescription>En rad per namn. Komma funkar också.</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
-              <textarea
+              <Textarea
                 value={rawParticipants}
                 onChange={(e) => setRawParticipants(e.target.value)}
                 rows={7}
@@ -584,7 +777,7 @@ export default function SpinTheWheelPage() {
             <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="flex flex-col gap-2">
                 <label className="text-sm font-medium">Antal lag</label>
-                <input
+                <Input
                   type="number"
                   min={1}
                   max={16}
@@ -613,7 +806,7 @@ export default function SpinTheWheelPage() {
 
               <div className="md:col-span-2 flex flex-col gap-2">
                 <label className="text-sm font-medium">Seed (valfritt)</label>
-                <input
+                <Input
                   value={seed}
                   onChange={(e) => setSeed(e.target.value)}
                   className={inputClassName()}
@@ -646,12 +839,7 @@ export default function SpinTheWheelPage() {
               </div>
 
               <label className="md:col-span-2 flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={autoSaveSessions}
-                  onChange={(e) => setAutoSaveSessions(e.target.checked)}
-                  className="h-4 w-4 rounded border-border accent-primary"
-                />
+                <Switch checked={autoSaveSessions} onCheckedChange={setAutoSaveSessions} />
                 <span>Auto-spara sessioner</span>
               </label>
 
@@ -685,7 +873,7 @@ export default function SpinTheWheelPage() {
               ) : null}
 
               <div className="flex flex-col gap-2 md:flex-row md:items-center">
-                <input
+                <Input
                   value={groupName}
                   onChange={(e) => setGroupName(e.target.value)}
                   placeholder="Gruppnamn"

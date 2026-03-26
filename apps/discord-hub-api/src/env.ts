@@ -122,6 +122,10 @@ export function loadEnv() {
 
   return {
     port: Number(process.env.PORT ?? "3001"),
+    wheelCollabPort: Number(
+      process.env.WHEEL_COLLAB_PORT ??
+        String(Number(process.env.PORT ?? "3001") + 1),
+    ),
     discordClientId: process.env.DISCORD_CLIENT_ID!.trim(),
     discordClientSecret: process.env.DISCORD_CLIENT_SECRET!.trim(),
     discordRedirectUri: process.env.DISCORD_REDIRECT_URI!.trim(),

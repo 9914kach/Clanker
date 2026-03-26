@@ -9,6 +9,7 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@clanker/ui/components/context-menu";
+import { useHubAudio } from "@/components/HubAudioProvider";
 import type { HubTool } from "@/config/hub-tools";
 
 const STORAGE_KEY = "hub.dock.pins.v1";
@@ -40,6 +41,7 @@ export default function HubDock({
 }) {
   const { pathname } = useLocation();
   const navigate = useNavigate();
+  const { play } = useHubAudio();
 
   const defaultPins = useMemo(() => tools.map((t) => t.id), [tools]);
   const [pinnedIds, setPinnedIds] = useState<string[]>(() => loadPins(defaultPins));
@@ -81,9 +83,10 @@ export default function HubDock({
 
   const go = useCallback(
     (path: string) => {
+      play("dock");
       navigate(path);
     },
-    [navigate],
+    [navigate, play],
   );
 
   const shellClassName =
@@ -141,7 +144,12 @@ export default function HubDock({
                   Copy path
                 </ContextMenuItem>
                 <ContextMenuSeparator />
-                <ContextMenuItem onSelect={() => togglePin(tool.id)}>
+                <ContextMenuItem
+                  onSelect={() => {
+                    play("panel");
+                    togglePin(tool.id);
+                  }}
+                >
                   {isPinned(tool.id) ? "Unpin" : "Pin"}
                 </ContextMenuItem>
               </ContextMenuContent>
@@ -155,23 +163,23 @@ export default function HubDock({
               const Icon = meTool.icon;
               const active = isActive(meTool.path);
               return (
-            <button
-              type="button"
-              onClick={() => go(meTool.path)}
-              className={cn(
-                "group relative flex size-11 items-center justify-center rounded-xl transition",
-                "hover:bg-muted/70 hover:shadow-sm active:scale-[0.98]",
-                active ? "bg-muted/80" : "bg-transparent",
-              )}
-              title={meTool.description}
-            >
-              <Icon
-                className={cn(
-                  "size-5 transition",
-                  active ? "text-foreground" : "text-muted-foreground group-hover:text-foreground",
-                )}
-              />
-            </button>
+                <button
+                  type="button"
+                  onClick={() => go(meTool.path)}
+                  className={cn(
+                    "group relative flex size-11 items-center justify-center rounded-xl transition",
+                    "hover:bg-muted/70 hover:shadow-sm active:scale-[0.98]",
+                    active ? "bg-muted/80" : "bg-transparent",
+                  )}
+                  title={meTool.description}
+                >
+                  <Icon
+                    className={cn(
+                      "size-5 transition",
+                      active ? "text-foreground" : "text-muted-foreground group-hover:text-foreground",
+                    )}
+                  />
+                </button>
               );
             })()}
           </div>

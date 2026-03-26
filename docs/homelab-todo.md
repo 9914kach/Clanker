@@ -23,6 +23,11 @@ Uppdatera listan när du börjar eller avslutar något; flytta gärna färdiga p
 ## Discord hub
 
 - **Postgres:** körs på **workstation** (Compose-profil `db` där); Pi/API använder `DATABASE_URL` mot desktopens LAN-IP (eller SSH-tunnel). Se [docker.md — PostgreSQL på workstation (LAN)](docker.md#postgresql-på-workstation-lan).
+- [x] (2026-03-26) **CLANKER_VISION foundation i discord-hub-web**  
+  - Command palette + action-registry i shell  
+  - Dashboard som desktop surface med dragbara widgets och context menu  
+  - Central ljudprovider med mute-state  
+  - Shared wheel beta via Yjs/y-websocket med presence och synkade action-resultat
 - [ ] *(lägg till nästa funktion eller milstolpe här)*
 
 ## Dev tools (`dev-tools-web`)

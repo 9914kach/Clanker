@@ -50,6 +50,7 @@ import {
   updateWheelGroup,
 } from "./repo.js";
 import { COOKIE_NAME, verifySession, type SessionPayload } from "./session.js";
+import { startWheelCollabServer } from "./wheel-collab.js";
 
 const STATE_COOKIE = "discord_oauth_state";
 const STATE_MAX_AGE = 600;
@@ -903,8 +904,14 @@ function shutdownGateway(): void {
   getGatewayRuntime()?.stop();
 }
 
+let stopWheelCollabServer: (() => Promise<void>) | null = null;
+
 async function shutdownAndExit(code: number): Promise<void> {
   shutdownGateway();
+  if (stopWheelCollabServer) {
+    await stopWheelCollabServer();
+    stopWheelCollabServer = null;
+  }
   await closeDb();
   process.exit(code);
 }
@@ -926,6 +933,7 @@ async function main(): Promise<void> {
 
   const app = createApp(env);
   startDiscordGateway(env);
+  stopWheelCollabServer = startWheelCollabServer(env);
 
   process.once("SIGINT", () => {
     void shutdownAndExit(0);

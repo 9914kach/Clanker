@@ -19,6 +19,7 @@ export type HubLayoutContextValue = {
   me: HubSessionState;
   logout: () => Promise<void>;
   refreshMe: () => Promise<void>;
+  openCommandPalette: () => void;
 };
 
 export function useHubLayout(): HubLayoutContextValue {

@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { SearchIcon } from "lucide-react";
+import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@clanker/ui/components/button";
 import {
   Avatar,
@@ -22,10 +23,14 @@ import {
   ContextMenuTrigger,
 } from "@clanker/ui/components/context-menu";
 import { cn } from "@clanker/ui/lib/utils";
+import { useHubAudio } from "@/components/HubAudioProvider";
+import HubCommandPalette from "@/components/HubCommandPalette";
 import HubDock from "@/components/HubDock";
 import HubLiveTicker from "@/components/HubLiveTicker";
 import { useHubToasts } from "@/components/HubToastProvider";
 import { ModeToggle } from "@/components/mode-toggle";
+import { useTheme } from "@/components/theme-provider";
+import { buildHubActions } from "@/config/hub-actions";
 import { HUB_ME_TOOL, HUB_TOOLS } from "@/config/hub-tools";
 import { apiUrl } from "@/config";
 import type { HubLayoutContextValue, HubProfile, HubSessionState } from "@/hooks/use-hub-layout";
@@ -34,11 +39,31 @@ import { discordAvatarUrl } from "@/lib/discordCdn";
 /** Text-raden i headern (rullande kompisrader). Sätt till `false` för att dölja. */
 const SHOW_HUB_LIVE_TICKER = true;
 
+function isTypingTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  return (
+    target.isContentEditable ||
+    target.tagName === "INPUT" ||
+    target.tagName === "TEXTAREA" ||
+    target.tagName === "SELECT"
+  );
+}
+
 export default function HubLayout() {
+  const { pathname } = useLocation();
   const navigate = useNavigate();
   const toasts = useHubToasts();
+  const { colorPalette, setColorPalette } = useTheme();
+  const { enabled: audioEnabled, toggleEnabled: toggleAudio, play } = useHubAudio();
   const [me, setMe] = useState<HubSessionState>({ status: "loading" });
   const [isCompact, setIsCompact] = useState(false);
+  const [commandOpen, setCommandOpen] = useState(false);
+  const lastCommandTriggerRef = useRef<HTMLElement | null>(null);
+  const leaderTimeoutRef = useRef<number | null>(null);
+  const awaitingLeaderRef = useRef(false);
 
   const refreshMe = useCallback(async () => {
     try {
@@ -84,14 +109,140 @@ export default function HubLayout() {
   const displayName = me.status === "user" ? me.profile.global_name ?? me.profile.username : null;
   const profilePath =
     me.status === "user" ? `/u/${encodeURIComponent(me.profile.id)}` : null;
+  const profileId = me.status === "user" ? me.profile.id : null;
+  const profileHandle = me.status === "user" ? `@${me.profile.username}` : null;
+  const isDashboardRoute = pathname === "/dashboard";
+  const shellWidthClassName = isDashboardRoute ? "max-w-[96rem]" : "max-w-6xl";
+
+  const openCommandPalette = useCallback((trigger?: EventTarget | null) => {
+    const fallback =
+      document.activeElement instanceof HTMLElement && document.activeElement !== document.body
+        ? document.activeElement
+        : null;
+    lastCommandTriggerRef.current = trigger instanceof HTMLElement ? trigger : fallback;
+    setCommandOpen(true);
+  }, []);
+
+  const handleCommandOpenChange = useCallback((nextOpen: boolean) => {
+    setCommandOpen(nextOpen);
+    if (!nextOpen) {
+      window.setTimeout(() => {
+        lastCommandTriggerRef.current?.focus();
+      }, 0);
+    }
+  }, []);
+
+  useEffect(() => {
+    const clearLeader = () => {
+      awaitingLeaderRef.current = false;
+      if (leaderTimeoutRef.current) {
+        window.clearTimeout(leaderTimeoutRef.current);
+        leaderTimeoutRef.current = null;
+      }
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        if (commandOpen) {
+          handleCommandOpenChange(false);
+        } else {
+          openCommandPalette(document.activeElement);
+        }
+        return;
+      }
+
+      if (commandOpen || event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) {
+        return;
+      }
+
+      if (event.repeat || isTypingTarget(event.target)) {
+        clearLeader();
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+      if (awaitingLeaderRef.current) {
+        clearLeader();
+        if (key === "d") {
+          event.preventDefault();
+          play("dock");
+          navigate("/dashboard");
+          return;
+        }
+        if (key === "w") {
+          event.preventDefault();
+          play("dock");
+          navigate("/tools/spin-the-wheel");
+          return;
+        }
+        if (key === "s") {
+          event.preventDefault();
+          play("dock");
+          navigate("/profile/settings");
+          return;
+        }
+      }
+
+      if (key === "g") {
+        awaitingLeaderRef.current = true;
+        if (leaderTimeoutRef.current) {
+          window.clearTimeout(leaderTimeoutRef.current);
+        }
+        leaderTimeoutRef.current = window.setTimeout(() => {
+          awaitingLeaderRef.current = false;
+          leaderTimeoutRef.current = null;
+        }, 1000);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      clearLeader();
+    };
+  }, [commandOpen, handleCommandOpenChange, navigate, openCommandPalette, play]);
 
   const contextValue = useMemo<HubLayoutContextValue>(
     () => ({
       me,
       logout,
       refreshMe,
+      openCommandPalette: () => openCommandPalette(),
     }),
-    [logout, me, refreshMe],
+    [logout, me, openCommandPalette, refreshMe],
+  );
+
+  const actions = useMemo(
+    () =>
+      buildHubActions({
+        profilePath,
+        profileId,
+        profileHandle,
+        navigate,
+        refreshSession: refreshMe,
+        logout,
+        colorPalette,
+        setColorPalette,
+        audioEnabled,
+        toggleAudio,
+        play,
+        notify: toasts.push,
+      }),
+    [
+      audioEnabled,
+      colorPalette,
+      logout,
+      navigate,
+      play,
+      profileHandle,
+      profileId,
+      profilePath,
+      refreshMe,
+      setColorPalette,
+      toasts.push,
+      toggleAudio,
+    ],
   );
 
   const menuClassName =
@@ -154,6 +305,14 @@ export default function HubLayout() {
             <ContextMenuSeparator />
             <ContextMenuItem onSelect={() => navigate(profilePath!)}>Open profile</ContextMenuItem>
             <ContextMenuItem onSelect={() => navigate("/profile/settings")}>Open settings</ContextMenuItem>
+            <ContextMenuItem
+              onSelect={() => {
+                play("panel");
+                openCommandPalette();
+              }}
+            >
+              Open command bar
+            </ContextMenuItem>
             <ContextMenuSeparator />
             <ContextMenuItem variant="destructive" onSelect={logout}>
               Log out
@@ -176,6 +335,18 @@ export default function HubLayout() {
 
   const renderActions = (compact: boolean) => (
     <div className={cn("flex items-center justify-end", compact ? "gap-1.5" : "gap-2")}>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={(event) => {
+          play("panel");
+          openCommandPalette(event.currentTarget);
+        }}
+      >
+        <SearchIcon data-icon="inline-start" />
+        {compact ? "Cmd" : "Command"}
+      </Button>
       <ModeToggle />
       {me.status === "user" ? (
         <Button type="button" variant="outline" size="sm" onClick={logout}>
@@ -194,7 +365,8 @@ export default function HubLayout() {
       <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <div
           className={cn(
-            "mx-auto max-w-6xl px-5 transition-[padding] duration-300",
+            "mx-auto px-5 transition-[padding] duration-300",
+            shellWidthClassName,
             isCompact ? "py-2" : "py-3",
           )}
         >
@@ -335,7 +507,7 @@ export default function HubLayout() {
         </div>
       </header>
 
-      <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-5 py-8 pb-28">
+      <main className={cn("mx-auto flex w-full flex-col gap-6 px-5 py-8 pb-28", shellWidthClassName)}>
         <Outlet context={contextValue} />
       </main>
 
@@ -349,6 +521,11 @@ export default function HubLayout() {
               }
             : null
         }
+      />
+      <HubCommandPalette
+        open={commandOpen}
+        onOpenChange={handleCommandOpenChange}
+        actions={actions}
       />
     </div>
   );
