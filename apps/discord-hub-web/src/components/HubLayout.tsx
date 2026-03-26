@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
-import { Command, LayoutPanelTop, SearchIcon, Workflow } from "lucide-react";
+import { Command, LayoutGrid, LayoutPanelTop, SearchIcon, Workflow } from "lucide-react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@clanker/ui/components/button";
 import {
@@ -12,6 +12,7 @@ import { useHubAudio } from "@/components/HubAudioProvider";
 import HubCommandPalette from "@/components/HubCommandPalette";
 import HubDock from "@/components/HubDock";
 import HubGlobalContextMenu from "@/components/HubGlobalContextMenu";
+import HubShellObject from "@/components/HubShellObject";
 import HubLiveTicker from "@/components/HubLiveTicker";
 import { useHubToasts } from "@/components/HubToastProvider";
 import { useHubLocale } from "@/components/locale-provider";
@@ -34,6 +35,24 @@ import { buildHubShellMenu } from "@/lib/hub-shell-menu";
 /** Text-raden i headern (rullande kompisrader). Sätt till `false` för att dölja. */
 const SHOW_HUB_LIVE_TICKER = true;
 const DOCK_STORAGE_KEY = "hub.dock.pins.v1";
+const LAYOUT_EDIT_KEY = "hub.shell.layoutEdit.v1";
+const GRID_SNAP_KEY = "hub.shell.gridSnap.v1";
+
+function readGridSnapEnabled(): boolean {
+  try {
+    return localStorage.getItem(GRID_SNAP_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function readLayoutEditMode(): boolean {
+  try {
+    return localStorage.getItem(LAYOUT_EDIT_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
 
 function loadPins(defaultPins: string[]): string[] {
   try {
@@ -89,6 +108,8 @@ export default function HubLayout() {
   const [me, setMe] = useState<HubSessionState>({ status: "loading" });
   const [commandOpen, setCommandOpen] = useState(false);
   const [desktopShellState, setDesktopShellState] = useState<HubDesktopShellState | null>(null);
+  const [layoutEditMode, setLayoutEditMode] = useState(readLayoutEditMode);
+  const [gridSnapEnabled, setGridSnapEnabled] = useState(readGridSnapEnabled);
   const [shellContextMenu, setShellContextMenu] = useState<{
     target: HubContextTarget;
     position: { x: number; y: number };
@@ -136,6 +157,42 @@ export default function HubLayout() {
   useEffect(() => {
     localStorage.setItem(DOCK_STORAGE_KEY, JSON.stringify(pinnedIds));
   }, [pinnedIds]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(LAYOUT_EDIT_KEY, layoutEditMode ? "true" : "false");
+    } catch {
+      /* ignore */
+    }
+  }, [layoutEditMode]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(GRID_SNAP_KEY, gridSnapEnabled ? "true" : "false");
+    } catch {
+      /* ignore */
+    }
+  }, [gridSnapEnabled]);
+
+  const toggleLayoutEditMode = useCallback(() => {
+    setLayoutEditMode((prev) => !prev);
+    play("panel");
+  }, [play]);
+
+  const toggleGridSnap = useCallback(() => {
+    setGridSnapEnabled((prev) => !prev);
+    play("panel");
+  }, [play]);
+
+  const exitLayoutEdit = useCallback(() => {
+    setLayoutEditMode(false);
+    play("panel");
+  }, [play]);
+
+  const saveLayoutAck = useCallback(() => {
+    desktopShellState?.acknowledgeLayoutSaved();
+    play("confirm");
+  }, [desktopShellState, play]);
 
   const logout = useCallback(async () => {
     await fetch(apiUrl("/api/auth/logout"), {
@@ -273,8 +330,14 @@ export default function HubLayout() {
       refreshMe,
       openCommandPalette: () => openCommandPalette(),
       setDesktopShellState,
+      layoutEditMode,
+      setLayoutEditMode,
+      toggleLayoutEditMode,
+      gridSnapEnabled,
+      setGridSnapEnabled,
+      toggleGridSnap,
     }),
-    [logout, me, openCommandPalette, refreshMe],
+    [gridSnapEnabled, layoutEditMode, logout, me, openCommandPalette, refreshMe, toggleGridSnap, toggleLayoutEditMode],
   );
 
   const actionEnvironment = useMemo(
@@ -346,6 +409,12 @@ export default function HubLayout() {
 
   const openShellContextMenu = useCallback(
     (event: ReactMouseEvent<HTMLElement>) => {
+      // In dev, leave the native context menu (Inspect, reload, etc.) untouched.
+      if (import.meta.env.DEV) {
+        closeShellContextMenu();
+        return;
+      }
+
       if (event.defaultPrevented || isTextEditingTarget(event.target)) {
         closeShellContextMenu();
         return;
@@ -374,9 +443,29 @@ export default function HubLayout() {
             actions: actionApi,
             desktopShell: desktopShellState,
             toggleDockPin,
+            layoutEditMode,
+            toggleLayoutEditMode,
+            onInfoToast: (title, message) => {
+              toasts.push({ kind: "info", title, message: message ?? undefined });
+            },
+            gridSnapEnabled,
+            toggleGridSnap,
+            isDashboardRoute,
           })
         : [],
-    [actionApi, copy, desktopShellState, shellContextMenu, toggleDockPin],
+    [
+      actionApi,
+      copy,
+      desktopShellState,
+      gridSnapEnabled,
+      isDashboardRoute,
+      layoutEditMode,
+      shellContextMenu,
+      toggleDockPin,
+      toggleGridSnap,
+      toggleLayoutEditMode,
+      toasts,
+    ],
   );
 
   const renderIdentity = () =>
@@ -431,6 +520,16 @@ export default function HubLayout() {
         <SearchIcon data-icon="inline-start" />
         {copy.common.command}
       </Button>
+      <Button
+        type="button"
+        variant={layoutEditMode ? "default" : "outline"}
+        size="sm"
+        onClick={toggleLayoutEditMode}
+        title={layoutEditMode ? copy.chrome.layoutEditExit : copy.chrome.layoutEditEnter}
+      >
+        <LayoutGrid data-icon="inline-start" />
+        {layoutEditMode ? copy.chrome.layoutEditExit : copy.chrome.layoutEditEnter}
+      </Button>
       <ModeToggle />
       {me.status === "user" ? (
         <Button type="button" variant="outline" size="sm" onClick={logout}>
@@ -455,7 +554,14 @@ export default function HubLayout() {
       >
         <div className="flex flex-col gap-3 px-4 py-3 md:px-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-3">
+            <HubShellObject
+              as="div"
+              objectId="shell.brandRow"
+              objectKind="brandBlock"
+              label={copy.chrome.shellObjectBrandBlock}
+              layoutEditMode={layoutEditMode}
+              className="flex min-w-0 items-center gap-3"
+            >
               <Link
                 to="/dashboard"
                 className="flex items-center gap-3 rounded-[1.4rem] border border-border/60 bg-background/45 px-3 py-2 transition hover:bg-muted/65"
@@ -483,7 +589,7 @@ export default function HubLayout() {
                   <HubLiveTicker variant="top" />
                 </div>
               ) : null}
-            </div>
+            </HubShellObject>
 
             <div className="flex flex-wrap items-center justify-end gap-2">
               {renderIdentity()}
@@ -492,7 +598,15 @@ export default function HubLayout() {
           </div>
 
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <nav className="flex flex-wrap items-center gap-2">
+            <HubShellObject
+              as="nav"
+              objectId="shell.nav.primary"
+              objectKind="navGroup"
+              label={copy.chrome.shellObjectNavGroup}
+              layoutEditMode={layoutEditMode}
+              className="flex flex-wrap items-center gap-2"
+              aria-label={copy.chrome.shellObjectNavGroup}
+            >
               <NavLink
                 to="/dashboard"
                 end
@@ -553,9 +667,16 @@ export default function HubLayout() {
                 <Workflow className="size-4" />
                 {copy.chrome.wheel}
               </NavLink>
-            </nav>
+            </HubShellObject>
 
-            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <HubShellObject
+              as="div"
+              objectId="shell.statusStrip"
+              objectKind="statusStrip"
+              label={copy.chrome.shellObjectStatusStrip}
+              layoutEditMode={layoutEditMode}
+              className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
+            >
               <span className="rounded-full border border-border/60 bg-background/40 px-2.5 py-1">
                 {copy.chrome.paletteBadge(colorPalette)}
               </span>
@@ -565,7 +686,7 @@ export default function HubLayout() {
               <span className="rounded-full border border-border/60 bg-background/40 px-2.5 py-1">
                 {isDashboardRoute ? copy.chrome.desktopMode : panelMeta.label}
               </span>
-            </div>
+            </HubShellObject>
           </div>
         </div>
       </header>
@@ -577,9 +698,14 @@ export default function HubLayout() {
           </main>
         ) : (
           <main className="flex min-h-0 flex-1 p-3 pb-24 md:p-4">
-            <section
+            <HubShellObject
+              as="section"
+              objectId={`shell.route.${panelMeta.id}`}
+              objectKind="routePanel"
+              label={panelMeta.label}
+              layoutEditMode={layoutEditMode}
               className="mx-auto flex min-h-0 w-full max-w-[112rem] flex-1 flex-col overflow-hidden rounded-[2rem] border border-border/65 bg-background/42 shadow-2xl backdrop-blur-xl"
-              {...hubContextData({ type: "panel", panelId: panelMeta.id, panelLabel: panelMeta.label })}
+              aria-label={panelMeta.label}
             >
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/55 bg-background/36 px-4 py-3 md:px-5">
                 <div className="min-w-0">
@@ -593,7 +719,7 @@ export default function HubLayout() {
               <div className="min-h-0 flex-1 overflow-auto px-4 py-5 md:px-5 md:py-6">
                 <Outlet context={contextValue} />
               </div>
-            </section>
+            </HubShellObject>
           </main>
         )}
       </div>
@@ -602,6 +728,18 @@ export default function HubLayout() {
         tools={orderedDockTools}
         pinnedIds={pinnedIds}
         meTool={profilePath ? localizeMeTool(copy, profilePath) : null}
+        layoutEditMode={layoutEditMode}
+        dockShellLabel={copy.chrome.shellObjectDockBar}
+        isDashboardRoute={isDashboardRoute}
+        desktopShell={desktopShellState}
+        gridSnapEnabled={gridSnapEnabled}
+        onToggleGridSnap={toggleGridSnap}
+        onExitLayoutEdit={exitLayoutEdit}
+        onSaveLayout={saveLayoutAck}
+        copy={copy}
+        onDesktopOnlyAction={() => {
+          toasts.push({ kind: "info", title: copy.editMode.desktopOnlyToast });
+        }}
       />
       <HubCommandPalette
         open={commandOpen}

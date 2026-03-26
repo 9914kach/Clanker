@@ -18,6 +18,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useHubLocale } from "@/components/locale-provider";
+import HubShellObject from "@/components/HubShellObject";
 import { HUB_EASE_OUT, hubEnterMotion, hubPopMotion } from "@/lib/hub-motion";
 import { hubContextData } from "@/lib/hub-shell-context";
 
@@ -58,6 +59,7 @@ function DraggableWidgetCard({
   layout,
   surfaceRef,
   surfaceHeight,
+  layoutEditMode,
   onMove,
   onFocus,
   onHide,
@@ -66,6 +68,7 @@ function DraggableWidgetCard({
   layout: HubDesktopWidgetLayout;
   surfaceRef: React.RefObject<HTMLDivElement | null>;
   surfaceHeight: number;
+  layoutEditMode: boolean;
   onMove: (id: string, position: Pick<HubDesktopWidgetLayout, "x" | "y">) => void;
   onFocus: (id: string) => void;
   onHide: (id: string) => void;
@@ -76,6 +79,9 @@ function DraggableWidgetCard({
   const dragControls = useDragControls();
   const Icon = widget.icon;
   const startDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (!layoutEditMode) {
+      return;
+    }
     onFocus(widget.id);
     dragControls.start(event);
   };
@@ -100,13 +106,13 @@ function DraggableWidgetCard({
   return (
     <motion.article
       layout={!reducedMotion}
-      drag
+      drag={layoutEditMode}
       dragControls={dragControls}
       dragListener={false}
       dragMomentum={false}
       dragElastic={0.06}
       dragConstraints={surfaceRef}
-      onDragStart={() => onFocus(widget.id)}
+      onDragStart={() => layoutEditMode && onFocus(widget.id)}
       onDragEnd={handleDragEnd}
       onPointerDown={() => onFocus(widget.id)}
       {...hubPopMotion(reducedMotion)}
@@ -118,7 +124,7 @@ function DraggableWidgetCard({
         zIndex: layout.z,
       }}
       whileDrag={
-        reducedMotion
+        reducedMotion || !layoutEditMode
           ? undefined
           : {
               scale: 1.015,
@@ -151,36 +157,40 @@ function DraggableWidgetCard({
           </div>
           <div className="flex items-center gap-2">
             <Badge variant={toneVariant(widget.tone)}>{widget.tone}</Badge>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  aria-label={ds.dragAria(widget.label)}
-                  className="cursor-grab active:cursor-grabbing"
-                  onPointerDown={startDrag}
-                >
-                  <GripVertical data-icon="inline-start" />
-                  {ds.dragButton}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{ds.dragTooltip}</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() => onHide(widget.id)}
-                  aria-label={ds.hideAria(widget.label)}
-                >
-                  <Minus />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{ds.hideTooltip}</TooltipContent>
-            </Tooltip>
+            {layoutEditMode ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    aria-label={ds.dragAria(widget.label)}
+                    className="cursor-grab active:cursor-grabbing"
+                    onPointerDown={startDrag}
+                  >
+                    <GripVertical data-icon="inline-start" />
+                    {ds.dragButton}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{ds.dragTooltip}</TooltipContent>
+              </Tooltip>
+            ) : null}
+            {layoutEditMode ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => onHide(widget.id)}
+                    aria-label={ds.hideAria(widget.label)}
+                  >
+                    <Minus />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{ds.hideTooltip}</TooltipContent>
+              </Tooltip>
+            ) : null}
           </div>
         </CardHeader>
         <CardContent className="pt-5">{widget.content}</CardContent>
@@ -201,6 +211,8 @@ export default function HubDesktopSurface({
   onCyclePalette,
   audioEnabled,
   onChaosAction,
+  layoutEditMode,
+  gridSnapEnabled = false,
 }: {
   widgets: readonly HubDesktopWidget[];
   layouts: Readonly<Record<string, HubDesktopWidgetLayout>>;
@@ -213,9 +225,12 @@ export default function HubDesktopSurface({
   onCyclePalette: () => void;
   audioEnabled: boolean;
   onChaosAction: () => void;
+  layoutEditMode: boolean;
+  gridSnapEnabled?: boolean;
 }) {
   const { copy } = useHubLocale();
   const ds = copy.desktopSurface;
+  const ch = copy.chrome;
   const reducedMotion = useReducedMotion() ?? false;
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const visibleWidgets = useMemo(
@@ -250,7 +265,20 @@ export default function HubDesktopSurface({
       <div className="absolute inset-0 bg-[linear-gradient(to_right,color-mix(in_oklab,var(--border)_26%,transparent)_1px,transparent_1px),linear-gradient(to_bottom,color-mix(in_oklab,var(--border)_18%,transparent)_1px,transparent_1px)] bg-[size:132px_132px] opacity-45" />
 
       <div className="relative flex min-h-full flex-1 flex-col">
-        <div className="border-b border-border/50 bg-background/35 px-4 py-4 backdrop-blur md:px-5">
+        {layoutEditMode ? (
+          <div className="border-b border-primary/25 bg-primary/10 px-4 py-2 text-center text-xs font-medium text-primary md:px-5">
+            <span className="mr-2">{ds.layoutEditBanner}</span>
+            <span className="text-muted-foreground">{ds.layoutEditHint}</span>
+          </div>
+        ) : null}
+        <HubShellObject
+          as="div"
+          objectId="desktop.chrome"
+          objectKind="desktopChrome"
+          label={ch.shellObjectDesktopChrome}
+          layoutEditMode={layoutEditMode}
+          className="border-b border-border/50 bg-background/35 px-4 py-4 backdrop-blur md:px-5"
+        >
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="flex min-w-0 flex-col gap-2">
               <Badge variant="secondary" className="w-fit">
@@ -287,14 +315,22 @@ export default function HubDesktopSurface({
             <Separator orientation="vertical" className="hidden h-4 md:block" />
             <span className="inline-flex items-center gap-1">
               <MousePointer2 className="size-3.5" />
-              {ds.dragHint}
+              {layoutEditMode ? ds.dragHintEdit : ds.dragHintNormal}
             </span>
           </div>
-        </div>
+        </HubShellObject>
 
         <div className="flex flex-1 flex-col gap-4 p-4 md:p-5">
           {hiddenWidgets.length > 0 ? (
-            <div className="flex flex-wrap items-center gap-2 rounded-[1.5rem] border border-dashed border-border/70 bg-background/45 px-3 py-3 backdrop-blur">
+            <HubShellObject
+              as="div"
+              id="hub-spawn-modules"
+              objectId="desktop.utility.spawn"
+              objectKind="utilityZone"
+              label={ch.shellObjectUtilityZone}
+              layoutEditMode={layoutEditMode}
+              className="flex flex-wrap items-center gap-2 rounded-[1.5rem] border border-dashed border-border/70 bg-background/45 px-3 py-3 backdrop-blur"
+            >
               <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{ds.spawnApp}</span>
               {hiddenWidgets.map((widget) => (
                 <Button key={widget.id} type="button" variant="outline" size="sm" onClick={() => onOpenWidget(widget.id)}>
@@ -302,7 +338,7 @@ export default function HubDesktopSurface({
                   {widget.label}
                 </Button>
               ))}
-            </div>
+            </HubShellObject>
           ) : null}
 
           <div className="block lg:hidden">
@@ -333,9 +369,11 @@ export default function HubDesktopSurface({
                           </div>
                         </div>
                       </div>
-                      <Button type="button" variant="ghost" size="icon-sm" onClick={() => onHideWidget(widget.id)}>
-                        <Minus />
-                      </Button>
+                      {layoutEditMode ? (
+                        <Button type="button" variant="ghost" size="icon-sm" onClick={() => onHideWidget(widget.id)}>
+                          <Minus />
+                        </Button>
+                      ) : null}
                     </CardHeader>
                     <CardContent>{widget.content}</CardContent>
                   </Card>
@@ -352,6 +390,17 @@ export default function HubDesktopSurface({
             )}
             style={{ minHeight: surfaceHeight }}
           >
+            {layoutEditMode && gridSnapEnabled ? (
+              <div
+                className="pointer-events-none absolute inset-0 z-[5] opacity-[0.14]"
+                style={{
+                  backgroundImage:
+                    "linear-gradient(to right, color-mix(in oklab, var(--primary) 35%, transparent) 1px, transparent 1px), linear-gradient(to bottom, color-mix(in oklab, var(--primary) 35%, transparent) 1px, transparent 1px)",
+                  backgroundSize: "16px 16px",
+                }}
+                aria-hidden
+              />
+            ) : null}
             <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center justify-between px-5 py-4 text-xs uppercase tracking-[0.22em] text-muted-foreground">
               <span className="inline-flex items-center gap-2">
                 <MonitorCog className="size-3.5" />
@@ -374,6 +423,7 @@ export default function HubDesktopSurface({
                     layout={layout}
                     surfaceRef={surfaceRef}
                     surfaceHeight={surfaceHeight}
+                    layoutEditMode={layoutEditMode}
                     onMove={onMoveWidget}
                     onFocus={onFocusWidget}
                     onHide={onHideWidget}

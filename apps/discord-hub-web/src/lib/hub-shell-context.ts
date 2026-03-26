@@ -1,8 +1,15 @@
 import type { HubActionTone } from "@/config/hub-actions";
+import type { HubShellObjectKind } from "@/lib/hub-shell-object-kinds";
 
 export type HubContextTarget =
   | { type: "shell.surface"; area: "desktop" | "workspace" | "fallback" }
   | { type: "shell.nav"; area: "topbar" | "dock" | "panel" }
+  | {
+      type: "shell.object";
+      kind: HubShellObjectKind;
+      objectId: string;
+      label: string;
+    }
   | {
       type: "shell.identity";
       profileId: string | null;

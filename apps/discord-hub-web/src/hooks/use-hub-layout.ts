@@ -22,6 +22,14 @@ export type HubLayoutContextValue = {
   refreshMe: () => Promise<void>;
   openCommandPalette: () => void;
   setDesktopShellState: (state: HubDesktopShellState | null) => void;
+  /** When true, desktop modules can be moved/rearranged; shell objects show edit chrome. */
+  layoutEditMode: boolean;
+  setLayoutEditMode: (value: boolean) => void;
+  toggleLayoutEditMode: () => void;
+  /** Snap dragged desktop modules to a grid while editing (desktop only). */
+  gridSnapEnabled: boolean;
+  setGridSnapEnabled: (value: boolean) => void;
+  toggleGridSnap: () => void;
 };
 
 export type HubDesktopShellWidget = {
@@ -39,6 +47,14 @@ export type HubDesktopShellState = {
   resetLayout: () => void;
   triggerChaos: () => void;
   toggleAudio: () => void;
+  focusWidget: (id: string) => void;
+  resetWidgetPosition: (id: string) => void;
+  /** Scroll to module spawn / sleeping modules and prompt the user. */
+  openAddModuleFlow: () => void;
+  /** Wake every hidden desktop module at once. */
+  revealAllHiddenWidgets: () => void;
+  /** Confirm layout is persisted (desktop layout already auto-saves). */
+  acknowledgeLayoutSaved: () => void;
 };
 
 export function useHubLayout(): HubLayoutContextValue {

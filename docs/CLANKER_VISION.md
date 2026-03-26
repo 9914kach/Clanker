@@ -34,7 +34,6 @@ Clanker should be:
 
 Clanker should **not** be:
 
-- AIK-specific
 - corporate
 - sterile
 - generic

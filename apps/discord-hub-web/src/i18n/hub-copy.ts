@@ -53,6 +53,39 @@ export type HubCopy = {
     panelSettings: { label: string; detail: string };
     panelProfile: { label: string; detail: string };
     panelDefault: { label: string; detail: string };
+    layoutEditEnter: string;
+    layoutEditExit: string;
+    shellObjectNavGroup: string;
+    shellObjectBrandBlock: string;
+    shellObjectStatusStrip: string;
+    shellObjectDockBar: string;
+    shellObjectDesktopChrome: string;
+    shellObjectDesktopZone: string;
+    shellObjectUtilityZone: string;
+  };
+  /** Edit / layout mode: bottom toolbar and toasts. */
+  editMode: {
+    toolbarAria: string;
+    addModule: string;
+    addModuleDetail: string;
+    layoutOptions: string;
+    layoutReset: string;
+    layoutRestoreAll: string;
+    gridSnapEnable: string;
+    gridSnapDisable: string;
+    saveLayout: string;
+    saveLayoutDetail: string;
+    done: string;
+    doneDetail: string;
+    cancel: string;
+    cancelDetail: string;
+    addModuleToastTitle: string;
+    addModuleToastBody: string;
+    layoutSavedTitle: string;
+    layoutSavedMessage: string;
+    restoreAllTitle: string;
+    restoreAllMessage: string;
+    desktopOnlyToast: string;
   };
   tools: {
     dashboard: { label: string; description: string };
@@ -148,6 +181,21 @@ export type HubCopy = {
     openLink: string;
     openLinkNewTab: string;
     copyLinkAddress: string;
+    enterLayoutEdit: string;
+    exitLayoutEdit: string;
+    shellObject: string;
+    focusWidget: string;
+    resetWidgetPosition: string;
+    duplicatePlaceholder: string;
+    detachPlaceholder: string;
+    layoutEditing: string;
+    shellUsageWhileEditing: string;
+    addModule: string;
+    restoreAllHidden: string;
+    gridSnapOn: string;
+    gridSnapOff: string;
+    layoutSavedToast: string;
+    desktopOnlyAction: string;
   };
   toastChaosTitles: readonly string[];
   leagueFormat: {
@@ -213,7 +261,6 @@ export type HubCopy = {
     sleeping: (n: number) => string;
     audioOnline: string;
     audioMuted: string;
-    dragHint: string;
     spawnApp: string;
     personalShell: string;
     rightClickHint: string;
@@ -225,6 +272,11 @@ export type HubCopy = {
     hideTooltip: string;
     hideAria: (label: string) => string;
     dragAria: (label: string) => string;
+    layoutEditBanner: string;
+    layoutEditHint: string;
+    dragHintNormal: string;
+    dragHintEdit: string;
+    widgetPositionResetToast: string;
   };
   profileSettings: {
     pageTitle: string;
@@ -522,6 +574,38 @@ const SV: HubCopy = {
       label: "Arbetsyta",
       detail: "En app-ruta som bor i skalet.",
     },
+    layoutEditEnter: "Layout",
+    layoutEditExit: "Klar",
+    shellObjectNavGroup: "Primär navigation",
+    shellObjectBrandBlock: "Systemmärke och ticker",
+    shellObjectStatusStrip: "Statusrad",
+    shellObjectDockBar: "Docka",
+    shellObjectDesktopChrome: "Skrivbordskrom",
+    shellObjectDesktopZone: "Skrivbordsyta",
+    shellObjectUtilityZone: "Modulspawn",
+  },
+  editMode: {
+    toolbarAria: "Layout-verktygsrad",
+    addModule: "Lägg till modul",
+    addModuleDetail: "Hoppa till sovande moduler och spawna en",
+    layoutOptions: "Layout",
+    layoutReset: "Återställ skrivbordslayout",
+    layoutRestoreAll: "Visa alla sovande moduler",
+    gridSnapEnable: "Rutnätsfäste på",
+    gridSnapDisable: "Rutnätsfäste av",
+    saveLayout: "Spara layout",
+    saveLayoutDetail: "Bekräfta att layouten är sparad lokalt",
+    done: "Klar",
+    doneDetail: "Lämna layout-läge",
+    cancel: "Avbryt",
+    cancelDetail: "Lämna layout-läge utan extra steg",
+    addModuleToastTitle: "Modulspawn",
+    addModuleToastBody: "Välj en sovande modul nedan eller använd verktygsraden.",
+    layoutSavedTitle: "Layout sparad",
+    layoutSavedMessage: "Din skrivbordslayout finns kvar i den här webbläsaren.",
+    restoreAllTitle: "Moduler väckta",
+    restoreAllMessage: "Alla sovande moduler är tillbaka på skrivbordet.",
+    desktopOnlyToast: "Byt till skrivbordet för den här åtgärden.",
   },
   tools: {
     dashboard: {
@@ -691,6 +775,21 @@ const SV: HubCopy = {
     openLink: "Öppna länk",
     openLinkNewTab: "Öppna länk i ny flik",
     copyLinkAddress: "Kopiera länkadress",
+    enterLayoutEdit: "Byt till layout-läge",
+    exitLayoutEdit: "Lämna layout-läge",
+    shellObject: "Skalobjekt",
+    focusWidget: "Lägg överst",
+    resetWidgetPosition: "Återställ position",
+    duplicatePlaceholder: "Duplicera (snart)",
+    detachPlaceholder: "Lossa panel (snart)",
+    layoutEditing: "Layout-redigering",
+    shellUsageWhileEditing: "Skal (under användning)",
+    addModule: "Lägg till modul",
+    restoreAllHidden: "Visa alla sovande moduler",
+    gridSnapOn: "Rutnätsfäste på",
+    gridSnapOff: "Rutnätsfäste av",
+    layoutSavedToast: "Layout sparad lokalt",
+    desktopOnlyAction: "Endast på skrivbordet",
   },
   toastChaosTitles: [
     "Systemet viskar:",
@@ -787,7 +886,6 @@ const SV: HubCopy = {
     sleeping: (n) => `${n} sover`,
     audioOnline: "Ljud på",
     audioMuted: "Ljud av",
-    dragHint: "dra i titelfält",
     spawnApp: "Visa app",
     personalShell: "Personligt skal",
     rightClickHint: "Högerklicka för skalåtgärder",
@@ -800,6 +898,11 @@ const SV: HubCopy = {
     hideTooltip: "Dölj widget",
     hideAria: (label) => `Dölj ${label}`,
     dragAria: (label) => `Dra ${label}`,
+    layoutEditBanner: "Layout-läge",
+    layoutEditHint: "Använd nedre verktygsraden. Dra moduler i titelfältet. Högerklick prioriterar layout.",
+    dragHintNormal: "Öppna layout-läge för att flytta moduler",
+    dragHintEdit: "dra i titelfält",
+    widgetPositionResetToast: "Modulens plats är tillbaka till standard.",
   },
   profileSettings: {
     pageTitle: "Profilinställningar",
@@ -1113,6 +1216,38 @@ const EN: HubCopy = {
       label: "Workspace panel",
       detail: "A routed app window living inside the shell.",
     },
+    layoutEditEnter: "Layout",
+    layoutEditExit: "Done",
+    shellObjectNavGroup: "Primary navigation",
+    shellObjectBrandBlock: "System brand & ticker",
+    shellObjectStatusStrip: "Status strip",
+    shellObjectDockBar: "Dock",
+    shellObjectDesktopChrome: "Desktop chrome",
+    shellObjectDesktopZone: "Desktop surface",
+    shellObjectUtilityZone: "Module spawn zone",
+  },
+  editMode: {
+    toolbarAria: "Layout edit toolbar",
+    addModule: "Add module",
+    addModuleDetail: "Jump to sleeping modules and spawn one",
+    layoutOptions: "Layout",
+    layoutReset: "Reset desktop layout",
+    layoutRestoreAll: "Wake all sleeping modules",
+    gridSnapEnable: "Grid snap on",
+    gridSnapDisable: "Grid snap off",
+    saveLayout: "Save layout",
+    saveLayoutDetail: "Confirm layout is stored locally",
+    done: "Done",
+    doneDetail: "Exit layout edit mode",
+    cancel: "Cancel",
+    cancelDetail: "Exit layout edit mode",
+    addModuleToastTitle: "Module spawn",
+    addModuleToastBody: "Pick a sleeping module below or use the toolbar.",
+    layoutSavedTitle: "Layout saved",
+    layoutSavedMessage: "Your desktop layout stays in this browser.",
+    restoreAllTitle: "Modules restored",
+    restoreAllMessage: "Every sleeping module is back on the desktop.",
+    desktopOnlyToast: "Switch to the desktop for this action.",
   },
   tools: {
     dashboard: {
@@ -1282,6 +1417,21 @@ const EN: HubCopy = {
     openLink: "Open link",
     openLinkNewTab: "Open link in new tab",
     copyLinkAddress: "Copy link address",
+    enterLayoutEdit: "Enter layout edit mode",
+    exitLayoutEdit: "Exit layout edit mode",
+    shellObject: "Shell object",
+    focusWidget: "Bring to front",
+    resetWidgetPosition: "Reset position",
+    duplicatePlaceholder: "Duplicate (coming soon)",
+    detachPlaceholder: "Detach panel (coming soon)",
+    layoutEditing: "Layout editing",
+    shellUsageWhileEditing: "Shell usage",
+    addModule: "Add module",
+    restoreAllHidden: "Wake all sleeping modules",
+    gridSnapOn: "Grid snap on",
+    gridSnapOff: "Grid snap off",
+    layoutSavedToast: "Layout saved locally",
+    desktopOnlyAction: "Desktop only",
   },
   toastChaosTitles: [
     "System whispers:",
@@ -1375,7 +1525,6 @@ const EN: HubCopy = {
     sleeping: (n) => `${n} sleeping`,
     audioOnline: "Audio online",
     audioMuted: "Audio muted",
-    dragHint: "drag from the title bars",
     spawnApp: "Spawn app",
     personalShell: "Personal shell",
     rightClickHint: "Right-click anything for shell actions",
@@ -1387,6 +1536,11 @@ const EN: HubCopy = {
     hideTooltip: "Hide widget",
     hideAria: (label) => `Hide ${label}`,
     dragAria: (label) => `Drag ${label}`,
+    layoutEditBanner: "Layout edit mode",
+    layoutEditHint: "Use the bottom toolbar. Drag from the title bar. Right-click prioritizes layout actions.",
+    dragHintNormal: "Enter layout mode to rearrange modules",
+    dragHintEdit: "drag from the title bars",
+    widgetPositionResetToast: "Module position reset to default.",
   },
   profileSettings: {
     pageTitle: "Profile settings",

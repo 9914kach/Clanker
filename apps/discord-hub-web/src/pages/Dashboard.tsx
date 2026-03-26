@@ -148,7 +148,14 @@ export default function DashboardPage() {
   const { copy } = useHubLocale();
   const d = copy.dashboard;
   const chaosLines = d.chaosLines;
-  const { me, openCommandPalette, refreshMe, setDesktopShellState } = useHubLayout();
+  const {
+    me,
+    openCommandPalette,
+    refreshMe,
+    setDesktopShellState,
+    layoutEditMode,
+    gridSnapEnabled,
+  } = useHubLayout();
   const toasts = useHubToasts();
   const { play, enabled: audioEnabled, toggleEnabled: toggleAudio } = useHubAudio();
   const { colorPalette, setColorPalette } = useTheme();
@@ -512,16 +519,22 @@ export default function DashboardPage() {
     });
   }, [d.toastWidgetHidden, orderedWidgets, toasts]);
 
-  const moveWidget = useCallback((id: string, position: Pick<HubDesktopWidgetLayout, "x" | "y">) => {
-    setDesktopLayout((prev) => ({
-      ...prev,
-      [id]: {
-        ...(prev[id] ?? DEFAULT_WIDGET_LAYOUTS[id]!),
-        ...position,
-        z: nextDesktopZ(prev),
-      },
-    }));
-  }, []);
+  const moveWidget = useCallback(
+    (id: string, position: Pick<HubDesktopWidgetLayout, "x" | "y">) => {
+      const grid = 16;
+      const snap = (v: number) => (gridSnapEnabled ? Math.round(v / grid) * grid : v);
+      setDesktopLayout((prev) => ({
+        ...prev,
+        [id]: {
+          ...(prev[id] ?? DEFAULT_WIDGET_LAYOUTS[id]!),
+          x: snap(position.x),
+          y: snap(position.y),
+          z: nextDesktopZ(prev),
+        },
+      }));
+    },
+    [gridSnapEnabled],
+  );
 
   const focusWidget = useCallback((id: string) => {
     setDesktopLayout((prev) => {
@@ -539,6 +552,32 @@ export default function DashboardPage() {
     });
   }, []);
 
+  const resetWidgetPosition = useCallback(
+    (id: string) => {
+      setDesktopLayout((prev) => {
+        const defaults = DEFAULT_WIDGET_LAYOUTS[id];
+        if (!defaults) {
+          return prev;
+        }
+        const current = prev[id] ?? defaults;
+        return {
+          ...prev,
+          [id]: {
+            ...defaults,
+            hidden: current.hidden,
+          },
+        };
+      });
+      play("panel");
+      toasts.push({
+        kind: "info",
+        title: copy.shellMenu.resetWidgetPosition,
+        message: copy.desktopSurface.widgetPositionResetToast,
+      });
+    },
+    [copy.desktopSurface.widgetPositionResetToast, copy.shellMenu.resetWidgetPosition, play, toasts],
+  );
+
   const resetDesktopLayout = useCallback(() => {
     setDesktopLayout(
       Object.fromEntries(
@@ -552,6 +591,50 @@ export default function DashboardPage() {
       message: d.toastDesktopResetMessage,
     });
   }, [d.toastDesktopReset, d.toastDesktopResetMessage, play, toasts]);
+
+  const openAddModuleFlow = useCallback(() => {
+    window.setTimeout(() => {
+      document.getElementById("hub-spawn-modules")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 0);
+    play("panel");
+    toasts.push({
+      kind: "info",
+      title: copy.editMode.addModuleToastTitle,
+      message: copy.editMode.addModuleToastBody,
+    });
+  }, [copy.editMode.addModuleToastBody, copy.editMode.addModuleToastTitle, play, toasts]);
+
+  const revealAllHiddenWidgets = useCallback(() => {
+    if (hiddenWidgetIds.length === 0) {
+      return;
+    }
+    setDesktopLayout((prev) => {
+      let z = nextDesktopZ(prev);
+      const next = { ...prev };
+      for (const id of hiddenWidgetIds) {
+        const cur = next[id] ?? DEFAULT_WIDGET_LAYOUTS[id];
+        if (!cur) {
+          continue;
+        }
+        next[id] = { ...cur, hidden: false, z: z++ };
+      }
+      return next;
+    });
+    play("panel");
+    toasts.push({
+      kind: "success",
+      title: copy.editMode.restoreAllTitle,
+      message: copy.editMode.restoreAllMessage,
+    });
+  }, [hiddenWidgetIds, play, toasts, copy.editMode.restoreAllMessage, copy.editMode.restoreAllTitle]);
+
+  const acknowledgeLayoutSaved = useCallback(() => {
+    toasts.push({
+      kind: "success",
+      title: copy.editMode.layoutSavedTitle,
+      message: copy.editMode.layoutSavedMessage,
+    });
+  }, [copy.editMode.layoutSavedMessage, copy.editMode.layoutSavedTitle, toasts]);
 
   const cyclePalette = useCallback(() => {
     const next =
@@ -606,15 +689,25 @@ export default function DashboardPage() {
       resetLayout: resetDesktopLayout,
       triggerChaos: triggerChaosPulse,
       toggleAudio: toggleDesktopAudio,
+      focusWidget,
+      resetWidgetPosition,
+      openAddModuleFlow,
+      revealAllHiddenWidgets,
+      acknowledgeLayoutSaved,
     });
 
     return () => setDesktopShellState(null);
   }, [
     audioEnabled,
     desktopShellWidgets,
+    focusWidget,
     hiddenWidgetIds,
     hideWidget,
+    acknowledgeLayoutSaved,
+    openAddModuleFlow,
     resetDesktopLayout,
+    resetWidgetPosition,
+    revealAllHiddenWidgets,
     revealWidget,
     setDesktopShellState,
     toggleDesktopAudio,
@@ -669,6 +762,8 @@ export default function DashboardPage() {
       onCyclePalette={cyclePalette}
       audioEnabled={audioEnabled}
       onChaosAction={triggerChaosPulse}
+      layoutEditMode={layoutEditMode}
+      gridSnapEnabled={gridSnapEnabled}
     />
   );
 }

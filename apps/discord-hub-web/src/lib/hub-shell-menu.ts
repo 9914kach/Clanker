@@ -19,22 +19,169 @@ function toAbsoluteUrl(href: string): string {
   }
 }
 
+function layoutModeSection(
+  m: HubCopy["shellMenu"],
+  layoutEditMode: boolean,
+  toggleLayoutEditMode?: () => void,
+): HubContextMenuSection | null {
+  if (!toggleLayoutEditMode) {
+    return null;
+  }
+  return section("shell-layout", m.shell, [
+    {
+      id: "toggle-layout-edit",
+      label: layoutEditMode ? m.exitLayoutEdit : m.enterLayoutEdit,
+      checked: layoutEditMode,
+      onSelect: toggleLayoutEditMode,
+    },
+  ]);
+}
+
+function editExitSection(m: HubCopy["shellMenu"], toggleLayoutEditMode?: () => void): HubContextMenuSection | null {
+  if (!toggleLayoutEditMode) {
+    return null;
+  }
+  return section("edit-exit", m.layoutEditing, [
+    {
+      id: "toggle-layout-edit-exit",
+      label: m.exitLayoutEdit,
+      checked: true,
+      onSelect: toggleLayoutEditMode,
+    },
+  ]);
+}
+
 export function buildHubShellMenu(params: {
   copy: HubCopy;
   target: HubContextTarget;
   actions: HubActionApi;
   desktopShell: HubDesktopShellState | null;
   toggleDockPin?: (toolId: string) => void;
+  layoutEditMode: boolean;
+  toggleLayoutEditMode?: () => void;
+  onInfoToast?: (title: string, message?: string | null) => void;
+  gridSnapEnabled: boolean;
+  toggleGridSnap?: () => void;
+  isDashboardRoute: boolean;
 }): HubContextMenuSection[] {
-  const { copy, target, actions, desktopShell, toggleDockPin } = params;
+  const {
+    copy,
+    target,
+    actions,
+    desktopShell,
+    toggleDockPin,
+    layoutEditMode,
+    toggleLayoutEditMode,
+    onInfoToast,
+    gridSnapEnabled,
+    toggleGridSnap,
+    isDashboardRoute,
+  } = params;
   const m = copy.shellMenu;
+  const em = copy.editMode;
   const c = copy.common;
+
+  const desktopOnly =
+    (fn: () => void) =>
+    () => {
+      if (!isDashboardRoute) {
+        onInfoToast?.(em.desktopOnlyToast, null);
+        return;
+      }
+      fn();
+    };
 
   if (target.type === "shell.surface") {
     const hiddenWidgets =
       desktopShell?.widgets.filter((widget) => desktopShell.hiddenWidgetIds.includes(widget.id)) ?? [];
 
+    if (layoutEditMode && target.area === "desktop") {
+      return [
+        editExitSection(m, toggleLayoutEditMode),
+        section("edit-desktop-controls", m.layoutEditing, [
+          toggleGridSnap
+            ? {
+                id: "edit-grid-snap",
+                label: gridSnapEnabled ? m.gridSnapOff : m.gridSnapOn,
+                checked: gridSnapEnabled,
+                onSelect: toggleGridSnap,
+              }
+            : null,
+          desktopShell
+            ? {
+                id: "edit-add-module",
+                label: m.addModule,
+                onSelect: desktopOnly(desktopShell.openAddModuleFlow),
+              }
+            : null,
+          hiddenWidgets.length > 0 && desktopShell
+            ? {
+                id: "edit-restore-all",
+                label: m.restoreAllHidden,
+                onSelect: desktopOnly(() => desktopShell.revealAllHiddenWidgets()),
+              }
+            : null,
+          ...hiddenWidgets.map((widget) => ({
+            id: `edit-spawn-${widget.id}`,
+            label: `${m.spawnWidget}: ${widget.label}`,
+            onSelect: desktopOnly(() => desktopShell?.revealWidget(widget.id)),
+          })),
+        ]),
+        section("edit-desktop-arrange", m.shell, [
+          desktopShell
+            ? {
+                id: "edit-reset-desktop",
+                label: m.resetDesktop,
+                onSelect: desktopOnly(desktopShell.resetLayout),
+              }
+            : null,
+          desktopShell
+            ? {
+                id: "edit-save-layout",
+                label: em.saveLayout,
+                onSelect: desktopOnly(desktopShell.acknowledgeLayoutSaved),
+              }
+            : null,
+        ]),
+        section("desktop-usage-deferred", m.shellUsageWhileEditing, [
+          actions.openCommandPalette
+            ? {
+                id: "desktop-command",
+                label: m.openCommandBar,
+                shortcut: "Ctrl/⌘ K",
+                onSelect: actions.openCommandPalette,
+              }
+            : null,
+          {
+            id: "desktop-palette",
+            label: m.cyclePalette,
+            onSelect: actions.cyclePalette,
+          },
+          {
+            id: "desktop-audio",
+            label: desktopShell?.audioEnabled ? m.muteAudio : m.enableAudio,
+            checked: desktopShell?.audioEnabled ?? false,
+            onSelect: desktopShell?.toggleAudio ?? actions.toggleAudio,
+          },
+        ]),
+        section("desktop-system", m.system, [
+          {
+            id: "desktop-refresh",
+            label: m.refreshShell,
+            onSelect: actions.refreshSession,
+          },
+          {
+            id: "desktop-chaos",
+            label: m.chaosPulse,
+            tone: "chaos",
+            onSelect: desktopShell?.triggerChaos ?? actions.summonGoblin,
+          },
+        ]),
+      ].filter((menu): menu is HubContextMenuSection => Boolean(menu));
+    }
+
     return [
+      layoutModeSection(m, layoutEditMode, toggleLayoutEditMode),
       section("desktop-primary", target.area === "desktop" ? m.desktop : m.neutralenOs, [
         actions.openCommandPalette
           ? {
@@ -89,7 +236,88 @@ export function buildHubShellMenu(params: {
   }
 
   if (target.type === "shell.nav") {
+    if (layoutEditMode) {
+      return [
+        editExitSection(m, toggleLayoutEditMode),
+        section("edit-nav-layout", m.layoutEditing, [
+          toggleGridSnap
+            ? {
+                id: "edit-nav-snap",
+                label: gridSnapEnabled ? m.gridSnapOff : m.gridSnapOn,
+                checked: gridSnapEnabled,
+                onSelect: toggleGridSnap,
+              }
+            : null,
+          desktopShell
+            ? {
+                id: "edit-nav-add-mod",
+                label: m.addModule,
+                onSelect: desktopOnly(desktopShell.openAddModuleFlow),
+              }
+            : null,
+          hiddenWidgetsCount(desktopShell) > 0 && desktopShell
+            ? {
+                id: "edit-nav-restore",
+                label: m.restoreAllHidden,
+                onSelect: desktopOnly(() => desktopShell.revealAllHiddenWidgets()),
+              }
+            : null,
+          desktopShell
+            ? {
+                id: "edit-nav-reset",
+                label: m.resetDesktop,
+                onSelect: desktopOnly(desktopShell.resetLayout),
+              }
+            : null,
+        ]),
+        section("nav-open", m.shellUsageWhileEditing, [
+          {
+            id: "nav-dashboard",
+            label: m.openDashboard,
+            onSelect: actions.openDashboard,
+          },
+          {
+            id: "nav-wheel",
+            label: m.openWheel,
+            onSelect: actions.openWheel,
+          },
+          actions.openProfile
+            ? {
+                id: "nav-profile",
+                label: m.openMyProfile,
+                onSelect: actions.openProfile,
+              }
+            : null,
+          {
+            id: "nav-settings",
+            label: m.openSettings,
+            onSelect: actions.openSettings,
+          },
+        ]),
+        section("nav-system", m.system, [
+          actions.openCommandPalette
+            ? {
+                id: "nav-command",
+                label: m.openCommandBar,
+                onSelect: actions.openCommandPalette,
+              }
+            : null,
+          {
+            id: "nav-refresh",
+            label: m.refreshShell,
+            onSelect: actions.refreshSession,
+          },
+          {
+            id: "nav-palette",
+            label: m.cyclePalette,
+            onSelect: actions.cyclePalette,
+          },
+        ]),
+      ].filter((menu): menu is HubContextMenuSection => Boolean(menu));
+    }
+
     return [
+      layoutModeSection(m, layoutEditMode, toggleLayoutEditMode),
       section("nav-open", m.shell, [
         {
           id: "nav-dashboard",
@@ -137,7 +365,10 @@ export function buildHubShellMenu(params: {
   }
 
   if (target.type === "shell.identity") {
-    return [
+    const base = [
+      layoutEditMode
+        ? editExitSection(m, toggleLayoutEditMode)
+        : null,
       section("identity-copy", m.identity, [
         target.profileHandle
           ? {
@@ -183,10 +414,42 @@ export function buildHubShellMenu(params: {
           onSelect: actions.logout,
         },
       ]),
-    ].filter((menu): menu is HubContextMenuSection => Boolean(menu));
+    ];
+    return base.filter((menu): menu is HubContextMenuSection => Boolean(menu));
   }
 
   if (target.type === "widget") {
+    if (layoutEditMode && desktopShell) {
+      return [
+        section("widget-edit", m.layoutEditing, [
+          {
+            id: "widget-focus",
+            label: m.focusWidget,
+            onSelect: () => desktopShell.focusWidget(target.widgetId),
+          },
+          {
+            id: "widget-reset-pos",
+            label: m.resetWidgetPosition,
+            onSelect: () => desktopShell.resetWidgetPosition(target.widgetId),
+          },
+          {
+            id: "widget-hide",
+            label: m.hideWidget,
+            onSelect: () => desktopShell.hideWidget(target.widgetId),
+          },
+        ]),
+        section("widget-usage", m.shellUsageWhileEditing, [
+          actions.openCommandPalette
+            ? {
+                id: "widget-command",
+                label: m.openCommandBar,
+                onSelect: actions.openCommandPalette,
+              }
+            : null,
+        ]),
+      ].filter((menu): menu is HubContextMenuSection => Boolean(menu));
+    }
+
     return [
       section("widget-main", target.widgetLabel, [
         desktopShell
@@ -204,6 +467,20 @@ export function buildHubShellMenu(params: {
             }
           : null,
       ]),
+      layoutEditMode && desktopShell
+        ? section("widget-arrange", m.shell, [
+            {
+              id: "widget-focus",
+              label: m.focusWidget,
+              onSelect: () => desktopShell.focusWidget(target.widgetId),
+            },
+            {
+              id: "widget-reset-pos",
+              label: m.resetWidgetPosition,
+              onSelect: () => desktopShell.resetWidgetPosition(target.widgetId),
+            },
+          ])
+        : null,
       section("widget-system", m.shell, [
         {
           id: "widget-palette",
@@ -221,6 +498,38 @@ export function buildHubShellMenu(params: {
   }
 
   if (target.type === "tool") {
+    if (layoutEditMode) {
+      return [
+        editExitSection(m, toggleLayoutEditMode),
+        section("tool-edit", m.layoutEditing, [
+          toggleDockPin
+            ? {
+                id: "tool-pin",
+                label: target.pinned ? m.unpinDock : m.pinDock,
+                onSelect: () => toggleDockPin(target.toolId),
+              }
+            : null,
+        ]),
+        section("tool-open", m.shellUsageWhileEditing, [
+          {
+            id: "tool-open",
+            label: m.openModule,
+            onSelect: () => actions.openPath(target.path),
+          },
+          {
+            id: "tool-open-tab",
+            label: m.openInNewTab,
+            onSelect: () => window.open(target.path, "_blank", "noopener,noreferrer"),
+          },
+          {
+            id: "tool-copy",
+            label: m.copyModulePath,
+            onSelect: () => actions.copyText(target.path, c.copied, target.path),
+          },
+        ]),
+      ].filter((menu): menu is HubContextMenuSection => Boolean(menu));
+    }
+
     return [
       section("tool-main", target.label, [
         {
@@ -253,6 +562,7 @@ export function buildHubShellMenu(params: {
     const profileUrl = target.profilePath ? toAbsoluteUrl(target.profilePath) : null;
 
     return [
+      layoutEditMode ? editExitSection(m, toggleLayoutEditMode) : null,
       section("profile-open", target.label ?? m.profile, [
         target.profilePath
           ? {
@@ -280,7 +590,35 @@ export function buildHubShellMenu(params: {
   }
 
   if (target.type === "panel") {
+    if (layoutEditMode) {
+      return [
+        editExitSection(m, toggleLayoutEditMode),
+        section("panel-edit", m.layoutEditing, [
+          {
+            id: "panel-dashboard",
+            label: m.returnToDesktop,
+            onSelect: actions.openDashboard,
+          },
+        ]),
+        section("panel-shell", m.shellUsageWhileEditing, [
+          actions.openCommandPalette
+            ? {
+                id: "panel-command",
+                label: m.openCommandBar,
+                onSelect: actions.openCommandPalette,
+              }
+            : null,
+          {
+            id: "panel-refresh",
+            label: m.refreshShell,
+            onSelect: actions.refreshSession,
+          },
+        ]),
+      ].filter((menu): menu is HubContextMenuSection => Boolean(menu));
+    }
+
     return [
+      layoutModeSection(m, layoutEditMode, toggleLayoutEditMode),
       section("panel-shell", target.panelLabel, [
         actions.openCommandPalette
           ? {
@@ -299,6 +637,96 @@ export function buildHubShellMenu(params: {
           label: m.refreshShell,
           onSelect: actions.refreshSession,
         },
+      ]),
+    ].filter((menu): menu is HubContextMenuSection => Boolean(menu));
+  }
+
+  if (target.type === "shell.object") {
+    const placeholder = (id: string, label: string) =>
+      onInfoToast
+        ? {
+            id,
+            label,
+            onSelect: () => onInfoToast(label, null),
+          }
+        : null;
+
+    const routePanelItems: Array<HubContextMenuItem | null> =
+      target.kind === "routePanel"
+        ? [
+            actions.openCommandPalette
+              ? {
+                  id: "route-panel-command",
+                  label: m.openCommandBar,
+                  onSelect: actions.openCommandPalette,
+                }
+              : null,
+            {
+              id: "route-panel-dashboard",
+              label: m.returnToDesktop,
+              onSelect: actions.openDashboard,
+            },
+            {
+              id: "route-panel-refresh",
+              label: m.refreshShell,
+              onSelect: actions.refreshSession,
+            },
+          ]
+        : [];
+
+    if (layoutEditMode) {
+      return [
+        editExitSection(m, toggleLayoutEditMode),
+        section("shell-object-edit", m.layoutEditing, [
+          placeholder("obj-dup", m.duplicatePlaceholder),
+          placeholder("obj-detach", m.detachPlaceholder),
+        ]),
+        section(
+          "shell-object-meta",
+          m.shellUsageWhileEditing,
+          (
+            [
+              ...routePanelItems,
+              target.kind === "dockBar"
+                ? {
+                    id: "obj-open-dashboard",
+                    label: m.openDashboard,
+                    onSelect: actions.openDashboard,
+                  }
+                : null,
+              (target.kind === "navGroup" || target.kind === "brandBlock") && actions.openCommandPalette
+                ? {
+                    id: "obj-open-command",
+                    label: m.openCommandBar,
+                    onSelect: actions.openCommandPalette,
+                  }
+                : null,
+            ] as Array<HubContextMenuItem | null>
+          ).filter((item): item is HubContextMenuItem => Boolean(item)),
+        ),
+      ].filter((menu): menu is HubContextMenuSection => Boolean(menu));
+    }
+
+    return [
+      layoutModeSection(m, layoutEditMode, toggleLayoutEditMode),
+      section("shell-object", `${m.shellObject} · ${target.label}`, [
+        ...routePanelItems,
+        target.kind === "dockBar"
+          ? {
+              id: "obj-open-dashboard",
+              label: m.openDashboard,
+              onSelect: actions.openDashboard,
+            }
+          : null,
+        (target.kind === "navGroup" || target.kind === "brandBlock") && actions.openCommandPalette
+          ? {
+              id: "obj-open-command",
+              label: m.openCommandBar,
+              onSelect: actions.openCommandPalette,
+            }
+          : null,
+        placeholder("obj-dup", m.duplicatePlaceholder),
+        placeholder("obj-detach", m.detachPlaceholder),
       ]),
     ].filter((menu): menu is HubContextMenuSection => Boolean(menu));
   }
@@ -326,4 +754,11 @@ export function buildHubShellMenu(params: {
       },
     ]),
   ].filter((menu): menu is HubContextMenuSection => Boolean(menu));
+}
+
+function hiddenWidgetsCount(desktopShell: HubDesktopShellState | null): number {
+  if (!desktopShell) {
+    return 0;
+  }
+  return desktopShell.hiddenWidgetIds.length;
 }
