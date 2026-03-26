@@ -560,6 +560,7 @@ export function buildHubShellMenu(params: {
     ].filter((menu): menu is HubContextMenuSection => Boolean(menu));
   }
 
+  // Användarbokmärken (navBookmark). Systemflikar är tool/panel/profile — inte samma meny som tom nav-yta (shell.object/navGroup).
   if (target.type === "navBookmark") {
     const path = target.path.trim();
     const open = () => openNavBookmarkDestination(path, actions);
@@ -579,7 +580,7 @@ export function buildHubShellMenu(params: {
     if (layoutEditMode) {
       return [
         editExitSection(m, toggleLayoutEditMode),
-        section("nav-bm-edit", m.layoutEditing, [
+        section("nav-bm-edit", copy.navBookmarks.contextMenuManageSection, [
           onNavBookmarkEdit
             ? {
                 id: "nb-edit",
@@ -633,6 +634,21 @@ export function buildHubShellMenu(params: {
           label: m.copyModulePath,
           onSelect: copyPath,
         },
+        onNavBookmarkEdit
+          ? {
+              id: "nb-edit",
+              label: copy.navBookmarks.editBookmark,
+              onSelect: () => onNavBookmarkEdit(target.bookmarkId),
+            }
+          : null,
+        onNavBookmarkDelete
+          ? {
+              id: "nb-del",
+              label: copy.navBookmarks.deleteBookmark,
+              tone: "danger",
+              onSelect: () => onNavBookmarkDelete(target.bookmarkId),
+            }
+          : null,
       ]),
     ].filter((menu): menu is HubContextMenuSection => Boolean(menu));
   }
@@ -817,6 +833,7 @@ export function buildHubShellMenu(params: {
     if (layoutEditMode) {
       return [
         editExitSection(m, toggleLayoutEditMode),
+        // navGroup: bara "Lägg till bokmärke" här — redigera/ta bort för enskilda bokmärken sker via target navBookmark på själva fliken.
         section("shell-object-edit", m.layoutEditing, [
           target.kind === "navGroup" && onNavBookmarkAdd
             ? {

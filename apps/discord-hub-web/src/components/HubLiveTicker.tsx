@@ -56,7 +56,7 @@ export default function HubLiveTicker({ variant }: { variant: HubLiveTickerVaria
 
       <div
         aria-hidden="true"
-        className="pointer-events-none min-w-0 overflow-hidden whitespace-nowrap"
+        className="hub-live-ticker-fade pointer-events-none min-w-0 overflow-hidden whitespace-nowrap"
       >
         <div
           className={cn(

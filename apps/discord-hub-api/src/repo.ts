@@ -401,3 +401,61 @@ export async function listRecentWheelSessions(
     created_at: new Date(String(row.created_at)).toISOString(),
   }));
 }
+
+export type HubUserSettingsRow = {
+  user_id: string;
+  payload: unknown;
+  updated_at: string;
+};
+
+export async function getHubUserSettings(
+  userId: string,
+): Promise<HubUserSettingsRow | null> {
+  const pool = getPool();
+  if (!pool) {
+    return null;
+  }
+  const r = await pool.query<{ payload: unknown; updated_at: Date }>(
+    `
+    SELECT payload, updated_at
+      FROM hub_user_settings
+     WHERE user_id = $1
+    `,
+    [userId],
+  );
+  const row = r.rows[0];
+  if (!row) {
+    return null;
+  }
+  return {
+    user_id: userId,
+    payload: row.payload,
+    updated_at: new Date(String(row.updated_at)).toISOString(),
+  };
+}
+
+export async function upsertHubUserSettings(
+  userId: string,
+  payload: unknown,
+): Promise<string> {
+  const pool = getPool();
+  if (!pool) {
+    throw new Error("database_unavailable");
+  }
+  const r = await pool.query<{ updated_at: Date }>(
+    `
+    INSERT INTO hub_user_settings (user_id, payload, updated_at)
+    VALUES ($1, $2::jsonb, now())
+    ON CONFLICT (user_id) DO UPDATE SET
+      payload = EXCLUDED.payload,
+      updated_at = now()
+    RETURNING updated_at
+    `,
+    [userId, JSON.stringify(payload ?? {})],
+  );
+  const updated = r.rows[0]?.updated_at;
+  if (!updated) {
+    throw new Error("hub_user_settings_upsert_failed");
+  }
+  return new Date(String(updated)).toISOString();
+}

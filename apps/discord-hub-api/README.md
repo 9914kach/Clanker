@@ -86,6 +86,8 @@ Sedan starta `discord-hub-web` (`npm run dev`). Webbläsaren anropar `/api/...` 
 | GET | `/api/auth/discord/callback` | Discord callback; sätter `discord_session` + krypterad `discord_oauth_tokens`; redirect till `{FRONTEND_URL}/dashboard`. |
 | GET | `/api/auth/me` | Profilfält + `discord`-metadata från [`GET /oauth2/@me`](https://docs.discord.com/developers/topics/oauth2#get-current-authorization-information) när token finns. |
 | POST | `/api/auth/logout` | Rensar session- och OAuth-token-cookies. |
+| GET | `/api/me/hub-settings` | Inloggad: privat hubb-JSON (prefs + dashboard-layout m.m.) från Postgres. Utan `DATABASE_URL`: `{ available: false, settings: null, updatedAt: null }`. |
+| PUT | `/api/me/hub-settings` | Inloggad: sparar hela dokumentet (kräver `version: 1` i body). **400** vid ogiltig payload, **413** om body > ~400 kB, **503** utan DB. |
 | GET | `/api/public/profile/:userId` | Publik profil-DTO för en Discord-användare. Returnerar Discord-identitet, publika integrationer och stats-platshållare. **404** om profilen saknas eller inte är publicerad. |
 | `*` | `/api/discord/*` | Inloggad användare: proxy till Discord REST v10 med Bearer; refresh enligt [refresh grant](https://docs.discord.com/developers/topics/oauth2#authorization-code-grant-refresh-token-exchange-example). |
 | `*` | `/api/bot/discord/*` | Inloggad användare + `DISCORD_BOT_TOKEN`: proxy med `Authorization: Bot …`. **503** om bot-token saknas. |

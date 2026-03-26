@@ -81,7 +81,7 @@ function CursorGlyph({
 }
 
 /**
- * Följer pekaren när dev-läget med webbläsarens högerklick/Inspect är aktivt.
+ * Följer pekaren i dev när skal-högerklick är aktivt (hubbens kontextmeny).
  * Utseende styrs av {@link HubInspectCursorPrefsSlice} (preset, tema-färg, storlek).
  */
 export default function HubShellInspectCursor({

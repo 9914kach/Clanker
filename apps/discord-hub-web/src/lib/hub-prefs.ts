@@ -52,7 +52,7 @@ export type HubCopyStylePrefsSlice = {
   memeFrequency: HubMemeFrequency;
 };
 
-/** Custom pekare när dev-läget ”Inspect / webbläsarens meny” är aktivt. */
+/** Anpassad pekare i dev när skal-högerklick är aktivt (inte webbläsarens meny). */
 export type HubInspectCursorPrefsSlice = {
   preset: HubInspectCursorPreset;
   colorSource: HubInspectCursorColorSource;

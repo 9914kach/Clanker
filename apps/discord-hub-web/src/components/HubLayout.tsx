@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import { Command, Inspect, LayoutGrid, SearchIcon, Settings2 } from "lucide-react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@clanker/ui/components/button";
@@ -35,6 +43,7 @@ import HubNavBookmarkDialog from "@/components/HubNavBookmarkDialog";
 import HubPrefsPanel from "@/components/HubPrefsPanel";
 import HubShellInspectCursor from "@/components/HubShellInspectCursor";
 import { useHubPrefs } from "@/components/HubPrefsProvider";
+import { useHubSettingsSync } from "@/hooks/use-hub-settings-sync";
 import { HubShellReorderablePrimaryNav } from "@/components/HubShellReorderableChrome";
 import {
   createBookmarkNavId,
@@ -124,6 +133,22 @@ function workspaceMeta(
   };
 }
 
+/** Element that actually received the click — not elementFromPoint (can disagree with contextmenu target). */
+function contextMenuHitElement(event: ReactMouseEvent<HTMLElement>): Element | null {
+  const native = event.nativeEvent;
+  const raw = native instanceof MouseEvent ? native.target : event.target;
+  if (raw instanceof Element) {
+    return raw;
+  }
+  if (raw instanceof Text) {
+    return raw.parentElement;
+  }
+  if (typeof document !== "undefined" && native instanceof MouseEvent) {
+    return document.elementFromPoint(native.clientX, native.clientY);
+  }
+  return null;
+}
+
 export default function HubLayout() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
@@ -139,15 +164,18 @@ export default function HubLayout() {
   const [nativeBrowserContextMenu, setNativeBrowserContextMenu] = useState(readNativeBrowserContextMenu);
   const [prefsPanelOpen, setPrefsPanelOpen] = useState(false);
   const { prefs: hubPrefs } = useHubPrefs();
+  useHubSettingsSync(me, hubPrefs);
   const [shellContextMenu, setShellContextMenu] = useState<{
     target: HubContextTarget;
     position: { x: number; y: number };
   } | null>(null);
+  const topbarRef = useRef<HTMLElement | null>(null);
   const lastCommandTriggerRef = useRef<HTMLElement | null>(null);
   const leaderTimeoutRef = useRef<number | null>(null);
   const awaitingLeaderRef = useRef(false);
   const isDashboardRoute = pathname === "/dashboard";
-  const inspectCursorActive = import.meta.env.DEV && nativeBrowserContextMenu;
+  /** Dev: anpassad skal-pekare när hubbens högerklick är aktivt — inte när webbläsarens meny är på. */
+  const shellCustomCursorActive = import.meta.env.DEV && !nativeBrowserContextMenu;
   const panelMeta = workspaceMeta(pathname, copy.chrome);
   const defaultPinnedIds = useMemo(() => HUB_TOOLS.map((tool) => tool.id), []);
   const [pinnedIds, setPinnedIds] = useState<string[]>(() => loadPins(defaultPinnedIds));
@@ -230,9 +258,27 @@ export default function HubLayout() {
     }
   }, [nativeBrowserContextMenu]);
 
+  useLayoutEffect(() => {
+    const el = topbarRef.current;
+    if (!el) {
+      return;
+    }
+    const apply = () => {
+      const h = Math.ceil(el.getBoundingClientRect().height);
+      document.documentElement.style.setProperty("--hub-topbar-height", `${h}px`);
+    };
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      document.documentElement.style.removeProperty("--hub-topbar-height");
+    };
+  }, []);
+
   /** På <html>: HubLayout rot täcker inte ToastProvider m.m. — annars cursor:none bara delvis och pekaren känns omvänd. */
   useEffect(() => {
-    if (!inspectCursorActive) {
+    if (!shellCustomCursorActive) {
       document.documentElement.classList.remove("hub-shell-inspect-cursor-active");
       return;
     }
@@ -240,7 +286,7 @@ export default function HubLayout() {
     return () => {
       document.documentElement.classList.remove("hub-shell-inspect-cursor-active");
     };
-  }, [inspectCursorActive]);
+  }, [shellCustomCursorActive]);
 
   const toggleLayoutEditMode = useCallback(() => {
     setLayoutEditMode((prev) => !prev);
@@ -619,14 +665,16 @@ export default function HubLayout() {
 
   const navButtonClassName = (isActive: boolean) =>
     cn(
-      "inline-flex items-center gap-1.5 rounded-xl border px-2 py-1 text-xs font-medium transition",
-      "border-border/60 bg-background/45 hover:bg-muted/65 hover:text-foreground",
-      isActive && "border-primary/40 bg-primary/12 text-foreground shadow-[0_0_0_1px_color-mix(in_oklab,var(--primary)_12%,transparent)]",
+      "inline-flex items-center gap-1.5 rounded-xl border border-transparent px-2 py-1 text-xs font-medium transition",
+      "bg-background/45 hover:bg-muted/65 hover:text-foreground",
+      isActive && "bg-primary/12 text-foreground",
     );
 
   /** Kompakt topbar — matchar ungefär halv tidigare vertikal höjd. */
-  const hubTopbarButtonClass =
-    "h-7 min-h-7 gap-1 px-2 text-xs has-[>svg]:px-2 [&_svg:not([class*='size-'])]:size-3.5";
+  const hubTopbarButtonClass = cn(
+    "hub-topbar-select-text",
+    "h-7 min-h-7 gap-1 px-2 text-xs has-[>svg]:px-2 [&_svg:not([class*='size-'])]:size-3.5",
+  );
 
   const normalizeContextTarget = useCallback(
     (target: HubContextTarget): HubContextTarget => {
@@ -691,27 +739,25 @@ export default function HubLayout() {
   }, [baseActions, copy.actions, nativeBrowserContextMenu, toggleDevNativeContextMenu]);
 
   const openShellContextMenu = useCallback(
-    (event: ReactMouseEvent<HTMLElement>) => {
+    (event: ReactMouseEvent<HTMLElement>, forceTarget?: Element | null) => {
       if (nativeBrowserContextMenu) {
         closeShellContextMenu();
         return;
       }
 
-      if (event.defaultPrevented || isTextEditingTarget(event.target)) {
+      // Skip defaultPrevented check when called directly (e.g. from Reorder.Item
+      // where Framer Motion sets preventDefault to suppress browser drag menu).
+      if (!forceTarget && (event.defaultPrevented || isTextEditingTarget(event.target))) {
         closeShellContextMenu();
         return;
       }
 
       event.preventDefault();
-      const native = event.nativeEvent;
-      const atPoint =
-        native instanceof MouseEvent &&
-        typeof document !== "undefined" &&
-        typeof document.elementFromPoint === "function"
-          ? document.elementFromPoint(native.clientX, native.clientY)
-          : null;
-      const hit = atPoint ?? event.target;
+      const hit = forceTarget ?? contextMenuHitElement(event);
       const target = normalizeContextTarget(resolveHubContextTarget(hit));
+      if (import.meta.env.DEV) {
+        console.log("[ctx]", hit?.tagName, hit?.getAttribute?.("data-hub-context"), "→", target.type);
+      }
       setShellContextMenu({
         target,
         position: { x: event.clientX, y: event.clientY },
@@ -742,8 +788,8 @@ export default function HubLayout() {
             toggleGridSnap,
             isDashboardRoute,
             onNavBookmarkAdd: layoutEditMode ? openNavBookmarkAdd : undefined,
-            onNavBookmarkEdit: layoutEditMode ? openNavBookmarkEdit : undefined,
-            onNavBookmarkDelete: layoutEditMode ? removeNavBookmark : undefined,
+            onNavBookmarkEdit: openNavBookmarkEdit,
+            onNavBookmarkDelete: removeNavBookmark,
           })
         : [],
     [
@@ -907,11 +953,12 @@ export default function HubLayout() {
       )}
       onContextMenu={openShellContextMenu}
     >
-      <HubShellInspectCursor active={inspectCursorActive} prefs={hubPrefs.inspectCursor} />
+      <HubShellInspectCursor active={shellCustomCursorActive} prefs={hubPrefs.inspectCursor} />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,color-mix(in_oklab,var(--primary)_18%,transparent),transparent_24%),radial-gradient(circle_at_bottom_right,color-mix(in_oklab,var(--accent)_14%,transparent),transparent_28%),linear-gradient(180deg,color-mix(in_oklab,var(--background)_94%,black),var(--background))]" />
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_right,color-mix(in_oklab,var(--border)_18%,transparent)_1px,transparent_1px),linear-gradient(to_bottom,color-mix(in_oklab,var(--border)_14%,transparent)_1px,transparent_1px)] bg-[size:96px_96px] opacity-35" />
 
       <header
+        ref={topbarRef}
         className="relative z-20 border-b border-border/55 bg-background/45 backdrop-blur-xl supports-[backdrop-filter]:bg-background/35"
         {...hubContextData({ type: "shell.nav", area: "topbar" })}
       >
@@ -932,7 +979,7 @@ export default function HubLayout() {
                   if (layoutEditMode) e.preventDefault();
                 }}
                 className={cn(
-                  "flex items-center gap-2 rounded-xl border border-border/60 bg-background/45 px-2 py-1 transition hover:bg-muted/65",
+                  "flex items-center gap-2 rounded-xl px-2 py-1 transition-colors hover:text-primary/90",
                   layoutEditMode && "pointer-events-none select-none",
                 )}
                 {...hubContextData({
@@ -990,6 +1037,7 @@ export default function HubLayout() {
               profileId={profileId}
               pinnedIds={pinnedIds}
               navBookmarks={navBookmarks}
+              onContextMenu={openShellContextMenu}
             />
           </HubShellObject>
         </div>

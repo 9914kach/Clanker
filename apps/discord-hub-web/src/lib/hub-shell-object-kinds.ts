@@ -8,5 +8,4 @@ export type HubShellObjectKind =
   | "dockBar"
   | "routePanel"
   | "desktopZone"
-  | "desktopChrome"
   | "utilityZone";

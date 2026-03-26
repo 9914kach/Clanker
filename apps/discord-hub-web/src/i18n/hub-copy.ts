@@ -60,7 +60,6 @@ export type HubCopy = {
     shellObjectNavGroup: string;
     shellObjectBrandBlock: string;
     shellObjectDockBar: string;
-    shellObjectDesktopChrome: string;
     shellObjectDesktopZone: string;
     shellObjectUtilityZone: string;
   };
@@ -231,6 +230,8 @@ export type HubCopy = {
   /** Primärnav: användarbokmärken (layout-läge + högerklick). */
   navBookmarks: {
     addFromNavGroup: string;
+    /** Context menu (layout-läge): sektion för Redigera / Ta bort — skiljer från tom nav-yta. */
+    contextMenuManageSection: string;
     editBookmark: string;
     deleteBookmark: string;
     dialogAddTitle: string;
@@ -303,16 +304,6 @@ export type HubCopy = {
     backendHint2: string;
   };
   desktopSurface: {
-    workspaceBadge: string;
-    title: string;
-    subtitle: string;
-    commandBar: string;
-    cyclePalette: string;
-    chaosPulse: string;
-    appsOnline: (n: number) => string;
-    sleeping: (n: number) => string;
-    audioOnline: string;
-    audioMuted: string;
     spawnApp: string;
     personalShell: string;
     rightClickHint: string;
@@ -326,8 +317,6 @@ export type HubCopy = {
     dragAria: (label: string) => string;
     layoutEditBanner: string;
     layoutEditHint: string;
-    dragHintNormal: string;
-    dragHintEdit: string;
     widgetPositionResetToast: string;
     editStickyHelp: string;
     resizeHandleAria: string;
@@ -737,7 +726,6 @@ const SV: HubCopy = {
     shellObjectNavGroup: "Primär navigation",
     shellObjectBrandBlock: "Systemmärke och ticker",
     shellObjectDockBar: "Docka",
-    shellObjectDesktopChrome: "Skrivbordskrom",
     shellObjectDesktopZone: "Skrivbordsyta",
     shellObjectUtilityZone: "Modulspawn",
   },
@@ -994,12 +982,13 @@ const SV: HubCopy = {
   },
   navBookmarks: {
     addFromNavGroup: "Lägg till bokmärke…",
+    contextMenuManageSection: "Bokmärke",
     editBookmark: "Redigera bokmärke…",
     deleteBookmark: "Ta bort bokmärke",
     dialogAddTitle: "Nytt bokmärke",
     dialogEditTitle: "Redigera bokmärke",
     dialogDescription:
-      "Namn och mål (t.ex. /dashboard eller en https-länk). Som ett webbläsarbokmärke i topbaren.",
+      "Visningsnamn, ikon och mål. Intern hub-sökväg som börjar med / (t.ex. /dashboard, /profile/settings) eller en fullständig https-URL för sidor utanför hubben.",
     labelField: "Visningsnamn",
     pathField: "Mål (sökväg eller URL)",
     pathHint: "Intern: /profile/settings · Extern: https://…",
@@ -1110,17 +1099,6 @@ const SV: HubCopy = {
       "Lägg värden från apps/discord-hub-api/.env.example i repots .env och kör om npm run dev:discord-stack.",
   },
   desktopSurface: {
-    workspaceBadge: "Neutralen OS-arbetsyta",
-    title: "Community-skrivbord",
-    subtitle:
-      "Varje synlig pixel tillhör skalet nu. Högerklicka var som helst, flytta moduler och behandla hela vyn som mjukvara, inte en sida.",
-    commandBar: "Kommandorad",
-    cyclePalette: "Byt palett",
-    chaosPulse: "Kaospuls",
-    appsOnline: (n) => `${n} appar igång`,
-    sleeping: (n) => `${n} sover`,
-    audioOnline: "Ljud på",
-    audioMuted: "Ljud av",
     spawnApp: "Visa app",
     personalShell: "Personligt skal",
     rightClickHint: "Högerklicka för skalåtgärder",
@@ -1135,8 +1113,6 @@ const SV: HubCopy = {
     dragAria: (label) => `Dra ${label}`,
     layoutEditBanner: "Layout-läge",
     layoutEditHint: "Använd nedre verktygsraden. Dra moduler i titelfältet. Högerklick prioriterar layout.",
-    dragHintNormal: "Öppna layout-läge för att flytta moduler",
-    dragHintEdit: "dra i titelfält",
     widgetPositionResetToast: "Modulens plats är tillbaka till standard.",
     editStickyHelp: "Dra · ändra storlek · högerklick · spara",
     resizeHandleAria: "Ändra storlek",
@@ -1459,9 +1435,9 @@ const SV: HubCopy = {
       animationIntensityHint: "0 = minimal rörelse, 100 = fulla transitioner.",
     },
     inspectCursor: {
-      sectionTitle: "Inspect-pekare (dev)",
+      sectionTitle: "Skal-pekare (dev)",
       sectionHint:
-        "När du släpper igenom webbläsarens högerklick och Inspect visas denna pekare i stället för standardmusen.",
+        "När skal-högerklick är aktivt visas denna pekare i stället för standardmusen. Webbläsarens högerklick och Inspect använder vanlig pekare.",
       presetLabel: "Stil",
       presetCrosshair: "Hårkors",
       presetDot: "Punkt",
@@ -1563,7 +1539,6 @@ const EN: HubCopy = {
     shellObjectNavGroup: "Primary navigation",
     shellObjectBrandBlock: "System brand & ticker",
     shellObjectDockBar: "Dock",
-    shellObjectDesktopChrome: "Desktop chrome",
     shellObjectDesktopZone: "Desktop surface",
     shellObjectUtilityZone: "Module spawn zone",
   },
@@ -1820,12 +1795,13 @@ const EN: HubCopy = {
   },
   navBookmarks: {
     addFromNavGroup: "Add bookmark…",
+    contextMenuManageSection: "Bookmark",
     editBookmark: "Edit bookmark…",
     deleteBookmark: "Remove bookmark",
     dialogAddTitle: "New bookmark",
     dialogEditTitle: "Edit bookmark",
     dialogDescription:
-      "Label and destination (e.g. /dashboard or an https URL). Like a browser bookmark in the top bar.",
+      "Display name, icon, and target. Use an internal hub path starting with / (e.g. /dashboard, /profile/settings) or a full https URL for external pages.",
     labelField: "Display name",
     pathField: "Target (path or URL)",
     pathHint: "Internal: /profile/settings · External: https://…",
@@ -1933,17 +1909,6 @@ const EN: HubCopy = {
       "Add values from apps/discord-hub-api/.env.example to the repo .env and restart npm run dev:discord-stack.",
   },
   desktopSurface: {
-    workspaceBadge: "Neutralen OS workspace",
-    title: "Community desktop",
-    subtitle:
-      "Every visible pixel belongs to the shell now. Right-click anywhere, move modules around, and treat the whole viewport like software instead of a page.",
-    commandBar: "Command bar",
-    cyclePalette: "Cycle palette",
-    chaosPulse: "Chaos pulse",
-    appsOnline: (n) => `${n} apps online`,
-    sleeping: (n) => `${n} sleeping`,
-    audioOnline: "Audio online",
-    audioMuted: "Audio muted",
     spawnApp: "Spawn app",
     personalShell: "Personal shell",
     rightClickHint: "Right-click anything for shell actions",
@@ -1957,8 +1922,6 @@ const EN: HubCopy = {
     dragAria: (label) => `Drag ${label}`,
     layoutEditBanner: "Layout edit mode",
     layoutEditHint: "Use the bottom toolbar. Drag from the title bar. Right-click prioritizes layout actions.",
-    dragHintNormal: "Enter layout mode to rearrange modules",
-    dragHintEdit: "drag from the title bars",
     widgetPositionResetToast: "Module position reset to default.",
     editStickyHelp: "Drag · resize · right-click · save",
     resizeHandleAria: "Resize",
@@ -2273,9 +2236,9 @@ const EN: HubCopy = {
       animationIntensityHint: "0 = minimal motion, 100 = full transitions.",
     },
     inspectCursor: {
-      sectionTitle: "Inspect cursor (dev)",
+      sectionTitle: "Shell pointer (dev)",
       sectionHint:
-        "When the browser context menu and Inspect are enabled, this pointer replaces the default cursor.",
+        "When shell right-click is active, this pointer replaces the default cursor. Browser right-click and Inspect use the normal pointer.",
       presetLabel: "Style",
       presetCrosshair: "Crosshair",
       presetDot: "Dot",

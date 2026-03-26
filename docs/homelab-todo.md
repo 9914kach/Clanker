@@ -36,7 +36,10 @@ Uppdatera listan när du börjar eller avslutar något; flytta gärna färdiga p
   - Copy/ton: personality (calm/normal/chaotic), toast-verbositet, meme-frekvens  
   - UI: `HubPrefsPanel` (slide-in panel, flikar Widget/Desktop/Ton) via "Anpassa"-knapp i headern  
   - Prefs sparas i `localStorage` via `hub.prefs.v1`; i18n för SV + EN  
-- [ ] **Fas 3–4** — backend-sync av prefs, temamigration, per-widget egna ikoner/paletter, global personalitets-copy i alla strängar
+- [x] (2026-03-26) **Hub backend-sync (prefs + dashboard-layout)** — Postgres-tabell `hub_user_settings`, `GET`/`PUT /api/me/hub-settings`, webben cache:ar i `localStorage` och mergar mot `updated_at` (`hub.settings.sync_meta.v1`)  
+- [x] (2026-03-26) **Fas 0 — Unified Shell Grid (beslutsunderlag)** — terminologi, capability-matris, Desktop/Shell Edit-policy, datamodell-skiss; se [unified-shell-grid-fas0.md](unified-shell-grid-fas0.md) och väg framåt [unified-shell-grid-fas1.md](unified-shell-grid-fas1.md)  
+- [x] (2026-03-26) **Fas 1+2 — HubGridNode + Unified Surface Engine** — intern `HubGridNode`-modell med adapter legacy↔nodes; `normalizeDesktopLayoutRecord` fail-soft för okända widget-ID:n; gemensam `useHubSurfaceEngine`-hook som dashboard + (framtida) route-paneler delar; se [unified-shell-grid-fas1-2-impl.md](unified-shell-grid-fas1-2-impl.md)  
+- [ ] **Fas 3–4 (övrigt)** — temamigration, per-widget egna ikoner/paletter, global personalitets-copy i alla strängar; utöka `HubGridNode` till container-hierarki, `orderedLists` i payload, `Desktop Edit` vs `Shell Edit` enum
 
 ## Dev tools (`dev-tools-web`)
 

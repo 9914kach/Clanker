@@ -33,18 +33,20 @@ import {
   type LeagueRankPreference,
   type LeagueRegion,
 } from "./riot-lol.js";
-import { closeDb, initDb, verifyDbConnection } from "./db.js";
+import { closeDb, getPool, initDb, verifyDbConnection } from "./db.js";
 import {
   createWheelGroup,
   createWheelSession,
   deleteLeagueConnection,
   deleteLeagueSnapshot,
   deleteWheelGroup,
+  getHubUserSettings,
   getLeagueConnection,
   getLeagueSnapshot,
   getWheelGroup,
   listRecentWheelSessions,
   listWheelGroups,
+  upsertHubUserSettings,
   upsertLeagueConnection,
   upsertLeagueSnapshot,
   updateWheelGroup,
@@ -338,6 +340,95 @@ function createApp(env: AppEnv) {
     deleteCookie(c, COOKIE_NAME, { path: "/" });
     deleteCookie(c, DISCORD_OAUTH_TOKENS_COOKIE, { path: "/" });
     return c.body(null, 204);
+  });
+
+  const hubWidgetLayoutValueSchema = z.object({
+    x: z.number(),
+    y: z.number(),
+    w: z.number(),
+    h: z.number(),
+    z: z.number(),
+    hidden: z.boolean(),
+  });
+
+  const hubSettingsPayloadSchema = z
+    .object({
+      version: z.literal(1),
+      prefs: z.unknown().optional(),
+      desktopLayout: z.record(z.string(), hubWidgetLayoutValueSchema).optional(),
+      layoutAutosaveEnabled: z.boolean().optional(),
+    })
+    .strict();
+
+  const MAX_HUB_SETTINGS_BYTES = 400_000;
+
+  app.get("/api/me/hub-settings", async (c) => {
+    const session = await requireSession(env, getCookie(c, COOKIE_NAME));
+    if (!session) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    if (!getPool()) {
+      return c.json({
+        available: false,
+        settings: null,
+        updatedAt: null,
+      });
+    }
+
+    await upsertProfileFromSession(session);
+    const row = await getHubUserSettings(session.sub);
+    return c.json({
+      available: true,
+      settings: row?.payload ?? null,
+      updatedAt: row?.updated_at ?? null,
+    });
+  });
+
+  app.put("/api/me/hub-settings", async (c) => {
+    const session = await requireSession(env, getCookie(c, COOKIE_NAME));
+    if (!session) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    if (!getPool()) {
+      return c.json(
+        { error: "Database not configured", code: "db_unavailable" },
+        503,
+      );
+    }
+
+    let rawPayload: unknown;
+    try {
+      rawPayload = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid JSON" }, 400);
+    }
+
+    const rawStr = JSON.stringify(rawPayload);
+    if (rawStr.length > MAX_HUB_SETTINGS_BYTES) {
+      return c.json({ error: "Payload too large", code: "payload_too_large" }, 413);
+    }
+
+    const parsed = hubSettingsPayloadSchema.safeParse(rawPayload);
+    if (!parsed.success) {
+      return c.json({ error: "Invalid hub settings payload", code: "invalid_payload" }, 400);
+    }
+
+    await upsertProfileFromSession(session);
+
+    try {
+      const updatedAt = await upsertHubUserSettings(session.sub, parsed.data);
+      return c.json({ ok: true, updatedAt });
+    } catch (error) {
+      if (error instanceof Error && error.message === "database_unavailable") {
+        return c.json(
+          { error: "Database not configured", code: "db_unavailable" },
+          503,
+        );
+      }
+      throw error;
+    }
   });
 
   const WheelParticipant = z.string().trim().min(1).max(48);

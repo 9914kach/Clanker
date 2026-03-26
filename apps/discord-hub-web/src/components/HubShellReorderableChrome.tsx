@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { GripVertical, LayoutPanelTop, Workflow } from "lucide-react";
 import { NavLink } from "react-router-dom";
@@ -6,7 +6,7 @@ import { motion, Reorder, useReducedMotion } from "framer-motion";
 import { cn } from "@clanker/ui/lib/utils";
 import type { HubCopy } from "@/i18n/hub-copy";
 import { HUB_EASE_OUT } from "@/lib/hub-motion";
-import { hubContextData } from "@/lib/hub-shell-context";
+import { hubContextData, type HubContextTarget } from "@/lib/hub-shell-context";
 import type { HubNavBookmark } from "@/lib/hub-nav-bookmarks";
 import { isBookmarkNavId, isExternalNavPath } from "@/lib/hub-nav-bookmarks";
 import { resolveNavBookmarkIcon } from "@/lib/hub-nav-bookmark-icons";
@@ -62,12 +62,16 @@ const NAV_BREATHE_HI = "0 0 0 1px color-mix(in oklab, var(--primary) 13%, transp
 function HubReorderEditAffordance({
   slotIndex,
   reducedMotion,
+  rowContext,
   children,
 }: {
   slotIndex: number;
   reducedMotion: boolean;
+  /** Same shell target as the nav control; grip sits beside the link, so it must carry context too. */
+  rowContext?: HubContextTarget | null;
   children: ReactNode;
 }) {
+  const rowCtxProps = rowContext ? hubContextData(rowContext) : {};
   const follow = useHubMildMultiSpringFollow({
     enabled: !reducedMotion,
     pause: false,
@@ -88,6 +92,7 @@ function HubReorderEditAffordance({
   if (reducedMotion) {
     return (
       <div
+        {...rowCtxProps}
         className={cn(
           "group inline-flex max-w-full cursor-grab items-stretch gap-0.5 active:cursor-grabbing",
           radius,
@@ -107,6 +112,7 @@ function HubReorderEditAffordance({
 
   return (
     <motion.div
+      {...rowCtxProps}
       className={cn(
         "group inline-flex max-w-full cursor-grab items-stretch gap-0.5 will-change-transform active:cursor-grabbing",
         radius,
@@ -198,6 +204,7 @@ export function HubShellReorderablePrimaryNav({
   profileId,
   pinnedIds,
   navBookmarks,
+  onContextMenu,
 }: {
   order: readonly string[];
   onReorder: (next: string[]) => void;
@@ -209,6 +216,8 @@ export function HubShellReorderablePrimaryNav({
   profileId: string | null;
   pinnedIds: readonly string[];
   navBookmarks: Readonly<Record<string, HubNavBookmark>>;
+  /** Parent layout context menu handler — forwarded to Reorder.Items so drag doesn't swallow right-clicks. */
+  onContextMenu?: (e: ReactMouseEvent<HTMLElement>) => void;
 }) {
   const em = copy.editMode;
   const ch = copy.chrome;
@@ -232,6 +241,60 @@ export function HubShellReorderablePrimaryNav({
       return navBookmarks[id]?.label ?? id;
     }
     return id;
+  };
+
+  /** Context for layout-edit reorder row (grip is not under the anchor). */
+  const layoutRowContextForId = (id: string): HubContextTarget | null => {
+    if (id === "desktop") {
+      return {
+        type: "tool",
+        toolId: "desktop",
+        label: ch.toolDesktop,
+        path: "/dashboard",
+        pinned: true,
+      };
+    }
+    if (id === "profile") {
+      if (!profilePath) {
+        return null;
+      }
+      return {
+        type: "profile",
+        profileId,
+        profilePath,
+        label: ch.myProfile,
+        isOwnProfile: true,
+      };
+    }
+    if (id === "settings") {
+      return {
+        type: "panel",
+        panelId: "settings",
+        panelLabel: ch.panelSettings.label,
+      };
+    }
+    if (id === "wheel") {
+      return {
+        type: "tool",
+        toolId: "spin-the-wheel",
+        label: ch.panelWheel.label,
+        path: "/tools/spin-the-wheel",
+        pinned: pinnedIds.includes("spin-the-wheel"),
+      };
+    }
+    if (isBookmarkNavId(id)) {
+      const bm = navBookmarks[id];
+      if (!bm) {
+        return null;
+      }
+      return {
+        type: "navBookmark",
+        bookmarkId: id,
+        label: bm.label,
+        path: bm.path,
+      };
+    }
+    return null;
   };
 
   const renderItem = (id: string): ReactNode => {
@@ -383,12 +446,13 @@ export function HubShellReorderablePrimaryNav({
     return null;
   };
 
-  const rows = order
-    .map((id) => {
-      const node = renderItem(id);
-      return node ? { id, node } : null;
-    })
-    .filter((row): row is { id: string; node: ReactNode } => row !== null);
+  const rows: { id: string; node: ReactNode }[] = [];
+  for (const id of order) {
+    const node = renderItem(id);
+    if (node != null) {
+      rows.push({ id, node });
+    }
+  }
 
   const valueIds = rows.map((r) => r.id);
 
@@ -403,21 +467,12 @@ export function HubShellReorderablePrimaryNav({
           className="flex flex-wrap items-center gap-1"
         >
           {rows.map(({ id, node }, slotIndex) => {
-            const bm = isBookmarkNavId(id) ? navBookmarks[id] : undefined;
-            const bookmarkPayload =
-              bm != null
-                ? ({
-                    type: "navBookmark" as const,
-                    bookmarkId: id,
-                    label: bm.label,
-                    path: bm.path,
-                  })
-                : null;
             const affordance = (
               <HubReorderEditAffordance
                 key={`nav-aff-${id}-${introNonce}`}
                 slotIndex={slotIndex}
                 reducedMotion={reducedMotion}
+                rowContext={layoutRowContextForId(id)}
               >
                 {node}
               </HubReorderEditAffordance>
@@ -434,17 +489,15 @@ export function HubShellReorderablePrimaryNav({
                   "ms-0.5 ps-1.5 before:pointer-events-none before:absolute before:left-0 before:top-1/2 before:h-6 before:w-px before:-translate-y-1/2 before:rounded-full before:bg-border/55 before:content-['']",
               )}
               aria-label={em.shellReorderDragHandleAria(labelForId(id))}
+              onContextMenu={(e: ReactMouseEvent<HTMLElement>) => {
+                // Framer Motion drag internals call preventDefault on contextmenu to
+                // prevent the browser menu — we stop propagation and re-dispatch to
+                // the parent layout handler directly so the correct target is used.
+                e.stopPropagation();
+                onContextMenu?.(e);
+              }}
             >
-              {bookmarkPayload ? (
-                <div
-                  {...hubContextData(bookmarkPayload)}
-                  className="flex min-w-0 max-w-full flex-1"
-                >
-                  {affordance}
-                </div>
-              ) : (
-                affordance
-              )}
+              {affordance}
             </Reorder.Item>
             );
           })}

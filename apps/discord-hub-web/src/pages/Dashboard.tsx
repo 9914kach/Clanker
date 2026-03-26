@@ -5,70 +5,24 @@ import {
   Sparkles,
   UserRound,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { Button } from "@clanker/ui/components/button";
 import { Badge } from "@clanker/ui/components/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@clanker/ui/components/card";
 import { apiUrl } from "@/config";
 import HubDesktopSurface, { type HubDesktopWidget } from "@/components/HubDesktopSurface";
-import {
-  cloneLayoutRecord,
-  HUB_DESKTOP_LAYOUT_GRID,
-  layoutRecordsEqual,
-  snapCoord,
-  type HubDesktopWidgetLayout,
-} from "@/lib/hub-desktop-layout";
-import { gridStepForDensity } from "@/lib/hub-prefs";
+import { DEFAULT_WIDGET_LAYOUTS } from "@/lib/hub-dashboard-layout-storage";
 import { useHubAudio } from "@/components/HubAudioProvider";
 import { useHubToasts } from "@/components/HubToastProvider";
 import { useHubLocale } from "@/components/locale-provider";
 import { useTheme } from "@/components/theme-provider";
 import { useHubLayout } from "@/hooks/use-hub-layout";
+import { useHubSurfaceEngine } from "@/hooks/use-hub-surface-engine";
 import { pickHubChaosLine, rollHubChaos } from "@/lib/hub-chaos";
 import { useHubPrefs } from "@/components/HubPrefsProvider";
 
 const HUB_GUILD_ID = import.meta.env.VITE_DISCORD_HUB_GUILD_ID?.trim() ?? "";
-const DASHBOARD_LAYOUT_KEY = "hub.dashboard.layout.v2";
-const LAYOUT_AUTOSAVE_KEY = "hub.dashboard.layout.autosave.v1";
-const WIDGET_ORDER_KEY = "hub.dashboard.widget-order.v1";
-const HIDDEN_WIDGETS_KEY = "hub.dashboard.hidden-widgets.v1";
-
-const MIN_WIDGET_W = 240;
-const MIN_WIDGET_H = 140;
-
-type DesktopEditSession = {
-  draft: Record<string, HubDesktopWidgetLayout>;
-  baseline: Record<string, HubDesktopWidgetLayout>;
-  past: Record<string, HubDesktopWidgetLayout>[];
-  future: Record<string, HubDesktopWidgetLayout>[];
-};
-
-function readAutosaveEnabled(): boolean {
-  try {
-    return localStorage.getItem(LAYOUT_AUTOSAVE_KEY) === "true";
-  } catch {
-    return false;
-  }
-}
-
-const DEFAULT_WIDGET_ORDER = [
-  "welcome",
-  "server-pulse",
-  "wheel-launchpad",
-  "presence-radar",
-  "ritual-console",
-] as const;
-
-const DEFAULT_HIDDEN_WIDGETS = ["ritual-console"] as const;
-
-const DEFAULT_WIDGET_LAYOUTS: Record<string, HubDesktopWidgetLayout> = {
-  welcome: { x: 24, y: 70, w: 360, h: 220, z: 1, hidden: false },
-  "server-pulse": { x: 412, y: 70, w: 360, h: 250, z: 2, hidden: false },
-  "wheel-launchpad": { x: 800, y: 70, w: 336, h: 220, z: 3, hidden: false },
-  "presence-radar": { x: 92, y: 324, w: 360, h: 210, z: 4, hidden: false },
-  "ritual-console": { x: 484, y: 350, w: 392, h: 200, z: 5, hidden: true },
-};
 
 type GuildSummaryResponse = {
   guild: {
@@ -97,78 +51,6 @@ type GuildWidgetData = {
   liveError: string | null;
 };
 
-function safeReadList(key: string, fallback: readonly string[]): string[] {
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) {
-      return [...fallback];
-    }
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) {
-      return [...fallback];
-    }
-    return parsed.filter((value): value is string => typeof value === "string");
-  } catch {
-    return [...fallback];
-  }
-}
-
-function nextDesktopZ(layouts: Readonly<Record<string, HubDesktopWidgetLayout>>): number {
-  return Math.max(0, ...Object.values(layouts).map((layout) => layout.z)) + 1;
-}
-
-function safeReadDesktopLayout(): Record<string, HubDesktopWidgetLayout> {
-  try {
-    const raw = localStorage.getItem(DASHBOARD_LAYOUT_KEY);
-    if (raw) {
-      const parsed: unknown = JSON.parse(raw);
-      if (parsed && typeof parsed === "object") {
-        const entries = Object.entries(DEFAULT_WIDGET_LAYOUTS).map(([id, defaults]) => {
-          const candidate = (parsed as Record<string, unknown>)[id];
-          if (!candidate || typeof candidate !== "object") {
-            return [id, defaults] as const;
-          }
-
-          const value = candidate as Partial<HubDesktopWidgetLayout>;
-          return [
-            id,
-            {
-              x: Number.isFinite(value.x) ? Number(value.x) : defaults.x,
-              y: Number.isFinite(value.y) ? Number(value.y) : defaults.y,
-              w: Number.isFinite(value.w) ? Number(value.w) : defaults.w,
-              h: Number.isFinite(value.h) ? Number(value.h) : defaults.h,
-              z: Number.isFinite(value.z) ? Number(value.z) : defaults.z,
-              hidden: typeof value.hidden === "boolean" ? value.hidden : defaults.hidden,
-            },
-          ] as const;
-        });
-        return Object.fromEntries(entries);
-      }
-    }
-  } catch {
-    /* ignore */
-  }
-
-  const migratedLayout = Object.fromEntries(
-    Object.entries(DEFAULT_WIDGET_LAYOUTS).map(([id, layout]) => [id, { ...layout }]),
-  ) as Record<string, HubDesktopWidgetLayout>;
-  const legacyOrder = safeReadList(WIDGET_ORDER_KEY, DEFAULT_WIDGET_ORDER);
-  const legacyHidden = new Set(safeReadList(HIDDEN_WIDGETS_KEY, DEFAULT_HIDDEN_WIDGETS));
-
-  legacyOrder.forEach((id, index) => {
-    if (!migratedLayout[id]) {
-      return;
-    }
-    migratedLayout[id] = {
-      ...migratedLayout[id],
-      z: index + 1,
-      hidden: legacyHidden.has(id),
-    };
-  });
-
-  return migratedLayout;
-}
-
 export default function DashboardPage() {
   const { copy } = useHubLocale();
   const d = copy.dashboard;
@@ -191,87 +73,40 @@ export default function DashboardPage() {
     summaryError: null,
     liveError: null,
   });
-  const [savedLayout, setSavedLayout] = useState<Record<string, HubDesktopWidgetLayout>>(() =>
-    safeReadDesktopLayout(),
-  );
-  const [editSession, setEditSession] = useState<DesktopEditSession | null>(null);
-  const [selectedWidgetIds, setSelectedWidgetIds] = useState<string[]>([]);
-  const [autosaveLayoutEnabled, setAutosaveLayoutEnabled] = useState(readAutosaveEnabled);
-  const savedLayoutRef = useRef(savedLayout);
-  savedLayoutRef.current = savedLayout;
-  const editSessionRef = useRef<DesktopEditSession | null>(null);
-  editSessionRef.current = editSession;
 
-  const activeLayout = layoutEditMode && editSession ? editSession.draft : savedLayout;
+  const surface = useHubSurfaceEngine({
+    layoutEditMode,
+    gridSnapEnabled,
+    prefs,
+  });
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(LAYOUT_AUTOSAVE_KEY, autosaveLayoutEnabled ? "true" : "false");
-    } catch {
-      /* ignore */
-    }
-  }, [autosaveLayoutEnabled]);
-
-  useEffect(() => {
-    localStorage.setItem(DASHBOARD_LAYOUT_KEY, JSON.stringify(savedLayout));
-  }, [savedLayout]);
-
-  const layoutEditModeRef = useRef(layoutEditMode);
-  layoutEditModeRef.current = layoutEditMode;
-
-  useEffect(() => {
-    if (layoutEditMode) {
-      const base = cloneLayoutRecord(savedLayoutRef.current);
-      setEditSession({ draft: base, baseline: base, past: [], future: [] });
-      setSelectedWidgetIds([]);
-    } else {
-      setEditSession(null);
-      setSelectedWidgetIds([]);
-    }
-  }, [layoutEditMode]);
-
-  const mutateDraft = useCallback(
-    (updater: (prev: Record<string, HubDesktopWidgetLayout>) => Record<string, HubDesktopWidgetLayout>) => {
-      setEditSession((session) => {
-        if (!session) {
-          return session;
-        }
-        const snapshot = cloneLayoutRecord(session.draft);
-        const nextDraft = updater(cloneLayoutRecord(session.draft));
-        const nextSession: DesktopEditSession = {
-          ...session,
-          draft: nextDraft,
-          past: [...session.past, snapshot],
-          future: [],
-        };
-        if (autosaveLayoutEnabled) {
-          queueMicrotask(() => {
-            if (layoutEditModeRef.current) {
-              setSavedLayout(cloneLayoutRecord(nextDraft));
-            }
-          });
-        }
-        return nextSession;
-      });
-    },
-    [autosaveLayoutEnabled],
-  );
-
-  const mutateSavedOrDraft = useCallback(
-    (updater: (prev: Record<string, HubDesktopWidgetLayout>) => Record<string, HubDesktopWidgetLayout>) => {
-      if (layoutEditMode && editSession) {
-        mutateDraft(updater);
-      } else {
-        setSavedLayout((prev) => updater(cloneLayoutRecord(prev)));
-      }
-    },
-    [editSession, layoutEditMode, mutateDraft],
-  );
-
-  const isLayoutDirty =
-    Boolean(editSession) && !layoutRecordsEqual(editSession!.draft, editSession!.baseline);
-  const canUndoLayout = (editSession?.past.length ?? 0) > 0;
-  const canRedoLayout = (editSession?.future.length ?? 0) > 0;
+  const {
+    activeLayout,
+    selectedWidgetIds,
+    autosaveLayoutEnabled,
+    isLayoutDirty,
+    canUndoLayout,
+    canRedoLayout,
+    moveWidget,
+    moveWidgetsByDelta,
+    resizeWidget,
+    focusWidget,
+    saveLayoutCommitted,
+    discardLayoutDraft,
+    undoLayout,
+    redoLayout,
+    toggleAutosaveLayout,
+    acknowledgeLayoutSaved,
+    setWidgetSelection,
+    toggleWidgetInSelection,
+    clearWidgetSelection,
+    nudgeSelectedWidgets,
+    bringSelectedWidgetsToFront,
+    mutateSavedOrDraft,
+    revealAllHiddenWidgets: surfaceRevealAll,
+    resetWidgetPosition: surfaceResetWidgetPosition,
+    resetDesktopLayout: surfaceResetDesktopLayout,
+  } = surface;
 
   useEffect(() => {
     if (me.status !== "user" || !HUB_GUILD_ID) {
@@ -589,14 +424,7 @@ export default function DashboardPage() {
 
   const revealWidget = useCallback(
     (id: string) => {
-      mutateSavedOrDraft((prev) => ({
-        ...prev,
-        [id]: {
-          ...(prev[id] ?? DEFAULT_WIDGET_LAYOUTS[id]!),
-          hidden: false,
-          z: nextDesktopZ(prev),
-        },
-      }));
+      surface.revealWidget(id);
       play("panel");
       toasts.push({
         kind: "success",
@@ -604,323 +432,24 @@ export default function DashboardPage() {
         message: orderedWidgets.find((widget) => widget.id === id)?.label ?? id,
       });
     },
-    [d.toastWidgetOnline, mutateSavedOrDraft, orderedWidgets, play, toasts],
+    [d.toastWidgetOnline, orderedWidgets, play, surface, toasts],
   );
 
   const hideWidget = useCallback(
     (id: string) => {
-      mutateSavedOrDraft((prev) => ({
-        ...prev,
-        [id]: {
-          ...(prev[id] ?? DEFAULT_WIDGET_LAYOUTS[id]!),
-          hidden: true,
-        },
-      }));
-      setSelectedWidgetIds((sel) => sel.filter((w) => w !== id));
+      surface.hideWidget(id);
       toasts.push({
         kind: "info",
         title: d.toastWidgetHidden,
         message: orderedWidgets.find((widget) => widget.id === id)?.label ?? id,
       });
     },
-    [d.toastWidgetHidden, mutateSavedOrDraft, orderedWidgets, toasts],
+    [d.toastWidgetHidden, orderedWidgets, surface, toasts],
   );
-
-  const moveWidgetImpl = useCallback(
-    (id: string, position: Pick<HubDesktopWidgetLayout, "x" | "y">, bumpZ: boolean) => {
-      const gridStep = gridStepForDensity(prefs.desktop.gridDensity);
-      const apply = (prev: Record<string, HubDesktopWidgetLayout>) => {
-        const snap = (v: number) => snapCoord(v, gridSnapEnabled, gridStep, prefs.desktop.snapStrength);
-        const base = {
-          ...prev,
-          [id]: {
-            ...(prev[id] ?? DEFAULT_WIDGET_LAYOUTS[id]!),
-            x: snap(position.x),
-            y: snap(position.y),
-            z: bumpZ ? nextDesktopZ(prev) : (prev[id] ?? DEFAULT_WIDGET_LAYOUTS[id]!).z,
-          },
-        };
-        return base;
-      };
-      if (layoutEditMode && editSession) {
-        mutateDraft(apply);
-      } else {
-        setSavedLayout((prev) => apply(cloneLayoutRecord(prev)));
-      }
-    },
-    [editSession, gridSnapEnabled, layoutEditMode, mutateDraft, prefs.desktop.gridDensity, prefs.desktop.snapStrength],
-  );
-
-  const moveWidget = useCallback(
-    (id: string, position: Pick<HubDesktopWidgetLayout, "x" | "y">) => {
-      moveWidgetImpl(id, position, true);
-    },
-    [moveWidgetImpl],
-  );
-
-  const moveWidgetsByDelta = useCallback(
-    (ids: readonly string[], dx: number, dy: number) => {
-      if (ids.length === 0) {
-        return;
-      }
-      const gridStep = gridStepForDensity(prefs.desktop.gridDensity);
-      const snap = (v: number) => snapCoord(v, gridSnapEnabled, gridStep, prefs.desktop.snapStrength);
-      const apply = (prev: Record<string, HubDesktopWidgetLayout>) => {
-        let next = cloneLayoutRecord(prev);
-        const topZ = nextDesktopZ(next);
-        let zAssign = topZ;
-        for (const wid of ids) {
-          const cur = next[wid] ?? DEFAULT_WIDGET_LAYOUTS[wid];
-          if (!cur || cur.hidden) {
-            continue;
-          }
-          next[wid] = {
-            ...cur,
-            x: snap(cur.x + dx),
-            y: snap(cur.y + dy),
-            z: zAssign++,
-          };
-        }
-        return next;
-      };
-      if (layoutEditMode && editSession) {
-        mutateDraft(apply);
-      } else {
-        setSavedLayout((prev) => apply(cloneLayoutRecord(prev)));
-      }
-    },
-    [editSession, gridSnapEnabled, layoutEditMode, mutateDraft, prefs.desktop.gridDensity, prefs.desktop.snapStrength],
-  );
-
-  const resizeWidget = useCallback(
-    (id: string, size: { w: number; h: number }) => {
-      const apply = (prev: Record<string, HubDesktopWidgetLayout>) => ({
-        ...prev,
-        [id]: {
-          ...(prev[id] ?? DEFAULT_WIDGET_LAYOUTS[id]!),
-          w: Math.max(MIN_WIDGET_W, Math.round(size.w)),
-          h: Math.max(MIN_WIDGET_H, Math.round(size.h)),
-          z: nextDesktopZ(prev),
-        },
-      });
-      if (layoutEditMode && editSession) {
-        mutateDraft(apply);
-      } else {
-        setSavedLayout((prev) => apply(cloneLayoutRecord(prev)));
-      }
-    },
-    [editSession, layoutEditMode, mutateDraft],
-  );
-
-  const focusWidget = useCallback(
-    (id: string) => {
-      const apply = (prev: Record<string, HubDesktopWidgetLayout>) => {
-        const current = prev[id] ?? DEFAULT_WIDGET_LAYOUTS[id];
-        if (!current) {
-          return prev;
-        }
-        const top = nextDesktopZ(prev);
-        if (current.z === top - 1) {
-          return prev;
-        }
-        return {
-          ...prev,
-          [id]: {
-            ...current,
-            z: top,
-          },
-        };
-      };
-      if (layoutEditMode && editSession) {
-        mutateDraft(apply);
-      } else {
-        setSavedLayout((prev) => apply(cloneLayoutRecord(prev)));
-      }
-    },
-    [editSession, layoutEditMode, mutateDraft],
-  );
-
-  const bringSelectedWidgetsToFront = useCallback(() => {
-    if (selectedWidgetIds.length === 0) {
-      return;
-    }
-    const apply = (prev: Record<string, HubDesktopWidgetLayout>) => {
-      let next = cloneLayoutRecord(prev);
-      let z = nextDesktopZ(next);
-      for (const wid of selectedWidgetIds) {
-        const cur = next[wid] ?? DEFAULT_WIDGET_LAYOUTS[wid];
-        if (!cur || cur.hidden) {
-          continue;
-        }
-        next[wid] = { ...cur, z: z++ };
-      }
-      return next;
-    };
-    if (layoutEditMode && editSession) {
-      mutateDraft(apply);
-    } else {
-      setSavedLayout((prev) => apply(cloneLayoutRecord(prev)));
-    }
-  }, [editSession, layoutEditMode, mutateDraft, selectedWidgetIds]);
-
-  const nudgeSelectedWidgets = useCallback(
-    (dx: number, dy: number) => {
-      if (selectedWidgetIds.length === 0) {
-        return;
-      }
-      const step = gridSnapEnabled ? HUB_DESKTOP_LAYOUT_GRID : 1;
-      const ndx = dx * step;
-      const ndy = dy * step;
-      const apply = (prev: Record<string, HubDesktopWidgetLayout>) => {
-        const snap = (v: number) => snapCoord(v, gridSnapEnabled, HUB_DESKTOP_LAYOUT_GRID);
-        let next = cloneLayoutRecord(prev);
-        for (const wid of selectedWidgetIds) {
-          const cur = next[wid] ?? DEFAULT_WIDGET_LAYOUTS[wid];
-          if (!cur || cur.hidden) {
-            continue;
-          }
-          next[wid] = {
-            ...cur,
-            x: snap(cur.x + ndx),
-            y: snap(cur.y + ndy),
-          };
-        }
-        return next;
-      };
-      if (layoutEditMode && editSession) {
-        mutateDraft(apply);
-      } else {
-        setSavedLayout((prev) => apply(cloneLayoutRecord(prev)));
-      }
-    },
-    [editSession, gridSnapEnabled, layoutEditMode, mutateDraft, selectedWidgetIds],
-  );
-
-  const saveLayoutCommitted = useCallback(() => {
-    const s = editSessionRef.current;
-    if (!s) {
-      toasts.push({
-        kind: "success",
-        title: copy.editMode.layoutSavedTitle,
-        message: copy.editMode.layoutSavedMessage,
-      });
-      return;
-    }
-    const committed = cloneLayoutRecord(s.draft);
-    setSavedLayout(committed);
-    setEditSession({
-      draft: committed,
-      baseline: committed,
-      past: [],
-      future: [],
-    });
-    play("confirm");
-    toasts.push({
-      kind: "success",
-      title: copy.editMode.layoutSavedTitle,
-      message: copy.editMode.layoutSavedMessage,
-    });
-  }, [copy.editMode.layoutSavedMessage, copy.editMode.layoutSavedTitle, play, toasts]);
-
-  const discardLayoutDraft = useCallback(() => {
-    setEditSession((s) => {
-      if (!s) {
-        return s;
-      }
-      const reverted = cloneLayoutRecord(s.baseline);
-      if (autosaveLayoutEnabled) {
-        queueMicrotask(() => setSavedLayout(cloneLayoutRecord(reverted)));
-      }
-      return {
-        ...s,
-        draft: reverted,
-        past: [],
-        future: [],
-      };
-    });
-    toasts.push({
-      kind: "info",
-      title: copy.editMode.layoutDiscardedTitle,
-      message: copy.editMode.layoutDiscardedMessage,
-    });
-  }, [autosaveLayoutEnabled, copy.editMode.layoutDiscardedMessage, copy.editMode.layoutDiscardedTitle, toasts]);
-
-  const undoLayout = useCallback(() => {
-    setEditSession((s) => {
-      if (!s || s.past.length === 0) {
-        return s;
-      }
-      const prevDraft = cloneLayoutRecord(s.past[s.past.length - 1]!);
-      const newPast = s.past.slice(0, -1);
-      const newFuture = [cloneLayoutRecord(s.draft), ...s.future];
-      if (autosaveLayoutEnabled) {
-        queueMicrotask(() => setSavedLayout(cloneLayoutRecord(prevDraft)));
-      }
-      return { ...s, draft: prevDraft, past: newPast, future: newFuture };
-    });
-  }, [autosaveLayoutEnabled]);
-
-  const redoLayout = useCallback(() => {
-    setEditSession((s) => {
-      if (!s || s.future.length === 0) {
-        return s;
-      }
-      const [nextDraft, ...restFuture] = s.future;
-      const newPast = [...s.past, cloneLayoutRecord(s.draft)];
-      const draft = cloneLayoutRecord(nextDraft!);
-      if (autosaveLayoutEnabled) {
-        queueMicrotask(() => setSavedLayout(cloneLayoutRecord(draft)));
-      }
-      return { ...s, draft, past: newPast, future: restFuture };
-    });
-  }, [autosaveLayoutEnabled]);
-
-  const toggleAutosaveLayout = useCallback(() => {
-    setAutosaveLayoutEnabled((prev) => {
-      const next = !prev;
-      if (next && editSessionRef.current) {
-        queueMicrotask(() => setSavedLayout(cloneLayoutRecord(editSessionRef.current!.draft)));
-      }
-      return next;
-    });
-  }, []);
-
-  const setWidgetSelection = useCallback((ids: readonly string[]) => {
-    setSelectedWidgetIds([...ids]);
-  }, []);
-
-  const toggleWidgetInSelection = useCallback((id: string, additive: boolean) => {
-    setSelectedWidgetIds((sel) => {
-      if (additive) {
-        if (sel.includes(id)) {
-          return sel.filter((w) => w !== id);
-        }
-        return [...sel, id];
-      }
-      return [id];
-    });
-  }, []);
-
-  const clearWidgetSelection = useCallback(() => {
-    setSelectedWidgetIds([]);
-  }, []);
 
   const resetWidgetPosition = useCallback(
     (id: string) => {
-      mutateSavedOrDraft((prev) => {
-        const defaults = DEFAULT_WIDGET_LAYOUTS[id];
-        if (!defaults) {
-          return prev;
-        }
-        const current = prev[id] ?? defaults;
-        return {
-          ...prev,
-          [id]: {
-            ...defaults,
-            hidden: current.hidden,
-          },
-        };
-      });
+      surfaceResetWidgetPosition(id);
       play("panel");
       toasts.push({
         kind: "info",
@@ -928,21 +457,18 @@ export default function DashboardPage() {
         message: copy.desktopSurface.widgetPositionResetToast,
       });
     },
-    [copy.desktopSurface.widgetPositionResetToast, copy.shellMenu.resetWidgetPosition, mutateSavedOrDraft, play, toasts],
+    [copy.desktopSurface.widgetPositionResetToast, copy.shellMenu.resetWidgetPosition, surfaceResetWidgetPosition, play, toasts],
   );
 
   const resetDesktopLayout = useCallback(() => {
-    const defaults = Object.fromEntries(
-      Object.entries(DEFAULT_WIDGET_LAYOUTS).map(([wid, layout]) => [wid, { ...layout }]),
-    ) as Record<string, HubDesktopWidgetLayout>;
-    mutateSavedOrDraft(() => defaults);
+    surfaceResetDesktopLayout();
     play("panel");
     toasts.push({
       kind: "info",
       title: d.toastDesktopReset,
       message: d.toastDesktopResetMessage,
     });
-  }, [d.toastDesktopReset, d.toastDesktopResetMessage, mutateSavedOrDraft, play, toasts]);
+  }, [d.toastDesktopReset, d.toastDesktopResetMessage, surfaceResetDesktopLayout, play, toasts]);
 
   const openAddModuleFlow = useCallback(() => {
     const hasSleepingModules = hiddenWidgetIds.length > 0;
@@ -971,19 +497,7 @@ export default function DashboardPage() {
     if (hiddenWidgetIds.length === 0) {
       return;
     }
-    const ids = [...hiddenWidgetIds];
-    mutateSavedOrDraft((prev) => {
-      let z = nextDesktopZ(prev);
-      const next = { ...prev };
-      for (const id of ids) {
-        const cur = next[id] ?? DEFAULT_WIDGET_LAYOUTS[id];
-        if (!cur) {
-          continue;
-        }
-        next[id] = { ...cur, hidden: false, z: z++ };
-      }
-      return next;
-    });
+    surfaceRevealAll(hiddenWidgetIds);
     play("panel");
     toasts.push({
       kind: "success",
@@ -994,14 +508,29 @@ export default function DashboardPage() {
     copy.editMode.restoreAllMessage,
     copy.editMode.restoreAllTitle,
     hiddenWidgetIds,
-    mutateSavedOrDraft,
+    surfaceRevealAll,
     play,
     toasts,
   ]);
 
-  const acknowledgeLayoutSaved = useCallback(() => {
+  const wrappedSaveLayoutCommitted = useCallback(() => {
     saveLayoutCommitted();
-  }, [saveLayoutCommitted]);
+    play("confirm");
+    toasts.push({
+      kind: "success",
+      title: copy.editMode.layoutSavedTitle,
+      message: copy.editMode.layoutSavedMessage,
+    });
+  }, [copy.editMode.layoutSavedMessage, copy.editMode.layoutSavedTitle, play, saveLayoutCommitted, toasts]);
+
+  const wrappedDiscardLayoutDraft = useCallback(() => {
+    discardLayoutDraft();
+    toasts.push({
+      kind: "info",
+      title: copy.editMode.layoutDiscardedTitle,
+      message: copy.editMode.layoutDiscardedMessage,
+    });
+  }, [copy.editMode.layoutDiscardedMessage, copy.editMode.layoutDiscardedTitle, discardLayoutDraft, toasts]);
 
   const cyclePalette = useCallback(() => {
     const next =
@@ -1062,8 +591,8 @@ export default function DashboardPage() {
       resetWidgetPosition,
       openAddModuleFlow,
       revealAllHiddenWidgets,
-      saveLayoutCommitted,
-      discardLayoutDraft,
+      saveLayoutCommitted: wrappedSaveLayoutCommitted,
+      discardLayoutDraft: wrappedDiscardLayoutDraft,
       undoLayout,
       redoLayout,
       canUndoLayout,
@@ -1092,7 +621,7 @@ export default function DashboardPage() {
     canUndoLayout,
     clearWidgetSelection,
     desktopShellWidgets,
-    discardLayoutDraft,
+    wrappedDiscardLayoutDraft,
     focusWidget,
     hiddenWidgetIds,
     hideWidget,
@@ -1107,7 +636,7 @@ export default function DashboardPage() {
     resizeWidget,
     revealAllHiddenWidgets,
     revealWidget,
-    saveLayoutCommitted,
+    wrappedSaveLayoutCommitted,
     acknowledgeLayoutSaved,
     selectedWidgetIds,
     setDesktopShellState,
@@ -1168,14 +697,11 @@ export default function DashboardPage() {
       onFocusWidget={focusWidget}
       onOpenWidget={revealWidget}
       onHideWidget={hideWidget}
-      onOpenCommandPalette={openCommandPalette}
-      onCyclePalette={cyclePalette}
-      audioEnabled={audioEnabled}
-      onChaosAction={triggerChaosPulse}
       layoutEditMode={layoutEditMode}
       gridSnapEnabled={gridSnapEnabled}
       selectedWidgetIds={selectedWidgetIds}
       onSelectWidget={toggleWidgetInSelection}
+      onSetWidgetSelection={setWidgetSelection}
       onClearSelection={clearWidgetSelection}
     />
   );

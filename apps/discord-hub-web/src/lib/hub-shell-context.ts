@@ -155,19 +155,27 @@ export function resolveHubContextTarget(target: EventTarget | null): HubContextT
     return { type: "shell.surface", area: "fallback" };
   }
 
-  const anchor = el.closest<HTMLAnchorElement>("a[href]");
-  if (anchor) {
-    const fromAnchor = parseTarget(anchor.getAttribute(HUB_CONTEXT_ATTR));
-    if (fromAnchor) {
-      return fromAnchor;
+  // Walk from the clicked element outward. Stop at the first element that
+  // carries data-hub-context OR is an <a href>. This makes the closest
+  // annotated wrapper (e.g. a drag-affordance div) take precedence over an
+  // ancestor anchor that is further away in the tree.
+  let cur: Element | null = el;
+  while (cur !== null) {
+    // Explicit annotation wins immediately.
+    const ctxAttr = cur.getAttribute(HUB_CONTEXT_ATTR);
+    if (ctxAttr !== null) {
+      const parsed = parseTarget(ctxAttr);
+      if (parsed) {
+        return parsed;
+      }
     }
-    return resolveAnchorTarget(anchor);
-  }
 
-  const explicitTarget = el.closest<HTMLElement>(`[${HUB_CONTEXT_ATTR}]`);
-  const parsedExplicitTarget = parseTarget(explicitTarget?.getAttribute(HUB_CONTEXT_ATTR) ?? null);
-  if (parsedExplicitTarget) {
-    return parsedExplicitTarget;
+    // Unannotated anchor: derive target from href.
+    if (cur.tagName === "A" && cur.hasAttribute("href")) {
+      return resolveAnchorTarget(cur as HTMLAnchorElement);
+    }
+
+    cur = cur.parentElement;
   }
 
   return { type: "shell.surface", area: "fallback" };

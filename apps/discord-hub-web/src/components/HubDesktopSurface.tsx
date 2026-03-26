@@ -1,21 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { ComponentType, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { AnimatePresence, motion, useDragControls, useReducedMotion, type PanInfo } from "framer-motion";
 import { Button } from "@clanker/ui/components/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@clanker/ui/components/card";
 import { Badge } from "@clanker/ui/components/badge";
-import { Separator } from "@clanker/ui/components/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@clanker/ui/components/tooltip";
 import { cn } from "@clanker/ui/lib/utils";
 import {
   GripVertical,
   Minus,
   MonitorCog,
-  MousePointer2,
-  Palette,
   Plus,
-  Search,
-  Sparkles,
 } from "lucide-react";
 import { useHubLocale } from "@/components/locale-provider";
 import HubShellObject from "@/components/HubShellObject";
@@ -30,6 +25,7 @@ import {
   type HubWidgetVisualPrefs,
 } from "@/lib/hub-prefs";
 import { hubMotionDurationScale } from "@/lib/hub-motion";
+import { useHubDesktopMarquee } from "@/hooks/use-hub-desktop-marquee";
 
 export type HubDesktopWidget = {
   id: string;
@@ -582,14 +578,11 @@ export default function HubDesktopSurface({
   onFocusWidget,
   onOpenWidget,
   onHideWidget,
-  onOpenCommandPalette,
-  onCyclePalette,
-  audioEnabled,
-  onChaosAction,
   layoutEditMode,
   gridSnapEnabled = false,
   selectedWidgetIds = [],
   onSelectWidget,
+  onSetWidgetSelection,
   onClearSelection,
 }: {
   widgets: readonly HubDesktopWidget[];
@@ -604,14 +597,11 @@ export default function HubDesktopSurface({
   onFocusWidget: (id: string) => void;
   onOpenWidget: (id: string) => void;
   onHideWidget: (id: string) => void;
-  onOpenCommandPalette: () => void;
-  onCyclePalette: () => void;
-  audioEnabled: boolean;
-  onChaosAction: () => void;
   layoutEditMode: boolean;
   gridSnapEnabled?: boolean;
   selectedWidgetIds?: readonly string[];
   onSelectWidget?: (id: string, additive: boolean) => void;
+  onSetWidgetSelection?: (ids: readonly string[]) => void;
   onClearSelection?: () => void;
 }) {
   const { copy } = useHubLocale();
@@ -684,15 +674,19 @@ export default function HubDesktopSurface({
     }),
   );
 
-  const handleSurfacePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!layoutEditMode || !onClearSelection) {
-      return;
-    }
-    if (event.target !== event.currentTarget) {
-      return;
-    }
-    clearSelection();
-  };
+  const setWidgetSelectionBatch = onSetWidgetSelection ?? ((_ids: readonly string[]) => undefined);
+  const marqueeEnabled =
+    layoutEditMode && Boolean(onClearSelection) && Boolean(onSetWidgetSelection);
+
+  const { marqueeBox, surfacePointerProps } = useHubDesktopMarquee({
+    enabled: marqueeEnabled,
+    surfaceRef,
+    visibleWidgetIds,
+    layouts,
+    selectedWidgetIds,
+    onSetWidgetSelection: setWidgetSelectionBatch,
+    onClearSelection: clearSelection,
+  });
 
   const packBg = stylePackBackground(stylePackId);
   const durationScale = hubMotionDurationScale(animationIntensity);
@@ -718,55 +712,6 @@ export default function HubDesktopSurface({
             <div className="mt-1.5 text-[0.7rem] font-normal text-primary/90">{ds.editStickyHelp}</div>
           </div>
         ) : null}
-        <HubShellObject
-          as="div"
-          objectId="desktop.chrome"
-          objectKind="desktopChrome"
-          label={ch.shellObjectDesktopChrome}
-          layoutEditMode={layoutEditMode}
-          layoutEditChrome="subtle"
-          className="border-b border-border/50 bg-background/35 px-4 py-4 backdrop-blur md:px-5"
-        >
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div className="flex min-w-0 flex-col gap-2">
-              <Badge variant="secondary" className="w-fit">
-                {ds.workspaceBadge}
-              </Badge>
-              <div>
-                <h2 className="text-2xl font-semibold tracking-tight">{ds.title}</h2>
-                <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{ds.subtitle}</p>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={onOpenCommandPalette}>
-                <Search data-icon="inline-start" />
-                {ds.commandBar}
-              </Button>
-              <Button type="button" variant="outline" size="sm" onClick={onCyclePalette}>
-                <Palette data-icon="inline-start" />
-                {ds.cyclePalette}
-              </Button>
-              <Button type="button" size="sm" onClick={onChaosAction}>
-                <Sparkles data-icon="inline-start" />
-                {ds.chaosPulse}
-              </Button>
-            </div>
-          </div>
-
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            <span>{ds.appsOnline(visibleWidgets.length)}</span>
-            <Separator orientation="vertical" className="h-4" />
-            <span>{ds.sleeping(hiddenWidgets.length)}</span>
-            <Separator orientation="vertical" className="h-4" />
-            <span>{audioEnabled ? ds.audioOnline : ds.audioMuted}</span>
-            <Separator orientation="vertical" className="hidden h-4 md:block" />
-            <span className="inline-flex items-center gap-1">
-              <MousePointer2 className="size-3.5" />
-              {layoutEditMode ? ds.dragHintEdit : ds.dragHintNormal}
-            </span>
-          </div>
-        </HubShellObject>
 
         <div className="flex flex-1 flex-col gap-4 p-4 md:p-5">
           {hiddenWidgets.length > 0 ? (
@@ -872,7 +817,7 @@ export default function HubDesktopSurface({
 
           <div
             ref={surfaceRef}
-            onPointerDown={handleSurfacePointerDown}
+            {...surfacePointerProps}
             className={cn(
               "relative hidden overflow-hidden rounded-[2rem] border border-border/60 bg-background/28 lg:block",
               "before:pointer-events-none before:absolute before:inset-0 before:bg-[radial-gradient(circle_at_top_left,color-mix(in_oklab,var(--primary)_16%,transparent),transparent_26%)] before:content-['']",
@@ -897,6 +842,19 @@ export default function HubDesktopSurface({
               </span>
               <span>{ds.rightClickHint}</span>
             </div>
+
+            {marqueeBox ? (
+              <div
+                className="pointer-events-none absolute z-[45] rounded-md border border-dashed border-muted-foreground/50 bg-primary/5"
+                style={{
+                  left: marqueeBox.left,
+                  top: marqueeBox.top,
+                  width: marqueeBox.width,
+                  height: marqueeBox.height,
+                }}
+                aria-hidden
+              />
+            ) : null}
 
             <AnimatePresence initial={false}>
               {visibleWidgets.map((widget) => {

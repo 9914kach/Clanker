@@ -7,6 +7,11 @@
 
 @import "@clanker/ui/shadcn-theme.css";
 
+/* HubLayout uppdaterar till mätt topbar-höjd; toast-stack använder den så inget överlappar skalet. */
+:root {
+  --hub-topbar-height: 0px;
+}
+
 @keyframes hub-live-ticker-marquee {
   from {
     transform: translate3d(0, 0, 0);
@@ -28,52 +33,44 @@
   }
 }
 
-/* Edge fades for hub ticker: wide multi-stop oklab blend (avoids banding from mask + short two-stop gradients). */
-.hub-live-ticker-wrap {
-  position: relative;
-  isolation: isolate;
-}
-
-.hub-live-ticker-wrap::before,
-.hub-live-ticker-wrap::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  z-index: 10;
-  width: min(4rem, 24%);
-  pointer-events: none;
-}
-
-.hub-live-ticker-wrap[data-compact="true"]::before,
-.hub-live-ticker-wrap[data-compact="true"]::after {
-  width: min(3.25rem, 22%);
-}
-
-.hub-live-ticker-wrap::before {
-  left: 0;
-  background: linear-gradient(
+/*
+ * Ticker edge fade: mask fades the text to transparent (not an overlay color).
+ * Works on translucent/blurred headers and any theme — no mismatch with var(--background).
+ */
+.hub-live-ticker-fade {
+  mask-image: linear-gradient(
     90deg,
-    var(--background) 0%,
-    color-mix(in oklab, var(--background) 94%, transparent) 22%,
-    color-mix(in oklab, var(--background) 78%, transparent) 42%,
-    color-mix(in oklab, var(--background) 52%, transparent) 58%,
-    color-mix(in oklab, var(--background) 28%, transparent) 74%,
-    color-mix(in oklab, var(--background) 10%, transparent) 88%,
+    transparent 0%,
+    #000 14%,
+    #000 86%,
     transparent 100%
   );
+  -webkit-mask-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    #000 14%,
+    #000 86%,
+    transparent 100%
+  );
+  mask-repeat: no-repeat;
+  -webkit-mask-repeat: no-repeat;
+  mask-size: 100% 100%;
+  -webkit-mask-size: 100% 100%;
 }
 
-.hub-live-ticker-wrap::after {
-  right: 0;
-  background: linear-gradient(
-    270deg,
-    var(--background) 0%,
-    color-mix(in oklab, var(--background) 94%, transparent) 22%,
-    color-mix(in oklab, var(--background) 78%, transparent) 42%,
-    color-mix(in oklab, var(--background) 52%, transparent) 58%,
-    color-mix(in oklab, var(--background) 28%, transparent) 74%,
-    color-mix(in oklab, var(--background) 10%, transparent) 88%,
+.hub-live-ticker-wrap[data-compact="true"] .hub-live-ticker-fade {
+  mask-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    #000 12%,
+    #000 88%,
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    #000 12%,
+    #000 88%,
     transparent 100%
   );
 }
@@ -83,7 +80,22 @@ code {
 }
 
 /*
- * Dev: Inspect / webbläsarens meny. Klass sätts på document.documentElement (HubLayout)
+ * OS-style: inherited user-select none across the hub app; exceptions for copy/editing
+ * and compact topbar controls (hubTopbarButtonClass → .hub-topbar-select-text).
+ */
+.hub-os-select-root {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.hub-os-select-root :where(input, textarea, select, [contenteditable="true"], code, pre),
+.hub-os-select-root .hub-topbar-select-text {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/*
+ * Dev: skal-högerklick. Klass sätts på document.documentElement (HubLayout)
  * så cursor:none gäller hela appen inkl. toast-stack och andra noder utanför layout-roten.
  */
 .hub-shell-inspect-cursor-active,

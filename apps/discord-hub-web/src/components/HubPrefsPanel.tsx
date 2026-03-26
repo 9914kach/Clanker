@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
+  ChevronDown,
+  Palette,
   RotateCcw,
   Settings2,
   X,
