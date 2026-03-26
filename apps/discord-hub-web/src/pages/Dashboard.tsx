@@ -1,14 +1,11 @@
-import { motion, useReducedMotion } from "framer-motion";
 import {
-  Activity,
-  AudioLines,
   Dices,
   Gauge,
   Orbit,
   Sparkles,
   UserRound,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { Button } from "@clanker/ui/components/button";
 import { Badge } from "@clanker/ui/components/badge";
@@ -20,10 +17,10 @@ import HubDesktopSurface, {
 } from "@/components/HubDesktopSurface";
 import { useHubAudio } from "@/components/HubAudioProvider";
 import { useHubToasts } from "@/components/HubToastProvider";
+import { useHubLocale } from "@/components/locale-provider";
 import { useTheme } from "@/components/theme-provider";
 import { useHubLayout } from "@/hooks/use-hub-layout";
 import { pickHubChaosLine, rollHubChaos } from "@/lib/hub-chaos";
-import { hubEnterMotion } from "@/lib/hub-motion";
 
 const HUB_GUILD_ID = import.meta.env.VITE_DISCORD_HUB_GUILD_ID?.trim() ?? "";
 const DASHBOARD_LAYOUT_KEY = "hub.dashboard.layout.v2";
@@ -47,13 +44,6 @@ const DEFAULT_WIDGET_LAYOUTS: Record<string, HubDesktopWidgetLayout> = {
   "presence-radar": { x: 92, y: 324, w: 360, h: 210, z: 4, hidden: false },
   "ritual-console": { x: 484, y: 350, w: 392, h: 200, z: 5, hidden: true },
 };
-
-const CHAOS_LINES = [
-  "Neutralen OS blinked once and decided that was enough drama for now.",
-  "A tiny invisible sysadmin keeps rearranging the vibes behind your back.",
-  "The dashboard insists this all counts as infrastructure.",
-  "Someone definitely whispered 'one quick game' into the wiring again.",
-] as const;
 
 type GuildSummaryResponse = {
   guild: {
@@ -155,8 +145,10 @@ function safeReadDesktopLayout(): Record<string, HubDesktopWidgetLayout> {
 }
 
 export default function DashboardPage() {
-  const reducedMotion = useReducedMotion() ?? false;
-  const { me, openCommandPalette } = useHubLayout();
+  const { copy } = useHubLocale();
+  const d = copy.dashboard;
+  const chaosLines = d.chaosLines;
+  const { me, openCommandPalette, refreshMe, setDesktopShellState } = useHubLayout();
   const toasts = useHubToasts();
   const { play, enabled: audioEnabled, toggleEnabled: toggleAudio } = useHubAudio();
   const { colorPalette, setColorPalette } = useTheme();
@@ -220,7 +212,7 @@ export default function DashboardPage() {
         setGuildWidget((prev) => ({
           ...prev,
           summary: null,
-          summaryError: "Nätverksfel vid hämtning av summary",
+          summaryError: copy.dashboard.networkSummary,
         }));
       }
     };
@@ -249,7 +241,7 @@ export default function DashboardPage() {
         setGuildWidget((prev) => ({
           ...prev,
           live: null,
-          liveError: "Nätverksfel vid hämtning av live-data",
+          liveError: copy.dashboard.networkLive,
         }));
       }
     };
@@ -262,7 +254,7 @@ export default function DashboardPage() {
       window.clearInterval(summaryTimer);
       window.clearInterval(liveTimer);
     };
-  }, [me.status]);
+  }, [copy, me.status]);
 
   const profile = me.status === "user" ? me.profile : null;
   const displayName = profile ? profile.global_name ?? profile.username : null;
@@ -275,8 +267,8 @@ export default function DashboardPage() {
 
     const welcomeWidget: HubDesktopWidget = {
       id: "welcome",
-      label: "Identity core",
-      description: "Your profile, current palette, and launch posture.",
+      label: d.widgetWelcome.label,
+      description: d.widgetWelcome.description,
       tone: "social",
       icon: UserRound,
       content: (
@@ -285,23 +277,21 @@ export default function DashboardPage() {
             <Badge variant="secondary">@{profile.username}</Badge>
             <Badge variant="outline">{colorPalette}</Badge>
             <Badge variant={audioEnabled ? "outline" : "destructive"}>
-              audio {audioEnabled ? "online" : "muted"}
+              {audioEnabled ? d.welcomeAudioOnline : d.welcomeAudioMuted}
             </Badge>
           </div>
           <div className="flex flex-col gap-1">
             <p className="text-foreground">
-              Welcome back, <span className="font-medium">{displayName}</span>.
+              {d.welcomeBack(displayName)}
             </p>
-            <p>
-              This shell is now a little more like a desktop and a little less like a respectable app.
-            </p>
+            <p>{d.welcomeBlurb}</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button asChild size="sm">
-              <Link to={publicProfilePath}>Open profile</Link>
+              <Link to={publicProfilePath}>{d.openProfile}</Link>
             </Button>
             <Button type="button" variant="outline" size="sm" onClick={openCommandPalette}>
-              Command bar
+              {d.commandBar}
             </Button>
           </div>
         </div>
@@ -310,8 +300,8 @@ export default function DashboardPage() {
 
     const serverPulseWidget: HubDesktopWidget = {
       id: "server-pulse",
-      label: "Server pulse",
-      description: "Guild summary, voice presence and gateway health.",
+      label: d.widgetServerPulse.label,
+      description: d.widgetServerPulse.description,
       tone: "useful",
       icon: Gauge,
       content: HUB_GUILD_ID ? (
@@ -322,23 +312,25 @@ export default function DashboardPage() {
             <div className="flex flex-col gap-1">
               <p className="font-medium text-foreground">{guildWidget.summary.guild.name}</p>
               <p>
-                Medlemmar ca {guildWidget.summary.guild.approximate_member_count ?? "—"} · online ca{" "}
-                {guildWidget.summary.guild.approximate_presence_count ?? "—"}
+                {d.membersOnline(
+                  String(guildWidget.summary.guild.approximate_member_count ?? "—"),
+                  String(guildWidget.summary.guild.approximate_presence_count ?? "—"),
+                )}
               </p>
-              <p>Kanaler {guildWidget.summary.channel_count}</p>
+              <p>{d.channels(guildWidget.summary.channel_count)}</p>
             </div>
           ) : (
-            <p>Laddar guild summary…</p>
+            <p>{d.serverLoadingSummary}</p>
           )}
           {guildWidget.live ? (
             <div className="flex flex-col gap-1 rounded-xl border border-border/60 bg-background/70 p-3">
               <p>
-                Gateway{" "}
+                {d.gateway}{" "}
                 <span className={guildWidget.live.gateway_connected ? "text-foreground" : "text-destructive"}>
-                  {guildWidget.live.gateway_connected ? "ansluten" : "frånkopplad"}
+                  {guildWidget.live.gateway_connected ? d.gatewayConnected : d.gatewayDisconnected}
                 </span>
               </p>
-              <p>I voice just nu: {guildWidget.live.voice_users.length}</p>
+              <p>{d.voiceNow(guildWidget.live.voice_users.length)}</p>
               {guildWidget.live.gateway_degraded_reason ? (
                 <p className="text-xs text-warning">{guildWidget.live.gateway_degraded_reason}</p>
               ) : null}
@@ -346,26 +338,22 @@ export default function DashboardPage() {
           ) : null}
         </div>
       ) : (
-        <div className="text-sm text-muted-foreground">
-          Sätt <code className="text-foreground">VITE_DISCORD_HUB_GUILD_ID</code> för att visa guild-puls här.
-        </div>
+        <div className="text-sm text-muted-foreground">{d.guildIdHint}</div>
       ),
     };
 
     const wheelWidget: HubDesktopWidget = {
       id: "wheel-launchpad",
-      label: "Wheel launchpad",
-      description: "Fast path to random teams, shared chaos and repeatable seeds.",
+      label: d.widgetWheel.label,
+      description: d.widgetWheel.description,
       tone: "chaos",
       icon: Dices,
       content: (
         <div className="flex flex-col gap-4 text-sm text-muted-foreground">
-          <p>
-            Wheel-modulen är fortfarande den bästa platsen för att låta slumpen bära juridiskt ansvar.
-          </p>
+          <p>{d.wheelBlurb}</p>
           <div className="flex flex-wrap gap-2">
             <Button asChild size="sm">
-              <Link to="/tools/spin-the-wheel">Open wheel</Link>
+              <Link to="/tools/spin-the-wheel">{d.openWheel}</Link>
             </Button>
             <Button
               type="button"
@@ -375,12 +363,12 @@ export default function DashboardPage() {
                 void navigator.clipboard.writeText(`hub-${new Date().toISOString().slice(0, 10)}`);
                 toasts.push({
                   kind: "info",
-                  title: "Seed copied",
-                  message: "Freshly harvested for future disputes.",
+                  title: copy.actions.toasts.seedCopied,
+                  message: copy.actions.toasts.seedCopiedMessage,
                 });
               }}
             >
-              Copy seed starter
+              {d.copySeedStarter}
             </Button>
           </div>
         </div>
@@ -389,24 +377,24 @@ export default function DashboardPage() {
 
     const presenceWidget: HubDesktopWidget = {
       id: "presence-radar",
-      label: "Presence radar",
-      description: "A small social layer so the shell feels inhabited.",
+      label: d.widgetPresence.label,
+      description: d.widgetPresence.description,
       tone: "social",
       icon: Orbit,
       content: (
         <div className="flex flex-col gap-3 text-sm text-muted-foreground">
-          <p className="text-foreground">Discord login is active and your profile shell is wired in.</p>
+          <p className="text-foreground">{d.presenceLine1}</p>
           <p>
-            League, themes and identity settings all route through{" "}
+            {d.presenceLine2}
             <Link to={publicProfilePath} className="text-foreground underline-offset-4 hover:underline">
-              your profile
+              {d.presenceLine2Link}
             </Link>
             .
           </p>
           <div className="rounded-xl border border-border/60 bg-background/70 p-3">
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Live line</p>
+            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{d.liveLineLabel}</p>
             <p className="mt-2 text-sm text-foreground">
-              {pickHubChaosLine(CHAOS_LINES, CHAOS_LINES[0]!, new Date().getHours())}
+              {pickHubChaosLine(chaosLines, chaosLines[0]!, new Date().getHours())}
             </p>
           </div>
         </div>
@@ -415,13 +403,13 @@ export default function DashboardPage() {
 
     const ritualWidget: HubDesktopWidget = {
       id: "ritual-console",
-      label: "Ritual console",
-      description: "Low-stakes toggles, palette vibes and little system rituals.",
+      label: d.widgetRitual.label,
+      description: d.widgetRitual.description,
       tone: "chaos",
       icon: Sparkles,
       content: (
         <div className="flex flex-col gap-4 text-sm text-muted-foreground">
-          <p>For the premium desktop feeling: change palette, ping the command bar, and let the system make a scene.</p>
+          <p>{d.ritualBlurb}</p>
           <div className="flex flex-wrap gap-2">
             <Button
               type="button"
@@ -431,12 +419,14 @@ export default function DashboardPage() {
                 toggleAudio();
                 toasts.push({
                   kind: "info",
-                  title: audioEnabled ? "Audio muted" : "Audio armed",
-                  message: audioEnabled ? "Silence mode engaged." : "Tiny noises restored.",
+                  title: audioEnabled ? copy.actions.toasts.audioMuted : copy.actions.toasts.audioArmed,
+                  message: audioEnabled
+                    ? copy.actions.toasts.audioMutedMessage
+                    : copy.actions.toasts.audioArmedMessage,
                 });
               }}
             >
-              {audioEnabled ? "Mute audio" : "Enable audio"}
+              {audioEnabled ? d.muteAudio : d.enableAudio}
             </Button>
             <Button
               type="button"
@@ -445,16 +435,16 @@ export default function DashboardPage() {
                 play("chaos");
                 toasts.push({
                   kind: "chaos",
-                  title: "Ceremony accepted",
-                  message: "The dashboard pretends this was necessary.",
+                  title: d.ritualToastTitle,
+                  message: d.ritualToastMessage,
                 });
               }}
             >
-              Fire ceremony
+              {d.fireCeremony}
             </Button>
           </div>
           <div className="rounded-xl border border-warning/30 bg-warning/10 p-3 text-warning-foreground">
-            Rare event policy: subtle charm always on, weirdness sometimes, nonsense sparingly.
+            {d.ritualPolicy}
           </div>
         </div>
       ),
@@ -463,7 +453,10 @@ export default function DashboardPage() {
     return [welcomeWidget, serverPulseWidget, wheelWidget, presenceWidget, ritualWidget];
   }, [
     audioEnabled,
+    chaosLines,
     colorPalette,
+    copy,
+    d,
     displayName,
     guildWidget.live,
     guildWidget.liveError,
@@ -487,7 +480,7 @@ export default function DashboardPage() {
     [desktopLayout, orderedWidgets],
   );
 
-  const revealWidget = (id: string) => {
+  const revealWidget = useCallback((id: string) => {
     setDesktopLayout((prev) => ({
       ...prev,
       [id]: {
@@ -499,12 +492,12 @@ export default function DashboardPage() {
     play("panel");
     toasts.push({
       kind: "success",
-      title: "Widget online",
+      title: d.toastWidgetOnline,
       message: orderedWidgets.find((widget) => widget.id === id)?.label ?? id,
     });
-  };
+  }, [d.toastWidgetOnline, orderedWidgets, play, toasts]);
 
-  const hideWidget = (id: string) => {
+  const hideWidget = useCallback((id: string) => {
     setDesktopLayout((prev) => ({
       ...prev,
       [id]: {
@@ -514,12 +507,12 @@ export default function DashboardPage() {
     }));
     toasts.push({
       kind: "info",
-      title: "Widget hidden",
+      title: d.toastWidgetHidden,
       message: orderedWidgets.find((widget) => widget.id === id)?.label ?? id,
     });
-  };
+  }, [d.toastWidgetHidden, orderedWidgets, toasts]);
 
-  const moveWidget = (id: string, position: Pick<HubDesktopWidgetLayout, "x" | "y">) => {
+  const moveWidget = useCallback((id: string, position: Pick<HubDesktopWidgetLayout, "x" | "y">) => {
     setDesktopLayout((prev) => ({
       ...prev,
       [id]: {
@@ -528,9 +521,9 @@ export default function DashboardPage() {
         z: nextDesktopZ(prev),
       },
     }));
-  };
+  }, []);
 
-  const focusWidget = (id: string) => {
+  const focusWidget = useCallback((id: string) => {
     setDesktopLayout((prev) => {
       const current = prev[id] ?? DEFAULT_WIDGET_LAYOUTS[id];
       if (!current || current.z === nextDesktopZ(prev) - 1) {
@@ -544,9 +537,9 @@ export default function DashboardPage() {
         },
       };
     });
-  };
+  }, []);
 
-  const resetDesktopLayout = () => {
+  const resetDesktopLayout = useCallback(() => {
     setDesktopLayout(
       Object.fromEntries(
         Object.entries(DEFAULT_WIDGET_LAYOUTS).map(([id, layout]) => [id, { ...layout }]),
@@ -555,12 +548,12 @@ export default function DashboardPage() {
     play("panel");
     toasts.push({
       kind: "info",
-      title: "Desktop reset",
-      message: "Default layout restored.",
+      title: d.toastDesktopReset,
+      message: d.toastDesktopResetMessage,
     });
-  };
+  }, [d.toastDesktopReset, d.toastDesktopResetMessage, play, toasts]);
 
-  const cyclePalette = () => {
+  const cyclePalette = useCallback(() => {
     const next =
       colorPalette === "violett-neutral"
         ? "green"
@@ -571,17 +564,17 @@ export default function DashboardPage() {
     play("panel");
     toasts.push({
       kind: "success",
-      title: "Palette switched",
+      title: d.toastPaletteSwitched,
       message: next,
     });
-  };
+  }, [colorPalette, d.toastPaletteSwitched, play, setColorPalette, toasts]);
 
-  const triggerChaosPulse = () => {
+  const triggerChaosPulse = useCallback(() => {
     play(rollHubChaos("rare") ? "chaos" : "confirm");
     toasts.push({
       kind: "chaos",
-      title: "Desktop pulse",
-      message: pickHubChaosLine(CHAOS_LINES, CHAOS_LINES[0]!),
+      title: d.toastDesktopPulse,
+      message: pickHubChaosLine(chaosLines, chaosLines[0]!),
     });
     if (rollHubChaos("sometimes")) {
       const sleeping = hiddenWidgetIds[0];
@@ -589,10 +582,49 @@ export default function DashboardPage() {
         revealWidget(sleeping);
       }
     }
-  };
+  }, [chaosLines, d.toastDesktopPulse, hiddenWidgetIds, play, revealWidget, toasts]);
+
+  const desktopShellWidgets = useMemo(
+    () => widgets.map((widget) => ({ id: widget.id, label: widget.label, tone: widget.tone })),
+    [widgets],
+  );
+
+  const toggleDesktopAudio = useCallback(() => {
+    toggleAudio();
+    if (!audioEnabled) {
+      play("dock");
+    }
+  }, [audioEnabled, play, toggleAudio]);
+
+  useEffect(() => {
+    setDesktopShellState({
+      widgets: desktopShellWidgets,
+      hiddenWidgetIds,
+      audioEnabled,
+      revealWidget,
+      hideWidget,
+      resetLayout: resetDesktopLayout,
+      triggerChaos: triggerChaosPulse,
+      toggleAudio: toggleDesktopAudio,
+    });
+
+    return () => setDesktopShellState(null);
+  }, [
+    audioEnabled,
+    desktopShellWidgets,
+    hiddenWidgetIds,
+    hideWidget,
+    resetDesktopLayout,
+    revealWidget,
+    setDesktopShellState,
+    toggleDesktopAudio,
+    triggerChaosPulse,
+  ]);
 
   if (me.status === "loading") {
-    return <div className="mx-auto max-w-4xl px-5 py-10 text-muted-foreground">Laddar profil…</div>;
+    return (
+      <div className="mx-auto max-w-4xl px-5 py-10 text-muted-foreground">{copy.common.loadingProfile}</div>
+    );
   }
 
   if (me.status === "guest") {
@@ -600,22 +632,24 @@ export default function DashboardPage() {
   }
 
   if (me.status === "backend_error") {
+    const bc = copy.backendCard;
     return (
       <div className="mx-auto max-w-lg px-5 py-10">
         <Card>
           <CardHeader>
-            <CardTitle>Backend nårs inte</CardTitle>
+            <CardTitle>{bc.title}</CardTitle>
             <CardDescription>
-              <code className="text-foreground">discord-hub-api</code> körs inte eller har avslutats.
+              <code className="text-foreground">discord-hub-api</code> — {bc.description}
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3 text-sm text-muted-foreground">
-            <p>Kontrollera att API:t körs.</p>
-            <p>
-              Lägg till värden från <code className="text-foreground">apps/discord-hub-api/.env.example</code>{" "}
-              i repots <code className="text-foreground">.env</code> och starta om{" "}
-              <code className="text-foreground">npm run dev:discord-stack</code>.
-            </p>
+            <p>{bc.body}</p>
+            <p>{bc.hintEnv}</p>
+            <div className="flex flex-wrap gap-2 pt-1">
+              <Button type="button" size="sm" onClick={() => void refreshMe()}>
+                {bc.retry}
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -623,93 +657,18 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <motion.header {...hubEnterMotion(reducedMotion, 8)} className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="secondary">community OS</Badge>
-          <Badge variant="outline">palette {colorPalette}</Badge>
-          <Badge variant={audioEnabled ? "outline" : "destructive"}>
-            audio {audioEnabled ? "online" : "muted"}
-          </Badge>
-        </div>
-        <div>
-          <h1 className="text-3xl font-semibold tracking-tight">Discord hub desktop</h1>
-          <p className="mt-2 max-w-3xl text-muted-foreground">
-            Stable shell underneath, expressive chaos on top. Right-click the surface, drag widgets around,
-            and use the command bar when you want the site to feel like software instead of a page.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-          <Activity className="size-4" />
-          <span>Dock, context menus, command palette, draggable widgets and audio now share the same system layer.</span>
-        </div>
-      </motion.header>
-
-      <HubDesktopSurface
-        widgets={orderedWidgets}
-        layouts={desktopLayout}
-        hiddenWidgetIds={hiddenWidgetIds}
-        onMoveWidget={moveWidget}
-        onFocusWidget={focusWidget}
-        onOpenWidget={revealWidget}
-        onHideWidget={hideWidget}
-        onOpenCommandPalette={openCommandPalette}
-        onCyclePalette={cyclePalette}
-        audioEnabled={audioEnabled}
-        onToggleAudio={() => {
-          toggleAudio();
-          if (!audioEnabled) {
-            play("dock");
-          }
-        }}
-        onChaosAction={triggerChaosPulse}
-        onResetLayout={resetDesktopLayout}
-      />
-
-      <motion.section {...hubEnterMotion(reducedMotion, 10)} className="grid gap-4 lg:grid-cols-3">
-        <Card className="rounded-2xl">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Dices className="size-4" />
-              Next module target
-            </CardTitle>
-            <CardDescription>Wheel remains the strongest proof-of-fun.</CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3 text-sm text-muted-foreground">
-            <p>Realtime collaboration now starts in the wheel first, because it is visual, demoable and perfectly blameable.</p>
-            <Button asChild size="sm">
-              <Link to="/tools/spin-the-wheel">Go to wheel</Link>
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-2xl">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <AudioLines className="size-4" />
-              Sound policy
-            </CardTitle>
-            <CardDescription>Always little. Sometimes dramatic. Rarely cursed.</CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3 text-sm text-muted-foreground">
-            <p>Clicks and panel sounds are now centralized instead of hard-coded per component.</p>
-            <p>Mute lives as system state, not as a forgotten TODO.</p>
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-2xl">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Sparkles className="size-4" />
-              Identity direction
-            </CardTitle>
-            <CardDescription>Character before sterility, but with actual structure underneath.</CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3 text-sm text-muted-foreground">
-            <p>This is now closer to a living shell than a placeholder dashboard, which makes the rest of the roadmap much easier to extend coherently.</p>
-          </CardContent>
-        </Card>
-      </motion.section>
-    </div>
+    <HubDesktopSurface
+      widgets={orderedWidgets}
+      layouts={desktopLayout}
+      hiddenWidgetIds={hiddenWidgetIds}
+      onMoveWidget={moveWidget}
+      onFocusWidget={focusWidget}
+      onOpenWidget={revealWidget}
+      onHideWidget={hideWidget}
+      onOpenCommandPalette={openCommandPalette}
+      onCyclePalette={cyclePalette}
+      audioEnabled={audioEnabled}
+      onChaosAction={triggerChaosPulse}
+    />
   );
 }

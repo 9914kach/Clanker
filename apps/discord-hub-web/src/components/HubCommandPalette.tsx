@@ -11,20 +11,32 @@ import {
   CommandSeparator,
 } from "@clanker/ui/components/command";
 import { Badge } from "@clanker/ui/components/badge";
+import { useHubLocale } from "@/components/locale-provider";
 import type { HubAction, HubActionSection } from "@/config/hub-actions";
+import type { HubCopy } from "@/i18n/hub-copy";
 
 const SECTIONS: readonly HubActionSection[] = ["Navigation", "System", "Chaos"];
 const RECENT_ACTIONS_KEY = "hub.command-palette.recent.v1";
 const MAX_RECENT_ACTIONS = 5;
 
-function toneLabel(tone: HubAction["tone"]) {
+function sectionHeading(section: HubActionSection, cp: HubCopy["commandPalette"]) {
+  if (section === "System") {
+    return cp.sectionSystem;
+  }
+  if (section === "Chaos") {
+    return cp.sectionChaos;
+  }
+  return cp.sectionNavigation;
+}
+
+function toneLabel(tone: HubAction["tone"], cp: HubCopy["commandPalette"]) {
   if (tone === "social") {
-    return "social";
+    return cp.toneSocial;
   }
   if (tone === "chaos") {
-    return "chaos";
+    return cp.toneChaos;
   }
-  return "useful";
+  return cp.toneUseful;
 }
 
 function normalizeValue(value: string) {
@@ -87,6 +99,8 @@ export default function HubCommandPalette({
   onOpenChange: (open: boolean) => void;
   actions: readonly HubAction[];
 }) {
+  const { copy } = useHubLocale();
+  const cp = copy.commandPalette;
   const [query, setQuery] = useState("");
   const [recentActionIds, setRecentActionIds] = useState<string[]>(() => readRecentActionIds());
 
@@ -158,8 +172,8 @@ export default function HubCommandPalette({
     <CommandDialog
       open={open}
       onOpenChange={onOpenChange}
-      title="Clanker command palette"
-      description="Search modules, system actions, and the occasional bad decision."
+      title={cp.dialogTitle}
+      description={cp.dialogDescription}
       className="sm:max-w-2xl"
       contentProps={{
         onCloseAutoFocus: (event) => {
@@ -171,11 +185,11 @@ export default function HubCommandPalette({
         <CommandInput
           value={query}
           onValueChange={setQuery}
-          placeholder="Search actions, routes, settings, or the occasional forbidden word..."
+          placeholder={cp.inputPlaceholder}
         />
         <CommandList>
           {showRecentActions ? (
-            <CommandGroup heading="Recent commands">
+            <CommandGroup heading={cp.recentHeading}>
               {recentActions.map((action) => {
                 const Icon = action.icon;
                 return (
@@ -185,7 +199,7 @@ export default function HubCommandPalette({
                       <div className="flex items-center gap-2">
                         <span className="truncate">{action.label}</span>
                         <Badge variant={action.tone === "chaos" ? "destructive" : "outline"}>
-                          recent
+                          {cp.recentBadge}
                         </Badge>
                       </div>
                       <div className="truncate text-xs text-muted-foreground">
@@ -201,18 +215,14 @@ export default function HubCommandPalette({
           {showRecentActions && groupedActions.length > 0 ? <CommandSeparator /> : null}
           <CommandEmpty>
             <div className="flex flex-col gap-2 px-4 py-2 text-left">
-              <p className="text-sm font-medium text-foreground">
-                No command matched "{query.trim()}".
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Try `dashboard`, `audio`, `settings`, `seed`, or one of the stranger ritual words.
-              </p>
+              <p className="text-sm font-medium text-foreground">{cp.emptyTitle(query.trim() || "…")}</p>
+              <p className="text-xs text-muted-foreground">{cp.emptyHint}</p>
             </div>
           </CommandEmpty>
           {groupedActions.map((group, index) => (
             <div key={group.section}>
               {index > 0 ? <CommandSeparator /> : null}
-              <CommandGroup heading={group.section}>
+              <CommandGroup heading={sectionHeading(group.section, cp)}>
                 {group.items.map((action) => {
                   const Icon = action.icon;
                   return (
@@ -226,7 +236,7 @@ export default function HubCommandPalette({
                         <div className="flex items-center gap-2">
                           <span className="truncate">{action.label}</span>
                           <Badge variant={action.tone === "chaos" ? "destructive" : "outline"}>
-                            {toneLabel(action.tone)}
+                            {toneLabel(action.tone, cp)}
                           </Badge>
                         </div>
                         <div className="truncate text-xs text-muted-foreground">

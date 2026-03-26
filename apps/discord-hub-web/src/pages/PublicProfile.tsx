@@ -12,6 +12,7 @@ import {
   CardTitle,
 } from "@clanker/ui/components/card";
 import LeagueRankText from "@/components/LeagueRankText";
+import { useHubLocale } from "@/components/locale-provider";
 import { apiUrl } from "@/config";
 import { useHubLayout } from "@/hooks/use-hub-layout";
 import {
@@ -21,6 +22,7 @@ import {
   formatTimestamp,
   type LeagueRankedEntry,
 } from "@/lib/league-format";
+import { toBcp47, type HubLocale } from "@/i18n/hub-copy";
 
 type LeagueRecentMatch = {
   matchId: string;
@@ -100,35 +102,46 @@ async function readError(res: Response): Promise<string> {
   return res.statusText || `HTTP ${res.status}`;
 }
 
-function formatShortDate(value: string | null): string {
+function formatShortDate(value: string | null, locale: HubLocale, emptyLabel: string): string {
   if (!value) {
-    return "Ingen sync ännu";
+    return emptyLabel;
   }
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
     return value;
   }
-  return date.toLocaleDateString("sv-SE", {
+  return date.toLocaleDateString(toBcp47(locale), {
     day: "numeric",
     month: "short",
     year: "numeric",
   });
 }
 
-function leagueIntroLine(leagueLinked: boolean, stats: PublicLeagueStats): string {
+function leagueIntroLine(
+  leagueLinked: boolean,
+  stats: PublicLeagueStats,
+  intro: {
+    none: string;
+    notSynced: string;
+    soon: string;
+    synced: string;
+  },
+): string {
   if (!leagueLinked) {
-    return "Inget League-konto publicerat ännu.";
+    return intro.none;
   }
   if (!stats.available) {
     if (stats.source === "not_synced") {
-      return "League kopplat — ägaren kan synka under profilinställningar för att visa rank och matcher här.";
+      return intro.notSynced;
     }
-    return "League kopplat — stats kommer snart.";
+    return intro.soon;
   }
-  return "League-stats från senaste synk.";
+  return intro.synced;
 }
 
 export default function PublicProfilePage() {
+  const { copy, locale } = useHubLocale();
+  const p = copy.publicProfile;
   const { me } = useHubLayout();
   const { userId = "" } = useParams();
   const [state, setState] = useState<ProfileState>({ status: "loading" });
@@ -163,7 +176,7 @@ export default function PublicProfilePage() {
         }
         setState({
           status: "error",
-          message: "Kunde inte ladda den offentliga profilen just nu.",
+          message: p.loadErrorNetwork,
         });
       }
     };
@@ -172,15 +185,15 @@ export default function PublicProfilePage() {
     void loadProfile();
 
     return () => controller.abort();
-  }, [userId]);
+  }, [p.loadErrorNetwork, userId]);
 
   if (state.status === "loading") {
     return (
       <div className="flex flex-col gap-6">
         <Card>
           <CardHeader>
-            <CardTitle>Laddar offentlig profil…</CardTitle>
-            <CardDescription>Hämtar Discord-identitet och kopplade profiler.</CardDescription>
+            <CardTitle>{p.loadingTitle}</CardTitle>
+            <CardDescription>{p.loadingDesc}</CardDescription>
           </CardHeader>
         </Card>
       </div>
@@ -192,18 +205,15 @@ export default function PublicProfilePage() {
       <div className="flex flex-col gap-6">
         <Card>
           <CardHeader>
-            <CardTitle>Profilen hittades inte</CardTitle>
-            <CardDescription>
-              Användaren finns inte i den publika profil-cachen ännu, eller så är profilen inte
-              publicerad.
-            </CardDescription>
+            <CardTitle>{p.notFoundTitle}</CardTitle>
+            <CardDescription>{p.notFoundDesc}</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-3">
             <Button asChild variant="outline">
-              <Link to="/dashboard">Till hubben</Link>
+              <Link to="/dashboard">{p.toHub}</Link>
             </Button>
             <Button asChild>
-              <Link to="/login">Logga in</Link>
+              <Link to="/login">{copy.common.logIn}</Link>
             </Button>
           </CardContent>
         </Card>
@@ -216,12 +226,12 @@ export default function PublicProfilePage() {
       <div className="flex flex-col gap-6">
         <Card>
           <CardHeader>
-            <CardTitle>Kunde inte ladda profilen</CardTitle>
+            <CardTitle>{p.errorTitle}</CardTitle>
             <CardDescription>{state.message}</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-3">
             <Button asChild variant="outline">
-              <Link to="/dashboard">Till hubben</Link>
+              <Link to="/dashboard">{p.toHub}</Link>
             </Button>
           </CardContent>
         </Card>
@@ -234,14 +244,16 @@ export default function PublicProfilePage() {
   const displayName = u.global_name ?? u.username;
   const leagueLinked = profile.integrations.league !== null;
   const stats = profile.stats.league;
-  const leagueIntro = leagueIntroLine(leagueLinked, stats);
+  const leagueIntro = leagueIntroLine(leagueLinked, stats, p.leagueIntro);
   const riotSync = stats.available && stats.source === "riot_sync" ? stats : null;
   const leagueIdentity = profile.integrations.league
     ? `${profile.integrations.league.riotId}#${profile.integrations.league.tagLine}`
     : "—";
-  const formattedLeagueRank = riotSync?.preferredRank ? formatLeagueRank(riotSync.preferredRank) : null;
+  const formattedLeagueRank = riotSync?.preferredRank
+    ? formatLeagueRank(riotSync.preferredRank, locale)
+    : null;
   const leagueRankPalette = riotSync ? getLeagueRankPalette(riotSync.preferredRank) : null;
-  const leagueRankFallback = "Ingen rank ännu - rent noob-läge.";
+  const leagueRankFallback = p.rankFallback;
   const isOwnProfile = me.status === "user" && me.profile.id === u.id;
 
   return (
@@ -253,19 +265,17 @@ export default function PublicProfilePage() {
         className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"
       >
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight">Publik profil</h1>
-          <p className="mt-2 text-muted-foreground">
-            Profil för <span className="text-foreground">{displayName}</span>. {leagueIntro}
-          </p>
+          <h1 className="text-3xl font-semibold tracking-tight">{p.pageTitle}</h1>
+          <p className="mt-2 text-muted-foreground">{p.pageIntro(displayName, leagueIntro)}</p>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2 self-start">
           {isOwnProfile ? (
             <Button type="button" variant="secondary" asChild>
-              <Link to="/profile/settings">Profilinställningar</Link>
+              <Link to="/profile/settings">{p.settingsButton}</Link>
             </Button>
           ) : null}
           <Button type="button" asChild>
-            <Link to="/dashboard">Öppna hubben</Link>
+            <Link to="/dashboard">{p.openHub}</Link>
           </Button>
         </div>
       </motion.header>
@@ -274,31 +284,33 @@ export default function PublicProfilePage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              <FontAwesomeIcon icon={faShieldHalved} /> Status
+              <FontAwesomeIcon icon={faShieldHalved} /> {p.cardStatusTitle}
             </CardTitle>
-            <CardDescription>Offentlig vy av kontot.</CardDescription>
+            <CardDescription>{p.cardStatusDesc}</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-2 text-sm text-muted-foreground">
-            <p>Profilstatus: {leagueLinked ? "På gång" : "Grundprofil"}</p>
-            <p>League-koppling: {leagueLinked ? "Publicerad" : "Ej kopplad"}</p>
             <p>
-              League-stats:{" "}
-              {riotSync
-                ? "Synkade"
-                : leagueLinked
-                  ? "Väntar på synk"
-                  : "Inte inkopplade ännu"}
+              {p.labelProfileStatus}: {leagueLinked ? p.profileStatusLeague : p.profileStatusBase}
             </p>
-            <p>Steam: Inte kopplat</p>
+            <p>
+              {p.labelLeagueConnection}: {leagueLinked ? p.leagueLinkPublished : p.leagueLinkNot}
+            </p>
+            <p>
+              {p.labelLeagueStats}:{" "}
+              {riotSync ? p.statsSynced : leagueLinked ? p.statsWaiting : p.statsNone}
+            </p>
+            <p>
+              {p.steamTitle}: {p.steamNotLinked}
+            </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              <FontAwesomeIcon icon={faGamepad} /> Spel
+              <FontAwesomeIcon icon={faGamepad} /> {p.cardGamesTitle}
             </CardTitle>
-            <CardDescription>League of Legends (publik data).</CardDescription>
+            <CardDescription>{p.cardGamesDesc}</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-2 text-sm text-muted-foreground">
             {profile.integrations.league ? (
@@ -309,7 +321,7 @@ export default function PublicProfilePage() {
                   <span className="text-foreground/90">{profile.integrations.league.region}</span>
                 </p>
                 <p>
-                  Rank:{" "}
+                  {p.gamesRankLabel}:{" "}
                   {formattedLeagueRank ? (
                     leagueRankPalette ? (
                       <LeagueRankText
@@ -325,14 +337,16 @@ export default function PublicProfilePage() {
                   )}
                 </p>
                 <p className="text-xs text-muted-foreground/80">
-                  Synkad {formatShortDate(stats.lastSyncRequestedAt)}
+                  {p.syncedShort(
+                    formatShortDate(stats.lastSyncRequestedAt, locale, p.noSyncYetShort),
+                  )}
                 </p>
               </>
             ) : (
               <>
-                <p>Ingen League-koppling publicerad.</p>
-                <p>Rank: —</p>
-                <p>Region: —</p>
+                <p>{p.noLeaguePublic}</p>
+                <p>{p.rankDash}</p>
+                <p>{p.regionDash}</p>
               </>
             )}
           </CardContent>
@@ -341,19 +355,24 @@ export default function PublicProfilePage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              <FontAwesomeIcon icon={faUserGear} /> Mer profildata
+              <FontAwesomeIcon icon={faUserGear} /> {p.cardMoreTitle}
             </CardTitle>
-            <CardDescription>Identitet och tidsstämplar.</CardDescription>
+            <CardDescription>{p.cardMoreDesc}</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-2 text-sm text-muted-foreground">
             <p>
-              Discord-ID: <span className="font-mono text-foreground">{u.id}</span>
+              {p.discordId}: <span className="font-mono text-foreground">{u.id}</span>
             </p>
-            <p>Visningsnamn: {displayName}</p>
-            <p>Kopplad sedan: {formatTimestamp(profile.integrations.league?.linkedAt ?? null)}</p>
             <p>
-              Senaste League-sync (koppling):{" "}
-              {formatTimestamp(profile.integrations.league?.lastSyncRequestedAt ?? null)}
+              {p.displayName}: {displayName}
+            </p>
+            <p>
+              {p.linkedSince}:{" "}
+              {formatTimestamp(profile.integrations.league?.linkedAt ?? null, locale)}
+            </p>
+            <p>
+              {p.lastLeagueSync}:{" "}
+              {formatTimestamp(profile.integrations.league?.lastSyncRequestedAt ?? null, locale)}
             </p>
           </CardContent>
         </Card>
@@ -362,35 +381,34 @@ export default function PublicProfilePage() {
       <section className="grid gap-4 lg:grid-cols-2">
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle>League — stats</CardTitle>
+            <CardTitle>{p.leagueStatsTitle}</CardTitle>
             <CardDescription>
               {riotSync
-                ? `Data hämtad ${formatTimestamp(riotSync.fetchedAt)} · konto ${riotSync.account.gameName}#${riotSync.account.tagLine}`
+                ? p.leagueStatsDescFetched(
+                    formatTimestamp(riotSync.fetchedAt, locale),
+                    `${riotSync.account.gameName}#${riotSync.account.tagLine}`,
+                  )
                 : leagueIntro}
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-6 text-sm">
             {!profile.integrations.league ? (
-              <p className="text-muted-foreground">
-                Ingen League-data att visa. När användaren kopplar kontot syns det här.
-              </p>
+              <p className="text-muted-foreground">{p.noLeagueData}</p>
             ) : !riotSync ? (
               <p className="text-muted-foreground">
-                {stats.source === "not_synced"
-                  ? "Ingen synkad snapshot ännu. Efter nästa synk visas ranked-köer och senaste matcher här."
-                  : "Stats inte tillgängliga just nu."}
+                {stats.source === "not_synced" ? p.notSyncedYet : p.statsUnavailable}
               </p>
             ) : (
               <>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="rounded-lg border border-border bg-muted/30 p-4">
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Konto</p>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">{p.accountLabel}</p>
                     <p className="mt-2 font-mono text-base font-medium text-foreground">
                       {leagueIdentity}
                     </p>
                   </div>
                   <div className="rounded-lg border border-border bg-muted/30 p-4">
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Region</p>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">{p.regionLabel}</p>
                     <p className="mt-2 text-base font-medium text-foreground">
                       {profile.integrations.league.region}
                     </p>
@@ -398,7 +416,7 @@ export default function PublicProfilePage() {
                 </div>
 
                 <div className="space-y-2">
-                  <p className="font-medium text-foreground">Ranked-köer</p>
+                  <p className="font-medium text-foreground">{p.rankedQueues}</p>
                   {riotSync.leagueEntries.length > 0 ? (
                     <div className="grid gap-2 md:grid-cols-2">
                       {riotSync.leagueEntries.map((entry) => (
@@ -409,18 +427,18 @@ export default function PublicProfilePage() {
                           </p>
                           <p className="text-muted-foreground">
                             {entry.wins}W / {entry.losses}L
-                            {entry.hotStreak ? " · hot streak" : ""}
+                            {entry.hotStreak ? p.hotStreak : ""}
                           </p>
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <p className="text-muted-foreground">Ingen ranked-data returnerades för spelaren.</p>
+                    <p className="text-muted-foreground">{p.noRankedReturned}</p>
                   )}
                 </div>
 
                 <div className="space-y-2">
-                  <p className="font-medium text-foreground">Senaste matcher</p>
+                  <p className="font-medium text-foreground">{p.recentMatches}</p>
                   {riotSync.recentMatches.length > 0 ? (
                     <div className="space-y-2">
                       {riotSync.recentMatches.map((match) => (
@@ -438,7 +456,7 @@ export default function PublicProfilePage() {
                                     : "text-destructive"
                                 }
                               >
-                                {match.win ? "Vinst" : "Förlust"}
+                                {match.win ? p.win : p.loss}
                               </span>
                             </p>
                             <p className="text-muted-foreground">
@@ -448,13 +466,13 @@ export default function PublicProfilePage() {
                           </div>
                           <div className="text-sm text-muted-foreground sm:text-right">
                             <p>{formatGameDuration(match.gameDurationSeconds)}</p>
-                            <p>{formatTimestamp(new Date(match.gameCreation).toISOString())}</p>
+                            <p>{formatTimestamp(new Date(match.gameCreation).toISOString(), locale)}</p>
                           </div>
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <p className="text-muted-foreground">Ingen matchhistorik i denna snapshot.</p>
+                    <p className="text-muted-foreground">{p.noMatchHistory}</p>
                   )}
                 </div>
               </>
@@ -464,11 +482,10 @@ export default function PublicProfilePage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Steam</CardTitle>
-            <CardDescription>Reserverat för nästa integration.</CardDescription>
+            <CardTitle>{p.steamTitle}</CardTitle>
+            <CardDescription>{p.steamDesc}</CardDescription>
           </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-            Steam visas här när koppling och backend finns — samma kortstil som på hubben.
+          <CardContent className="text-sm text-muted-foreground">{p.steamBody}
           </CardContent>
         </Card>
       </section>

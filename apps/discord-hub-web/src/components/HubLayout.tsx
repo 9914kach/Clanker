@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { SearchIcon } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { Command, LayoutPanelTop, SearchIcon, Workflow } from "lucide-react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@clanker/ui/components/button";
 import {
@@ -7,63 +7,99 @@ import {
   AvatarFallback,
   AvatarImage,
 } from "@clanker/ui/components/avatar";
-import {
-  Menubar,
-  MenubarContent,
-  MenubarItem,
-  MenubarMenu,
-  MenubarTrigger,
-} from "@clanker/ui/components/menubar";
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuLabel,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
-} from "@clanker/ui/components/context-menu";
 import { cn } from "@clanker/ui/lib/utils";
 import { useHubAudio } from "@/components/HubAudioProvider";
 import HubCommandPalette from "@/components/HubCommandPalette";
 import HubDock from "@/components/HubDock";
+import HubGlobalContextMenu from "@/components/HubGlobalContextMenu";
 import HubLiveTicker from "@/components/HubLiveTicker";
 import { useHubToasts } from "@/components/HubToastProvider";
+import { useHubLocale } from "@/components/locale-provider";
 import { ModeToggle } from "@/components/mode-toggle";
 import { useTheme } from "@/components/theme-provider";
-import { buildHubActions } from "@/config/hub-actions";
-import { HUB_ME_TOOL, HUB_TOOLS } from "@/config/hub-tools";
+import { buildHubActions, createHubActionApi } from "@/config/hub-actions";
+import { HUB_TOOLS, localizeHubTools, localizeMeTool, type HubTool } from "@/config/hub-tools";
 import { apiUrl } from "@/config";
-import type { HubLayoutContextValue, HubProfile, HubSessionState } from "@/hooks/use-hub-layout";
+import type {
+  HubDesktopShellState,
+  HubLayoutContextValue,
+  HubProfile,
+  HubSessionState,
+} from "@/hooks/use-hub-layout";
+import type { HubCopy } from "@/i18n/hub-copy";
 import { discordAvatarUrl } from "@/lib/discordCdn";
+import { hubContextData, isTextEditingTarget, resolveHubContextTarget, type HubContextTarget } from "@/lib/hub-shell-context";
+import { buildHubShellMenu } from "@/lib/hub-shell-menu";
 
 /** Text-raden i headern (rullande kompisrader). Sätt till `false` för att dölja. */
 const SHOW_HUB_LIVE_TICKER = true;
+const DOCK_STORAGE_KEY = "hub.dock.pins.v1";
 
-function isTypingTarget(target: EventTarget | null) {
-  if (!(target instanceof HTMLElement)) {
-    return false;
+function loadPins(defaultPins: string[]): string[] {
+  try {
+    const raw = localStorage.getItem(DOCK_STORAGE_KEY);
+    if (!raw) return defaultPins;
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return defaultPins;
+    const pins = parsed.filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+    return pins.length > 0 ? pins : defaultPins;
+  } catch {
+    return defaultPins;
+  }
+}
+
+function workspaceMeta(
+  pathname: string,
+  panel: HubCopy["chrome"],
+): { id: string; label: string; detail: string } {
+  if (pathname.startsWith("/tools/spin-the-wheel")) {
+    return { id: "panel-wheel", label: panel.panelWheel.label, detail: panel.panelWheel.detail };
   }
 
-  return (
-    target.isContentEditable ||
-    target.tagName === "INPUT" ||
-    target.tagName === "TEXTAREA" ||
-    target.tagName === "SELECT"
-  );
+  if (pathname.startsWith("/profile/settings")) {
+    return {
+      id: "panel-settings",
+      label: panel.panelSettings.label,
+      detail: panel.panelSettings.detail,
+    };
+  }
+
+  if (pathname.startsWith("/u/")) {
+    return {
+      id: "panel-profile",
+      label: panel.panelProfile.label,
+      detail: panel.panelProfile.detail,
+    };
+  }
+
+  return {
+    id: "panel-workspace",
+    label: panel.panelDefault.label,
+    detail: panel.panelDefault.detail,
+  };
 }
 
 export default function HubLayout() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
+  const { copy } = useHubLocale();
   const toasts = useHubToasts();
   const { colorPalette, setColorPalette } = useTheme();
   const { enabled: audioEnabled, toggleEnabled: toggleAudio, play } = useHubAudio();
   const [me, setMe] = useState<HubSessionState>({ status: "loading" });
-  const [isCompact, setIsCompact] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
+  const [desktopShellState, setDesktopShellState] = useState<HubDesktopShellState | null>(null);
+  const [shellContextMenu, setShellContextMenu] = useState<{
+    target: HubContextTarget;
+    position: { x: number; y: number };
+  } | null>(null);
   const lastCommandTriggerRef = useRef<HTMLElement | null>(null);
   const leaderTimeoutRef = useRef<number | null>(null);
   const awaitingLeaderRef = useRef(false);
+  const isDashboardRoute = pathname === "/dashboard";
+  const panelMeta = workspaceMeta(pathname, copy.chrome);
+  const defaultPinnedIds = useMemo(() => HUB_TOOLS.map((tool) => tool.id), []);
+  const [pinnedIds, setPinnedIds] = useState<string[]>(() => loadPins(defaultPinnedIds));
 
   const refreshMe = useCallback(async () => {
     try {
@@ -86,16 +122,20 @@ export default function HubLayout() {
   }, [refreshMe]);
 
   useEffect(() => {
-    const threshold = 28;
+    if (me.status !== "backend_error") {
+      return;
+    }
 
-    const onScroll = () => {
-      setIsCompact(window.scrollY > threshold);
-    };
+    const retryTimer = window.setInterval(() => {
+      void refreshMe();
+    }, 5000);
 
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
+    return () => window.clearInterval(retryTimer);
+  }, [me.status, refreshMe]);
+
+  useEffect(() => {
+    localStorage.setItem(DOCK_STORAGE_KEY, JSON.stringify(pinnedIds));
+  }, [pinnedIds]);
 
   const logout = useCallback(async () => {
     await fetch(apiUrl("/api/auth/logout"), {
@@ -111,8 +151,6 @@ export default function HubLayout() {
     me.status === "user" ? `/u/${encodeURIComponent(me.profile.id)}` : null;
   const profileId = me.status === "user" ? me.profile.id : null;
   const profileHandle = me.status === "user" ? `@${me.profile.username}` : null;
-  const isDashboardRoute = pathname === "/dashboard";
-  const shellWidthClassName = isDashboardRoute ? "max-w-[96rem]" : "max-w-6xl";
 
   const openCommandPalette = useCallback((trigger?: EventTarget | null) => {
     const fallback =
@@ -156,7 +194,7 @@ export default function HubLayout() {
         return;
       }
 
-      if (event.repeat || isTypingTarget(event.target)) {
+      if (event.repeat || isTextEditingTarget(event.target)) {
         clearLeader();
         return;
       }
@@ -203,37 +241,66 @@ export default function HubLayout() {
     };
   }, [commandOpen, handleCommandOpenChange, navigate, openCommandPalette, play]);
 
+  const localizedHubToolList = useMemo(() => localizeHubTools(copy), [copy]);
+
+  const orderedDockTools = useMemo(() => {
+    const byId = new Map(localizedHubToolList.map((tool) => [tool.id, tool] as const));
+    const ordered = pinnedIds.map((id) => byId.get(id)).filter((tool): tool is HubTool => Boolean(tool));
+    const seen = new Set(ordered.map((tool) => tool.id));
+    for (const tool of localizedHubToolList) {
+      if (!seen.has(tool.id)) {
+        ordered.push(tool);
+      }
+    }
+    return ordered;
+  }, [localizedHubToolList, pinnedIds]);
+
+  const toggleDockPin = useCallback((toolId: string) => {
+    setPinnedIds((prev) => {
+      if (prev.includes(toolId)) {
+        const next = prev.filter((id) => id !== toolId);
+        return next.length > 0 ? next : prev;
+      }
+
+      return [toolId, ...prev];
+    });
+  }, []);
+
   const contextValue = useMemo<HubLayoutContextValue>(
     () => ({
       me,
       logout,
       refreshMe,
       openCommandPalette: () => openCommandPalette(),
+      setDesktopShellState,
     }),
     [logout, me, openCommandPalette, refreshMe],
   );
 
-  const actions = useMemo(
-    () =>
-      buildHubActions({
-        profilePath,
-        profileId,
-        profileHandle,
-        navigate,
-        refreshSession: refreshMe,
-        logout,
-        colorPalette,
-        setColorPalette,
-        audioEnabled,
-        toggleAudio,
-        play,
-        notify: toasts.push,
-      }),
+  const actionEnvironment = useMemo(
+    () => ({
+      copy,
+      profilePath,
+      profileId,
+      profileHandle,
+      navigate,
+      refreshSession: refreshMe,
+      logout,
+      colorPalette,
+      setColorPalette,
+      audioEnabled,
+      toggleAudio,
+      play,
+      notify: toasts.push,
+      openCommandPalette: () => openCommandPalette(),
+    }),
     [
       audioEnabled,
       colorPalette,
+      copy,
       logout,
       navigate,
+      openCommandPalette,
       play,
       profileHandle,
       profileId,
@@ -245,96 +312,113 @@ export default function HubLayout() {
     ],
   );
 
-  const menuClassName =
-    "h-auto min-w-max gap-1 border-0 bg-transparent p-0 shadow-none";
+  const actionApi = useMemo(() => createHubActionApi(actionEnvironment), [actionEnvironment]);
+  const actions = useMemo(() => buildHubActions(actionEnvironment), [actionEnvironment]);
 
-  const linkClassName = (isActive: boolean) =>
+  const navButtonClassName = (isActive: boolean) =>
     cn(
-      "inline-flex items-center rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors duration-150 hover:bg-muted",
-      isActive && "bg-muted",
+      "inline-flex items-center gap-2 rounded-2xl border px-3 py-2 text-sm font-medium transition",
+      "border-border/60 bg-background/45 hover:bg-muted/65 hover:text-foreground",
+      isActive && "border-primary/40 bg-primary/12 text-foreground shadow-[0_0_0_1px_color-mix(in_oklab,var(--primary)_12%,transparent)]",
     );
 
-  const renderIdentity = (compact: boolean) =>
-    me.status === "user" ? (
-        <ContextMenu>
-          <ContextMenuTrigger asChild>
-            <NavLink
-              to={profilePath!}
-              className={cn(
-                "flex items-center rounded-lg transition-colors duration-150 hover:bg-muted",
-                compact ? "gap-2 px-1.5 py-1" : "gap-2 px-2 py-1",
-              )}
-              title="Right-click for system options."
-            >
-              <Avatar size={compact ? "default" : "lg"}>
-                <AvatarImage
-                  src={discordAvatarUrl(me.profile.id, me.profile.avatar, 64)}
-                  alt=""
-                />
-                <AvatarFallback>
-                  {(displayName ?? me.profile.username).slice(0, 2).toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
-              <div className={cn("min-w-0 flex-col", compact ? "hidden lg:flex" : "hidden md:flex")}>
-                <span className="truncate text-sm font-medium">{displayName}</span>
-                <span className="truncate text-xs text-muted-foreground">
-                  @{me.profile.username}
-                </span>
-              </div>
-            </NavLink>
-          </ContextMenuTrigger>
+  const normalizeContextTarget = useCallback(
+    (target: HubContextTarget): HubContextTarget => {
+      if (target.type !== "profile") {
+        return target;
+      }
 
-          <ContextMenuContent>
-            <ContextMenuLabel>Identity</ContextMenuLabel>
-            <ContextMenuItem
-              onSelect={() => {
-                void navigator.clipboard.writeText(me.profile.id);
-                toasts.push({ kind: "info", title: "Copied", message: `Discord ID: ${me.profile.id}` });
-              }}
-            >
-              Copy Discord ID
-            </ContextMenuItem>
-            <ContextMenuItem
-              onSelect={() => {
-                void navigator.clipboard.writeText(`@${me.profile.username}`);
-                toasts.push({ kind: "info", title: "Copied", message: `@${me.profile.username}` });
-              }}
-            >
-              Copy handle
-            </ContextMenuItem>
-            <ContextMenuSeparator />
-            <ContextMenuItem onSelect={() => navigate(profilePath!)}>Open profile</ContextMenuItem>
-            <ContextMenuItem onSelect={() => navigate("/profile/settings")}>Open settings</ContextMenuItem>
-            <ContextMenuItem
-              onSelect={() => {
-                play("panel");
-                openCommandPalette();
-              }}
-            >
-              Open command bar
-            </ContextMenuItem>
-            <ContextMenuSeparator />
-            <ContextMenuItem variant="destructive" onSelect={logout}>
-              Log out
-            </ContextMenuItem>
-          </ContextMenuContent>
-        </ContextMenu>
+      const ownProfile =
+        (profileId && target.profileId === profileId) ||
+        (profilePath && target.profilePath === profilePath);
+
+      return {
+        ...target,
+        isOwnProfile: Boolean(ownProfile),
+      };
+    },
+    [profileId, profilePath],
+  );
+
+  const closeShellContextMenu = useCallback(() => {
+    setShellContextMenu(null);
+  }, []);
+
+  const openShellContextMenu = useCallback(
+    (event: ReactMouseEvent<HTMLElement>) => {
+      if (event.defaultPrevented || isTextEditingTarget(event.target)) {
+        closeShellContextMenu();
+        return;
+      }
+
+      event.preventDefault();
+      const target = normalizeContextTarget(resolveHubContextTarget(event.target));
+      setShellContextMenu({
+        target,
+        position: { x: event.clientX, y: event.clientY },
+      });
+    },
+    [closeShellContextMenu, normalizeContextTarget],
+  );
+
+  useEffect(() => {
+    closeShellContextMenu();
+  }, [closeShellContextMenu, pathname]);
+
+  const shellMenuSections = useMemo(
+    () =>
+      shellContextMenu
+        ? buildHubShellMenu({
+            copy,
+            target: shellContextMenu.target,
+            actions: actionApi,
+            desktopShell: desktopShellState,
+            toggleDockPin,
+          })
+        : [],
+    [actionApi, copy, desktopShellState, shellContextMenu, toggleDockPin],
+  );
+
+  const renderIdentity = () =>
+    me.status === "user" ? (
+        <NavLink
+          to={profilePath!}
+          className="flex items-center gap-2 rounded-[1.25rem] border border-border/60 bg-background/45 px-2.5 py-2 transition hover:bg-muted/65"
+          title={copy.chrome.identityNavHint}
+          {...hubContextData({
+            type: "shell.identity",
+            profileId,
+            profilePath,
+            profileHandle,
+            displayName,
+          })}
+        >
+          <Avatar size="default">
+            <AvatarImage
+              src={discordAvatarUrl(me.profile.id, me.profile.avatar, 64)}
+              alt=""
+            />
+            <AvatarFallback>
+              {(displayName ?? me.profile.username).slice(0, 2).toUpperCase()}
+            </AvatarFallback>
+          </Avatar>
+          <div className="hidden min-w-0 flex-col md:flex">
+            <span className="truncate text-sm font-medium">{displayName}</span>
+            <span className="truncate text-xs text-muted-foreground">@{me.profile.username}</span>
+          </div>
+        </NavLink>
       ) : (
-        <div className="hidden text-sm text-muted-foreground md:block">
+        <div className="hidden rounded-[1.25rem] border border-border/60 bg-background/45 px-3 py-2 text-sm text-muted-foreground md:block">
           {me.status === "loading"
-            ? "Laddar konto…"
+            ? copy.layout.loadingAccount
             : me.status === "backend_error"
-              ? "Backendproblem"
-              : "Inte inloggad"}
+              ? copy.common.backendProblem
+              : copy.layout.notLoggedIn}
         </div>
       );
 
-  /** Utan live-ticker ska titelraden inte döljas vid scroll — annars försvinner "Discord hub" helt. */
-  const collapseTitleRowOnScroll = isCompact && SHOW_HUB_LIVE_TICKER;
-  const tuckNavUnderCollapsedTitle = isCompact && SHOW_HUB_LIVE_TICKER;
-
-  const renderActions = (compact: boolean) => (
-    <div className={cn("flex items-center justify-end", compact ? "gap-1.5" : "gap-2")}>
+  const renderActions = () => (
+    <div className="flex items-center justify-end gap-2">
       <Button
         type="button"
         variant="outline"
@@ -345,187 +429,190 @@ export default function HubLayout() {
         }}
       >
         <SearchIcon data-icon="inline-start" />
-        {compact ? "Cmd" : "Command"}
+        {copy.common.command}
       </Button>
       <ModeToggle />
       {me.status === "user" ? (
         <Button type="button" variant="outline" size="sm" onClick={logout}>
-          Logga ut
+          {copy.common.logOut}
         </Button>
       ) : (
         <Button asChild size="sm">
-          <Link to="/login">Logga in</Link>
+          <Link to="/login">{copy.common.logIn}</Link>
         </Button>
       )}
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-        <div
-          className={cn(
-            "mx-auto px-5 transition-[padding] duration-300",
-            shellWidthClassName,
-            isCompact ? "py-2" : "py-3",
-          )}
-        >
-          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3">
-            <div
-              className={cn(
-                "col-start-1 row-start-1 overflow-hidden pr-4 transition-[max-height,opacity,transform,margin] duration-300 ease-out",
-                collapseTitleRowOnScroll
-                  ? "pointer-events-none -translate-y-2 opacity-0 max-h-0 mb-0"
-                  : cn(
-                      "translate-y-0 opacity-100 max-h-16",
-                      isCompact ? "mb-1" : "mb-2",
-                    ),
-              )}
-            >
-              <div className="flex min-w-0 items-center gap-3">
-                <Link to="/dashboard" className="truncate text-lg font-semibold tracking-tight">
-                  Discord hub
-                </Link>
-                {SHOW_HUB_LIVE_TICKER ? (
-                  <div className="hidden min-w-0 max-w-[min(100%,34rem)] flex-1 md:block">
-                    <HubLiveTicker variant="top" />
+    <div className="relative flex h-dvh flex-col overflow-hidden bg-background text-foreground" onContextMenu={openShellContextMenu}>
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,color-mix(in_oklab,var(--primary)_18%,transparent),transparent_24%),radial-gradient(circle_at_bottom_right,color-mix(in_oklab,var(--accent)_14%,transparent),transparent_28%),linear-gradient(180deg,color-mix(in_oklab,var(--background)_94%,black),var(--background))]" />
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_right,color-mix(in_oklab,var(--border)_18%,transparent)_1px,transparent_1px),linear-gradient(to_bottom,color-mix(in_oklab,var(--border)_14%,transparent)_1px,transparent_1px)] bg-[size:96px_96px] opacity-35" />
+
+      <header
+        className="relative z-20 border-b border-border/55 bg-background/45 backdrop-blur-xl supports-[backdrop-filter]:bg-background/35"
+        {...hubContextData({ type: "shell.nav", area: "topbar" })}
+      >
+        <div className="flex flex-col gap-3 px-4 py-3 md:px-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <Link
+                to="/dashboard"
+                className="flex items-center gap-3 rounded-[1.4rem] border border-border/60 bg-background/45 px-3 py-2 transition hover:bg-muted/65"
+                {...hubContextData({
+                  type: "tool",
+                  toolId: "dashboard",
+                  label: copy.chrome.toolDesktop,
+                  path: "/dashboard",
+                  pinned: true,
+                })}
+              >
+                <div className="rounded-xl border border-border/60 bg-primary/14 p-2 text-primary">
+                  <Command className="size-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-semibold tracking-[0.04em]">{copy.chrome.brandTitle}</div>
+                  <div className="truncate text-[0.7rem] uppercase tracking-[0.22em] text-muted-foreground">
+                    {copy.chrome.brandTagline}
                   </div>
-                ) : null}
-              </div>
+                </div>
+              </Link>
+
+              {SHOW_HUB_LIVE_TICKER ? (
+                <div className="hidden min-w-0 flex-1 lg:block">
+                  <HubLiveTicker variant="top" />
+                </div>
+              ) : null}
             </div>
 
-            <div
-              className={cn(
-                "col-start-2 row-span-2 row-start-1 flex flex-wrap items-center justify-end self-start transition-[gap,transform] duration-300 ease-out",
-                isCompact ? "gap-1.5 translate-y-0.5" : "gap-2 translate-y-0",
-              )}
-            >
-              {renderIdentity(isCompact)}
-              {renderActions(isCompact)}
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {renderIdentity()}
+              {renderActions()}
             </div>
+          </div>
 
-            <div
-              className={cn(
-                "col-start-1 row-start-2 overflow-hidden transition-[transform,padding] duration-300 ease-out",
-                tuckNavUnderCollapsedTitle ? "-translate-y-1 pb-0" : "translate-y-0 pb-1",
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <nav className="flex flex-wrap items-center gap-2">
+              <NavLink
+                to="/dashboard"
+                end
+                className={({ isActive }) => navButtonClassName(isActive)}
+                {...hubContextData({
+                  type: "tool",
+                  toolId: "desktop",
+                  label: copy.chrome.toolDesktop,
+                  path: "/dashboard",
+                  pinned: true,
+                })}
+              >
+                <LayoutPanelTop className="size-4" />
+                {copy.chrome.navDesktop}
+              </NavLink>
+
+              {profilePath ? (
+                <NavLink
+                  to={profilePath}
+                  className={({ isActive }) => navButtonClassName(isActive)}
+                  {...hubContextData({
+                    type: "profile",
+                    profileId,
+                    profilePath,
+                    label: copy.chrome.myProfile,
+                    isOwnProfile: true,
+                  })}
+                >
+                  {copy.chrome.myProfile}
+                </NavLink>
+              ) : (
+                <span className={navButtonClassName(false)}>{copy.chrome.myProfileOffline}</span>
               )}
-            >
-              <div className="flex min-w-0 items-center gap-3 pr-1">
-                <Menubar className={menuClassName}>
-                  <MenubarMenu>
-                    <MenubarTrigger asChild>
-                      <NavLink
-                        to="/dashboard"
-                        end
-                        className={({ isActive }) => linkClassName(isActive)}
-                      >
-                        Hem
-                      </NavLink>
-                    </MenubarTrigger>
-                  </MenubarMenu>
 
-                  <MenubarMenu>
-                    {profilePath ? (
-                      <MenubarTrigger asChild>
-                        <NavLink
-                          to={profilePath}
-                          className={({ isActive }) => linkClassName(isActive)}
-                        >
-                          Min profil
-                        </NavLink>
-                      </MenubarTrigger>
-                    ) : (
-                      <MenubarTrigger className="cursor-not-allowed text-muted-foreground opacity-60">
-                        Min profil
-                      </MenubarTrigger>
-                    )}
-                  </MenubarMenu>
+              <NavLink
+                to="/profile/settings"
+                className={({ isActive }) => navButtonClassName(isActive)}
+                {...hubContextData({
+                  type: "panel",
+                  panelId: "settings",
+                  panelLabel: copy.chrome.panelSettings.label,
+                })}
+              >
+                {copy.chrome.settings}
+              </NavLink>
 
-                  <MenubarMenu>
-                    {me.status === "user" ? (
-                      <MenubarTrigger asChild>
-                        <NavLink
-                          to="/profile/settings#league"
-                          className={({ isActive }) => linkClassName(isActive)}
-                        >
-                          League
-                        </NavLink>
-                      </MenubarTrigger>
-                    ) : (
-                      <MenubarTrigger className="cursor-not-allowed text-muted-foreground opacity-60">
-                        League
-                      </MenubarTrigger>
-                    )}
-                  </MenubarMenu>
+              <NavLink
+                to="/tools/spin-the-wheel"
+                className={({ isActive }) => navButtonClassName(isActive)}
+                {...hubContextData({
+                  type: "tool",
+                  toolId: "spin-the-wheel",
+                  label: copy.chrome.panelWheel.label,
+                  path: "/tools/spin-the-wheel",
+                  pinned: pinnedIds.includes("spin-the-wheel"),
+                })}
+              >
+                <Workflow className="size-4" />
+                {copy.chrome.wheel}
+              </NavLink>
+            </nav>
 
-                  <MenubarMenu>
-                    <MenubarTrigger>Tools</MenubarTrigger>
-                    <MenubarContent>
-                      {HUB_TOOLS.map((tool) => (
-                        <MenubarItem key={tool.id} asChild>
-                          <Link to={tool.path}>{tool.label}</Link>
-                        </MenubarItem>
-                      ))}
-                      {profilePath ? (
-                        <MenubarItem asChild>
-                          <Link to={profilePath}>Me</Link>
-                        </MenubarItem>
-                      ) : (
-                        <MenubarItem disabled>Me</MenubarItem>
-                      )}
-                      <MenubarItem disabled>More modules soon. Probably.</MenubarItem>
-                    </MenubarContent>
-                  </MenubarMenu>
-                </Menubar>
-
-                <div
-                  className={cn(
-                    "hidden h-px overflow-hidden bg-border/50 md:block transition-[max-width,opacity] duration-300 ease-out",
-                    isCompact ? "pointer-events-none max-w-0 flex-none opacity-0" : "max-w-none flex-1 opacity-100",
-                  )}
-                  aria-hidden="true"
-                />
-
-                {SHOW_HUB_LIVE_TICKER ? (
-                  <div
-                    className={cn(
-                      "hidden items-center gap-3 overflow-hidden md:flex transition-[max-width,opacity,transform] duration-300 ease-out",
-                      isCompact
-                        ? "max-w-[24rem] flex-1 translate-y-0 opacity-100"
-                        : "pointer-events-none max-w-0 flex-none translate-y-1 opacity-0",
-                    )}
-                    aria-hidden={isCompact ? undefined : true}
-                  >
-                    <div className="min-w-0 flex-1">
-                      <HubLiveTicker variant="compact" />
-                    </div>
-                  </div>
-                ) : null}
-              </div>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <span className="rounded-full border border-border/60 bg-background/40 px-2.5 py-1">
+                {copy.chrome.paletteBadge(colorPalette)}
+              </span>
+              <span className="rounded-full border border-border/60 bg-background/40 px-2.5 py-1">
+                {copy.chrome.audioBadge(audioEnabled)}
+              </span>
+              <span className="rounded-full border border-border/60 bg-background/40 px-2.5 py-1">
+                {isDashboardRoute ? copy.chrome.desktopMode : panelMeta.label}
+              </span>
             </div>
           </div>
         </div>
       </header>
 
-      <main className={cn("mx-auto flex w-full flex-col gap-6 px-5 py-8 pb-28", shellWidthClassName)}>
-        <Outlet context={contextValue} />
-      </main>
+      <div className="relative z-10 flex min-h-0 flex-1">
+        {isDashboardRoute ? (
+          <main className="flex min-h-0 flex-1 overflow-auto pb-24">
+            <Outlet context={contextValue} />
+          </main>
+        ) : (
+          <main className="flex min-h-0 flex-1 p-3 pb-24 md:p-4">
+            <section
+              className="mx-auto flex min-h-0 w-full max-w-[112rem] flex-1 flex-col overflow-hidden rounded-[2rem] border border-border/65 bg-background/42 shadow-2xl backdrop-blur-xl"
+              {...hubContextData({ type: "panel", panelId: panelMeta.id, panelLabel: panelMeta.label })}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/55 bg-background/36 px-4 py-3 md:px-5">
+                <div className="min-w-0">
+                  <div className="text-[0.68rem] font-medium uppercase tracking-[0.24em] text-muted-foreground">
+                    {copy.chrome.runningApp}
+                  </div>
+                  <div className="mt-1 text-sm font-semibold">{panelMeta.label}</div>
+                </div>
+                <div className="text-xs text-muted-foreground">{panelMeta.detail}</div>
+              </div>
+              <div className="min-h-0 flex-1 overflow-auto px-4 py-5 md:px-5 md:py-6">
+                <Outlet context={contextValue} />
+              </div>
+            </section>
+          </main>
+        )}
+      </div>
 
       <HubDock
-        tools={HUB_TOOLS}
-        meTool={
-          profilePath
-            ? {
-                ...HUB_ME_TOOL,
-                path: profilePath,
-              }
-            : null
-        }
+        tools={orderedDockTools}
+        pinnedIds={pinnedIds}
+        meTool={profilePath ? localizeMeTool(copy, profilePath) : null}
       />
       <HubCommandPalette
         open={commandOpen}
         onOpenChange={handleCommandOpenChange}
         actions={actions}
+      />
+      <HubGlobalContextMenu
+        open={Boolean(shellContextMenu)}
+        position={shellContextMenu?.position ?? { x: 0, y: 0 }}
+        sections={shellMenuSections}
+        onClose={closeShellContextMenu}
       />
     </div>
   );

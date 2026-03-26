@@ -9,9 +9,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@clanker/ui/components/card";
+import { useHubLocale } from "@/components/locale-provider";
 import { apiUrl } from "@/config";
 
 export default function LoginPage() {
+  const { copy } = useHubLocale();
+  const L = copy.login;
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const oauthError = searchParams.get("error") === "oauth";
@@ -56,39 +59,27 @@ export default function LoginPage() {
       >
         <Card>
           <CardHeader>
-            <CardTitle>Logga in</CardTitle>
-            <CardDescription>
-              Synka med Discord för att använda hubben.
-            </CardDescription>
+            <CardTitle>{L.title}</CardTitle>
+            <CardDescription>{L.description}</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             {oauthError ? (
               <p className="text-sm text-destructive" role="alert">
-                Inloggningen misslyckades. Försök igen.
+                {L.oauthFailed}
               </p>
             ) : null}
             {apiUnreachable ? (
               <p className="text-sm text-muted-foreground" role="status">
-                Backend svarar inte (port 3001). Vanlig orsak:{" "}
-                <code className="text-foreground">discord-hub-api</code> har
-                kraschat vid start — kontrollera terminalen{" "}
-                <code className="text-foreground">[api]</code> och att repots{" "}
-                <code className="text-foreground">.env</code> innehåller variablerna
-                i{" "}
-                <code className="text-foreground">
-                  apps/discord-hub-api/.env.example
-                </code>{" "}
-                (t.ex. <code className="text-foreground">DISCORD_CLIENT_ID</code>
-                ).
+                {L.apiUnreachable}
               </p>
             ) : null}
             {apiUnreachable ? (
               <Button type="button" className="w-full" disabled>
-                Fortsätt med Discord
+                {L.continueDisabled}
               </Button>
             ) : (
               <Button asChild className="w-full">
-                <a href={apiUrl("/api/auth/discord")}>Fortsätt med Discord</a>
+                <a href={apiUrl("/api/auth/discord")}>{L.continueDiscord}</a>
               </Button>
             )}
           </CardContent>

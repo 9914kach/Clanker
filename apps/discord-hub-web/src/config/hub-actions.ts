@@ -6,6 +6,7 @@ import {
   LogOut,
   Palette,
   RefreshCw,
+  Search,
   Settings,
   Sparkles,
   UserRound,
@@ -13,6 +14,7 @@ import {
   VolumeX,
 } from "lucide-react";
 import type { ColorPalette } from "@/components/theme-provider";
+import type { HubCopy } from "@/i18n/hub-copy";
 
 export type HubActionSection = "Navigation" | "System" | "Chaos";
 export type HubActionTone = "useful" | "social" | "chaos";
@@ -32,6 +34,42 @@ export type HubAction = {
   onSelect: () => void;
 };
 
+export type HubActionEnvironment = {
+  copy: HubCopy;
+  profilePath: string | null;
+  profileId: string | null;
+  profileHandle: string | null;
+  navigate: (path: string) => void;
+  refreshSession: () => Promise<void>;
+  logout: () => Promise<void>;
+  colorPalette: ColorPalette;
+  setColorPalette: (palette: ColorPalette) => void;
+  audioEnabled: boolean;
+  toggleAudio: () => void;
+  play: (sound: "dock" | "panel" | "confirm" | "chaos") => void;
+  notify: (toast: ToastInput) => void;
+  openCommandPalette?: () => void;
+};
+
+export type HubActionApi = {
+  openPath: (path: string, sound?: "dock" | "panel" | "confirm" | "chaos") => void;
+  openDashboard: () => void;
+  openWheel: () => void;
+  openSettings: () => void;
+  openProfile: (() => void) | null;
+  openCommandPalette: (() => void) | null;
+  refreshSession: () => void;
+  cyclePalette: () => void;
+  toggleAudio: () => void;
+  copyWheelSeed: () => void;
+  copyDiscordId: (() => void) | null;
+  copyHandle: (() => void) | null;
+  copyText: (value: string, title: string, message: string) => void;
+  logout: () => void;
+  summonGoblin: () => void;
+  appeaseHamster: () => void;
+};
+
 type ToastInput = {
   kind?: HubToastKind;
   title: string;
@@ -49,27 +87,17 @@ export function nextColorPalette(current: ColorPalette): ColorPalette {
   return PALETTES[(index + 1) % PALETTES.length] ?? PALETTES[0]!;
 }
 
-export function buildHubActions(params: {
-  profilePath: string | null;
-  profileId: string | null;
-  profileHandle: string | null;
-  navigate: (path: string) => void;
-  refreshSession: () => Promise<void>;
-  logout: () => Promise<void>;
-  colorPalette: ColorPalette;
-  setColorPalette: (palette: ColorPalette) => void;
-  audioEnabled: boolean;
-  toggleAudio: () => void;
-  play: (sound: "dock" | "panel" | "confirm" | "chaos") => void;
-  notify: (toast: ToastInput) => void;
-}): HubAction[] {
+export function createHubActionApi(params: HubActionEnvironment): HubActionApi {
+  const { copy } = params;
+  const t = copy.actions.toasts;
+
   const cyclePalette = () => {
     const next = nextColorPalette(params.colorPalette);
     params.setColorPalette(next);
     params.play("panel");
     params.notify({
       kind: "success",
-      title: "Palette switched",
+      title: t.paletteSwitched,
       message: next,
     });
   };
@@ -83,11 +111,16 @@ export function buildHubActions(params: {
       () => {
         params.notify({
           kind: "error",
-          title: "Clipboard blocked",
-          message: "The browser refused to write that value.",
+          title: t.clipboardBlocked,
+          message: t.clipboardBlockedMessage,
         });
       },
     );
+  };
+
+  const openPath = (path: string, sound: "dock" | "panel" | "confirm" | "chaos" = "dock") => {
+    params.play(sound);
+    params.navigate(path);
   };
 
   const refreshSession = () => {
@@ -96,200 +129,249 @@ export function buildHubActions(params: {
         params.play("confirm");
         params.notify({
           kind: "success",
-          title: "Session refreshed",
-          message: "Identity and shell state asked the backend to wake up.",
+          title: t.sessionRefreshed,
+          message: t.sessionRefreshedMessage,
         });
       },
       () => {
         params.notify({
           kind: "error",
-          title: "Refresh failed",
-          message: "The hub API didn’t answer in time.",
+          title: t.refreshFailed,
+          message: t.refreshFailedMessage,
         });
       },
     );
   };
 
+  const toggleAudio = () => {
+    const nextEnabled = !params.audioEnabled;
+    params.toggleAudio();
+    params.play(nextEnabled ? "confirm" : "panel");
+    params.notify({
+      kind: "info",
+      title: nextEnabled ? t.audioArmed : t.audioMuted,
+      message: nextEnabled ? t.audioArmedMessage : t.audioMutedMessage,
+    });
+  };
+
+  const copyWheelSeed = () =>
+    writeToClipboard(`hub-${new Date().toISOString().slice(0, 10)}`, t.seedCopied, t.seedCopiedMessage);
+
+  const summonGoblin = () => {
+    params.play("chaos");
+    params.notify({
+      kind: "chaos",
+      title: t.goblinTitle,
+      message: t.goblinMessage,
+    });
+  };
+
+  const appeaseHamster = () => {
+    params.play("chaos");
+    params.notify({
+      kind: "chaos",
+      title: t.hamsterTitle,
+      message: t.hamsterMessage,
+    });
+  };
+
+  return {
+    openPath,
+    openDashboard: () => openPath("/dashboard"),
+    openWheel: () => openPath("/tools/spin-the-wheel"),
+    openSettings: () => openPath("/profile/settings"),
+    openProfile: params.profilePath ? () => openPath(params.profilePath!) : null,
+    openCommandPalette: params.openCommandPalette
+      ? () => {
+          params.play("panel");
+          params.openCommandPalette?.();
+        }
+      : null,
+    refreshSession,
+    cyclePalette,
+    toggleAudio,
+    copyWheelSeed,
+    copyDiscordId: params.profileId
+      ? () =>
+          writeToClipboard(
+            params.profileId!,
+            copy.common.copied,
+            t.copiedDiscordId(params.profileId!),
+          )
+      : null,
+    copyHandle: params.profileHandle
+      ? () =>
+          writeToClipboard(params.profileHandle!, copy.common.copied, params.profileHandle!)
+      : null,
+    copyText: writeToClipboard,
+    logout: () => {
+      void params.logout();
+    },
+    summonGoblin,
+    appeaseHamster,
+  };
+}
+
+export function buildHubActions(params: HubActionEnvironment): HubAction[] {
+  const actionApi = createHubActionApi(params);
+  const a = params.copy.actions;
+
   const actions: HubAction[] = [
     {
       id: "nav-dashboard",
-      label: "Open dashboard",
-      description: "Jump to the main Neutralen OS surface.",
+      label: a.navDashboard.label,
+      description: a.navDashboard.description,
       section: "Navigation",
       tone: "useful",
       shortcut: "G D",
-      keywords: ["home", "dashboard", "desktop", "hub"],
+      keywords: a.navDashboard.keywords,
       icon: Home,
-      onSelect: () => params.navigate("/dashboard"),
+      onSelect: actionApi.openDashboard,
     },
     {
       id: "nav-wheel",
-      label: "Open wheel",
-      description: "Launch the fate spinner and team randomizer.",
+      label: a.navWheel.label,
+      description: a.navWheel.description,
       section: "Navigation",
       tone: "chaos",
       shortcut: "G W",
-      keywords: ["spin", "wheel", "teams", "random"],
+      keywords: a.navWheel.keywords,
       icon: Dices,
-      onSelect: () => params.navigate("/tools/spin-the-wheel"),
+      onSelect: actionApi.openWheel,
     },
     {
       id: "nav-settings",
-      label: "Open settings",
-      description: "Tweak your profile vibe and integrations.",
+      label: a.navSettings.label,
+      description: a.navSettings.description,
       section: "Navigation",
       tone: "social",
       shortcut: "G S",
-      keywords: ["settings", "profile", "integrations"],
+      keywords: a.navSettings.keywords,
       icon: Settings,
-      onSelect: () => params.navigate("/profile/settings"),
+      onSelect: actionApi.openSettings,
+    },
+    {
+      id: "system-open-command",
+      label: a.systemCommand.label,
+      description: a.systemCommand.description,
+      section: "System",
+      tone: "useful",
+      keywords: a.systemCommand.keywords,
+      icon: Search,
+      onSelect: actionApi.openCommandPalette ?? (() => undefined),
     },
     {
       id: "system-refresh-session",
-      label: "Refresh session state",
-      description: "Re-read identity and shell status from the backend.",
+      label: a.systemRefresh.label,
+      description: a.systemRefresh.description,
       section: "System",
       tone: "useful",
-      keywords: ["refresh", "reload", "session", "identity", "profile"],
+      keywords: a.systemRefresh.keywords,
       icon: RefreshCw,
-      onSelect: refreshSession,
+      onSelect: actionApi.refreshSession,
     },
     {
       id: "system-cycle-palette",
-      label: "Cycle color palette",
-      description: "Switch the current UI palette to a different mood.",
+      label: a.systemPalette.label,
+      description: a.systemPalette.description,
       section: "System",
       tone: "useful",
-      keywords: ["theme", "palette", "color", "mode"],
+      keywords: a.systemPalette.keywords,
       icon: Palette,
-      onSelect: cyclePalette,
+      onSelect: actionApi.cyclePalette,
     },
     {
       id: "system-audio",
-      label: params.audioEnabled ? "Mute Clanker sounds" : "Enable Clanker sounds",
-      description: params.audioEnabled
-        ? "Silence tiny fanfares and button noises."
-        : "Let the system click back at you.",
+      label: params.audioEnabled ? a.systemAudioMute.label : a.systemAudioEnable.label,
+      description: params.audioEnabled ? a.systemAudioMute.description : a.systemAudioEnable.description,
       section: "System",
       tone: "useful",
-      keywords: ["audio", "sound", "mute", "volume"],
+      keywords: params.audioEnabled ? a.systemAudioMute.keywords : a.systemAudioEnable.keywords,
       icon: params.audioEnabled ? VolumeX : Volume2,
-      onSelect: () => {
-        const nextEnabled = !params.audioEnabled;
-        params.toggleAudio();
-        params.play(nextEnabled ? "confirm" : "panel");
-        params.notify({
-          kind: "info",
-          title: nextEnabled ? "Audio armed" : "Audio muted",
-          message: nextEnabled ? "Tiny noises are back online." : "The system will sulk in silence.",
-        });
-      },
+      onSelect: actionApi.toggleAudio,
     },
     {
       id: "system-copy-seed",
-      label: "Copy wheel seed starter",
-      description: "Put a fresh seed name on the clipboard for future disputes.",
+      label: a.systemCopySeed.label,
+      description: a.systemCopySeed.description,
       section: "System",
       tone: "chaos",
-      keywords: ["copy", "clipboard", "seed", "wheel", "random"],
+      keywords: a.systemCopySeed.keywords,
       icon: Copy,
-      onSelect: () =>
-        writeToClipboard(
-          `hub-${new Date().toISOString().slice(0, 10)}`,
-          "Seed copied",
-          "Freshly harvested for future disputes.",
-        ),
+      onSelect: actionApi.copyWheelSeed,
     },
     {
       id: "system-log-out",
-      label: "Log out",
-      description: "Exit the hub shell and drop back to the login gate.",
+      label: a.systemLogout.label,
+      description: a.systemLogout.description,
       section: "System",
       tone: "social",
-      keywords: ["logout", "sign out", "auth", "leave"],
+      keywords: a.systemLogout.keywords,
       icon: LogOut,
-      onSelect: () => {
-        void params.logout();
-      },
+      onSelect: actionApi.logout,
     },
     {
       id: "chaos-goblin",
-      label: "Summon goblin protocol",
-      description: "Fire an unnecessary but emotionally correct system message.",
+      label: a.chaosGoblin.label,
+      description: a.chaosGoblin.description,
       section: "Chaos",
       tone: "chaos",
-      keywords: ["goblin", "chaos", "easter egg", "meme"],
+      keywords: a.chaosGoblin.keywords,
       discoverability: "hidden",
-      revealKeywords: ["goblin", "protocol", "meme"],
+      revealKeywords: a.chaosGoblin.reveal,
       icon: Sparkles,
-      onSelect: () => {
-        params.play("chaos");
-        params.notify({
-          kind: "chaos",
-          title: "Goblin protocol armed",
-          message: "The system approves exactly none of this.",
-        });
-      },
+      onSelect: actionApi.summonGoblin,
     },
     {
       id: "chaos-hamster",
-      label: "Appease the server hamster",
-      description: "Offer spiritual maintenance to the tiny creature in the rack.",
+      label: a.chaosHamster.label,
+      description: a.chaosHamster.description,
       section: "Chaos",
       tone: "chaos",
-      keywords: ["hamster", "server", "ritual", "snack"],
+      keywords: a.chaosHamster.keywords,
       discoverability: "hidden",
-      revealKeywords: ["hamster", "snack", "ritual"],
+      revealKeywords: a.chaosHamster.reveal,
       icon: Sparkles,
-      onSelect: () => {
-        params.play("chaos");
-        params.notify({
-          kind: "chaos",
-          title: "Hamster appeased",
-          message: "Latency improved spiritually, if not technically.",
-        });
-      },
+      onSelect: actionApi.appeaseHamster,
     },
   ];
 
-  if (params.profilePath) {
+  if (actionApi.openProfile) {
     actions.splice(2, 0, {
       id: "nav-profile",
-      label: "Open my profile",
-      description: "Jump straight to your public profile card.",
+      label: a.navProfile.label,
+      description: a.navProfile.description,
       section: "Navigation",
       tone: "social",
-      keywords: ["me", "profile", "identity"],
+      keywords: a.navProfile.keywords,
       icon: UserRound,
-      onSelect: () => params.navigate(params.profilePath!),
+      onSelect: actionApi.openProfile,
     });
   }
 
-  if (params.profileId) {
-    actions.splice(5, 0, {
-      id: "system-copy-discord-id",
-      label: "Copy Discord ID",
-      description: "Copy your numeric Discord identifier to the clipboard.",
-      section: "System",
-      tone: "social",
-      keywords: ["copy", "clipboard", "discord", "id", "identity"],
-      icon: Copy,
-      onSelect: () =>
-        writeToClipboard(params.profileId!, "Copied", `Discord ID: ${params.profileId}`),
-    });
-  }
-
-  if (params.profileHandle) {
+  if (actionApi.copyDiscordId) {
     actions.splice(6, 0, {
-      id: "system-copy-handle",
-      label: "Copy handle",
-      description: "Copy your @handle for quick sharing.",
+      id: "system-copy-discord-id",
+      label: a.systemCopyDiscord.label,
+      description: a.systemCopyDiscord.description,
       section: "System",
       tone: "social",
-      keywords: ["copy", "clipboard", "handle", "username", "discord"],
+      keywords: a.systemCopyDiscord.keywords,
       icon: Copy,
-      onSelect: () =>
-        writeToClipboard(params.profileHandle!, "Copied", params.profileHandle!),
+      onSelect: actionApi.copyDiscordId,
+    });
+  }
+
+  if (actionApi.copyHandle) {
+    actions.splice(7, 0, {
+      id: "system-copy-handle",
+      label: a.systemCopyHandle.label,
+      description: a.systemCopyHandle.description,
+      section: "System",
+      tone: "social",
+      keywords: a.systemCopyHandle.keywords,
+      icon: Copy,
+      onSelect: actionApi.copyHandle,
     });
   }
 

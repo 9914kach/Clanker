@@ -1,3 +1,6 @@
+import type { HubLocale } from "@/i18n/hub-copy";
+import { hubCopy, toBcp47 } from "@/i18n/hub-copy";
+
 export type LeagueRankedEntry = {
   queueType: string;
   tier: string;
@@ -21,9 +24,9 @@ const LEAGUE_TIER_PALETTES: Record<string, readonly string[]> = {
   CHALLENGER: ["#e0f2fe", "#93c5fd", "#f8fafc", "#fde68a"],
 };
 
-export function formatLeagueRank(entry: LeagueRankedEntry | null): string {
+export function formatLeagueRank(entry: LeagueRankedEntry | null, locale: HubLocale = "sv"): string {
   if (!entry || !entry.tier || !entry.rank) {
-    return "Ingen ranked-data ännu";
+    return hubCopy[locale].leagueFormat.noRankedYet;
   }
   return `${entry.tier} ${entry.rank} · ${entry.leaguePoints} LP`;
 }
@@ -41,13 +44,13 @@ export function formatGameDuration(totalSeconds: number): string {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
-export function formatTimestamp(value: string | null): string {
+export function formatTimestamp(value: string | null, locale: HubLocale = "sv"): string {
   if (!value) {
-    return "Inte ännu";
+    return hubCopy[locale].leagueFormat.notYetTimestamp;
   }
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
     return value;
   }
-  return date.toLocaleString("sv-SE");
+  return date.toLocaleString(toBcp47(locale));
 }

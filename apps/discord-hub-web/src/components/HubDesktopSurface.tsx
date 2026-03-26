@@ -1,18 +1,6 @@
 import { useMemo, useRef } from "react";
 import type { ComponentType, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { AnimatePresence, motion, useDragControls, useReducedMotion, type PanInfo } from "framer-motion";
-import {
-  ContextMenu,
-  ContextMenuCheckboxItem,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuLabel,
-  ContextMenuSeparator,
-  ContextMenuSub,
-  ContextMenuSubContent,
-  ContextMenuSubTrigger,
-  ContextMenuTrigger,
-} from "@clanker/ui/components/context-menu";
 import { Button } from "@clanker/ui/components/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@clanker/ui/components/card";
 import { Badge } from "@clanker/ui/components/badge";
@@ -29,7 +17,9 @@ import {
   Search,
   Sparkles,
 } from "lucide-react";
+import { useHubLocale } from "@/components/locale-provider";
 import { HUB_EASE_OUT, hubEnterMotion, hubPopMotion } from "@/lib/hub-motion";
+import { hubContextData } from "@/lib/hub-shell-context";
 
 export type HubDesktopWidget = {
   id: string;
@@ -80,6 +70,8 @@ function DraggableWidgetCard({
   onFocus: (id: string) => void;
   onHide: (id: string) => void;
 }) {
+  const { copy } = useHubLocale();
+  const ds = copy.desktopSurface;
   const reducedMotion = useReducedMotion() ?? false;
   const dragControls = useDragControls();
   const Icon = widget.icon;
@@ -135,6 +127,12 @@ function DraggableWidgetCard({
       }
       transition={{ duration: 0.2, ease: HUB_EASE_OUT }}
       className="absolute"
+      {...hubContextData({
+        type: "widget",
+        widgetId: widget.id,
+        widgetLabel: widget.label,
+        widgetTone: widget.tone,
+      })}
     >
       <Card className="h-full rounded-[1.4rem] border-border/70 bg-card/85 shadow-sm backdrop-blur">
         <CardHeader className="flex flex-row items-start justify-between gap-3 border-b border-border/60 pb-4">
@@ -159,15 +157,15 @@ function DraggableWidgetCard({
                   type="button"
                   variant="ghost"
                   size="sm"
-                  aria-label={`Drag ${widget.label}`}
+                  aria-label={ds.dragAria(widget.label)}
                   className="cursor-grab active:cursor-grabbing"
                   onPointerDown={startDrag}
                 >
                   <GripVertical data-icon="inline-start" />
-                  Drag
+                  {ds.dragButton}
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Grab and place anywhere on the desktop</TooltipContent>
+              <TooltipContent>{ds.dragTooltip}</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -176,12 +174,12 @@ function DraggableWidgetCard({
                   variant="ghost"
                   size="icon-sm"
                   onClick={() => onHide(widget.id)}
-                  aria-label={`Hide ${widget.label}`}
+                  aria-label={ds.hideAria(widget.label)}
                 >
                   <Minus />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Hide widget</TooltipContent>
+              <TooltipContent>{ds.hideTooltip}</TooltipContent>
             </Tooltip>
           </div>
         </CardHeader>
@@ -202,9 +200,7 @@ export default function HubDesktopSurface({
   onOpenCommandPalette,
   onCyclePalette,
   audioEnabled,
-  onToggleAudio,
   onChaosAction,
-  onResetLayout,
 }: {
   widgets: readonly HubDesktopWidget[];
   layouts: Readonly<Record<string, HubDesktopWidgetLayout>>;
@@ -216,10 +212,10 @@ export default function HubDesktopSurface({
   onOpenCommandPalette: () => void;
   onCyclePalette: () => void;
   audioEnabled: boolean;
-  onToggleAudio: () => void;
   onChaosAction: () => void;
-  onResetLayout: () => void;
 }) {
+  const { copy } = useHubLocale();
+  const ds = copy.desktopSurface;
   const reducedMotion = useReducedMotion() ?? false;
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const visibleWidgets = useMemo(
@@ -245,190 +241,172 @@ export default function HubDesktopSurface({
   );
 
   return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>
-        <motion.section
-          {...hubEnterMotion(reducedMotion, 12)}
-          className="rounded-[2rem] border border-border/70 bg-background/60 p-4 shadow-xl backdrop-blur md:p-5"
-        >
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-              <div className="flex flex-col gap-2">
-                <Badge variant="secondary" className="w-fit">
-                  Neutralen OS surface
-                </Badge>
-                <div>
-                  <h2 className="text-2xl font-semibold tracking-tight">Desktop surface</h2>
-                  <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-                    Move modules anywhere, keep your exact layout between visits, and treat the whole page
-                    more like a desktop than a dashboard.
-                  </p>
-                </div>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button type="button" variant="outline" size="sm" onClick={onOpenCommandPalette}>
-                  <Search data-icon="inline-start" />
-                  Open command bar
-                </Button>
-                <Button type="button" variant="outline" size="sm" onClick={onCyclePalette}>
-                  <Palette data-icon="inline-start" />
-                  Cycle palette
-                </Button>
-                <Button type="button" size="sm" onClick={onChaosAction}>
-                  <Sparkles data-icon="inline-start" />
-                  Chaos pulse
-                </Button>
+    <motion.section
+      {...hubEnterMotion(reducedMotion, 12)}
+      className="relative flex min-h-full flex-1 overflow-hidden"
+      {...hubContextData({ type: "shell.surface", area: "desktop" })}
+    >
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,color-mix(in_oklab,var(--primary)_18%,transparent),transparent_30%),radial-gradient(circle_at_bottom_right,color-mix(in_oklab,var(--accent)_12%,transparent),transparent_32%)]" />
+      <div className="absolute inset-0 bg-[linear-gradient(to_right,color-mix(in_oklab,var(--border)_26%,transparent)_1px,transparent_1px),linear-gradient(to_bottom,color-mix(in_oklab,var(--border)_18%,transparent)_1px,transparent_1px)] bg-[size:132px_132px] opacity-45" />
+
+      <div className="relative flex min-h-full flex-1 flex-col">
+        <div className="border-b border-border/50 bg-background/35 px-4 py-4 backdrop-blur md:px-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="flex min-w-0 flex-col gap-2">
+              <Badge variant="secondary" className="w-fit">
+                {ds.workspaceBadge}
+              </Badge>
+              <div>
+                <h2 className="text-2xl font-semibold tracking-tight">{ds.title}</h2>
+                <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{ds.subtitle}</p>
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <span>{visibleWidgets.length} widgets active</span>
-              <Separator orientation="vertical" className="h-4" />
-              <span>{hiddenWidgets.length} widgets sleeping</span>
-              <Separator orientation="vertical" className="h-4" />
-              <span>Audio {audioEnabled ? "online" : "muted"}</span>
-              <Separator orientation="vertical" className="hidden h-4 md:block" />
-              <span className="inline-flex items-center gap-1">
-                <MousePointer2 className="size-3.5" />
-                drag handle in each title bar
-              </span>
-            </div>
-
-            {hiddenWidgets.length > 0 ? (
-              <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-dashed border-border/70 bg-background/45 p-3">
-                <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Spawn module</span>
-                {hiddenWidgets.map((widget) => (
-                  <Button key={widget.id} type="button" variant="outline" size="sm" onClick={() => onOpenWidget(widget.id)}>
-                    <Plus data-icon="inline-start" />
-                    {widget.label}
-                  </Button>
-                ))}
-              </div>
-            ) : null}
-
-            <div className="block lg:hidden">
-              <div className="grid gap-4">
-                {visibleWidgets.map((widget) => {
-                  const Icon = widget.icon;
-
-                  return (
-                    <Card key={widget.id} className="rounded-[1.4rem] border-border/70 bg-card/85 backdrop-blur">
-                      <CardHeader className="flex flex-row items-start justify-between gap-3">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <div className="rounded-xl border border-border/60 bg-background/70 p-2">
-                              <Icon className="size-4" />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <CardTitle className="truncate text-base">{widget.label}</CardTitle>
-                              <CardDescription className="mt-1 truncate">{widget.description}</CardDescription>
-                            </div>
-                          </div>
-                        </div>
-                        <Button type="button" variant="ghost" size="icon-sm" onClick={() => onHideWidget(widget.id)}>
-                          <Minus />
-                        </Button>
-                      </CardHeader>
-                      <CardContent>{widget.content}</CardContent>
-                    </Card>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div
-              ref={surfaceRef}
-              className={cn(
-                "relative hidden overflow-hidden rounded-[1.75rem] border border-border/60 bg-gradient-to-br from-background/95 via-background/70 to-muted/35 lg:block",
-                "before:pointer-events-none before:absolute before:inset-0 before:bg-[radial-gradient(circle_at_top_left,color-mix(in_oklab,var(--primary)_14%,transparent),transparent_32%)] before:content-['']",
-                "after:pointer-events-none after:absolute after:inset-0 after:bg-[linear-gradient(to_right,color-mix(in_oklab,var(--border)_35%,transparent)_1px,transparent_1px),linear-gradient(to_bottom,color-mix(in_oklab,var(--border)_28%,transparent)_1px,transparent_1px)] after:bg-[size:120px_120px] after:opacity-40 after:content-['']",
-              )}
-              style={{ minHeight: surfaceHeight }}
-            >
-              <div className="pointer-events-none absolute inset-x-0 top-0 flex items-center justify-between px-5 py-4 text-xs uppercase tracking-[0.22em] text-muted-foreground">
-                <span className="inline-flex items-center gap-2">
-                  <MonitorCog className="size-3.5" />
-                  Personal shell
-                </span>
-                <span>Right-click for desktop actions</span>
-              </div>
-
-              <AnimatePresence initial={false}>
-                {visibleWidgets.map((widget) => {
-                  const layout = layouts[widget.id];
-                  if (!layout) {
-                    return null;
-                  }
-
-                  return (
-                    <DraggableWidgetCard
-                      key={widget.id}
-                      widget={widget}
-                      layout={layout}
-                      surfaceRef={surfaceRef}
-                      surfaceHeight={surfaceHeight}
-                      onMove={onMoveWidget}
-                      onFocus={onFocusWidget}
-                      onHide={onHideWidget}
-                    />
-                  );
-                })}
-              </AnimatePresence>
-
-              {visibleWidgets.length === 0 ? (
-                <motion.div
-                  {...hubPopMotion(reducedMotion)}
-                  className="absolute inset-0 flex items-center justify-center p-6"
-                >
-                  <div className="flex max-w-md flex-col items-center gap-4 rounded-[1.75rem] border border-dashed border-border/70 bg-background/75 px-6 py-8 text-center shadow-sm backdrop-blur">
-                    <Badge variant="outline">Desktop sleeping</Badge>
-                    <div className="flex flex-col gap-2">
-                      <h3 className="text-lg font-semibold tracking-tight">Everything is hidden right now</h3>
-                      <p className="text-sm text-muted-foreground">
-                        Spawn a module, right-click the surface, and build your own shell from scratch.
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap justify-center gap-2">
-                      {hiddenWidgets.slice(0, 3).map((widget) => (
-                        <Button key={widget.id} type="button" variant="outline" size="sm" onClick={() => onOpenWidget(widget.id)}>
-                          <Plus data-icon="inline-start" />
-                          {widget.label}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-                </motion.div>
-              ) : null}
+            <div className="flex flex-wrap items-center gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={onOpenCommandPalette}>
+                <Search data-icon="inline-start" />
+                {ds.commandBar}
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={onCyclePalette}>
+                <Palette data-icon="inline-start" />
+                {ds.cyclePalette}
+              </Button>
+              <Button type="button" size="sm" onClick={onChaosAction}>
+                <Sparkles data-icon="inline-start" />
+                {ds.chaosPulse}
+              </Button>
             </div>
           </div>
-        </motion.section>
-      </ContextMenuTrigger>
-      <ContextMenuContent>
-        <ContextMenuLabel>Desktop</ContextMenuLabel>
-        <ContextMenuItem onSelect={onOpenCommandPalette}>Open command bar</ContextMenuItem>
-        <ContextMenuItem onSelect={onCyclePalette}>Cycle palette</ContextMenuItem>
-        <ContextMenuCheckboxItem checked={audioEnabled} onCheckedChange={onToggleAudio}>
-          Audio feedback
-        </ContextMenuCheckboxItem>
-        <ContextMenuSeparator />
-        <ContextMenuSub>
-          <ContextMenuSubTrigger>Spawn widget</ContextMenuSubTrigger>
-          <ContextMenuSubContent>
-            {hiddenWidgets.length > 0 ? (
-              hiddenWidgets.map((widget) => (
-                <ContextMenuItem key={widget.id} onSelect={() => onOpenWidget(widget.id)}>
+
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <span>{ds.appsOnline(visibleWidgets.length)}</span>
+            <Separator orientation="vertical" className="h-4" />
+            <span>{ds.sleeping(hiddenWidgets.length)}</span>
+            <Separator orientation="vertical" className="h-4" />
+            <span>{audioEnabled ? ds.audioOnline : ds.audioMuted}</span>
+            <Separator orientation="vertical" className="hidden h-4 md:block" />
+            <span className="inline-flex items-center gap-1">
+              <MousePointer2 className="size-3.5" />
+              {ds.dragHint}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex flex-1 flex-col gap-4 p-4 md:p-5">
+          {hiddenWidgets.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-2 rounded-[1.5rem] border border-dashed border-border/70 bg-background/45 px-3 py-3 backdrop-blur">
+              <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{ds.spawnApp}</span>
+              {hiddenWidgets.map((widget) => (
+                <Button key={widget.id} type="button" variant="outline" size="sm" onClick={() => onOpenWidget(widget.id)}>
+                  <Plus data-icon="inline-start" />
                   {widget.label}
-                </ContextMenuItem>
-              ))
-            ) : (
-              <ContextMenuItem disabled>All widgets are already active</ContextMenuItem>
+                </Button>
+              ))}
+            </div>
+          ) : null}
+
+          <div className="block lg:hidden">
+            <div className="grid gap-4">
+              {visibleWidgets.map((widget) => {
+                const Icon = widget.icon;
+
+                return (
+                  <Card
+                    key={widget.id}
+                    className="rounded-[1.4rem] border-border/70 bg-card/85 backdrop-blur"
+                    {...hubContextData({
+                      type: "widget",
+                      widgetId: widget.id,
+                      widgetLabel: widget.label,
+                      widgetTone: widget.tone,
+                    })}
+                  >
+                    <CardHeader className="flex flex-row items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <div className="rounded-xl border border-border/60 bg-background/70 p-2">
+                            <Icon className="size-4" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <CardTitle className="truncate text-base">{widget.label}</CardTitle>
+                            <CardDescription className="mt-1 truncate">{widget.description}</CardDescription>
+                          </div>
+                        </div>
+                      </div>
+                      <Button type="button" variant="ghost" size="icon-sm" onClick={() => onHideWidget(widget.id)}>
+                        <Minus />
+                      </Button>
+                    </CardHeader>
+                    <CardContent>{widget.content}</CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          </div>
+
+          <div
+            ref={surfaceRef}
+            className={cn(
+              "relative hidden overflow-hidden rounded-[2rem] border border-border/60 bg-background/28 lg:block",
+              "before:pointer-events-none before:absolute before:inset-0 before:bg-[radial-gradient(circle_at_top_left,color-mix(in_oklab,var(--primary)_16%,transparent),transparent_26%)] before:content-['']",
             )}
-          </ContextMenuSubContent>
-        </ContextMenuSub>
-        <ContextMenuSeparator />
-        <ContextMenuItem onSelect={onResetLayout}>Reset layout</ContextMenuItem>
-        <ContextMenuItem onSelect={onChaosAction}>Chaos pulse</ContextMenuItem>
-      </ContextMenuContent>
-    </ContextMenu>
+            style={{ minHeight: surfaceHeight }}
+          >
+            <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center justify-between px-5 py-4 text-xs uppercase tracking-[0.22em] text-muted-foreground">
+              <span className="inline-flex items-center gap-2">
+                <MonitorCog className="size-3.5" />
+                {ds.personalShell}
+              </span>
+              <span>{ds.rightClickHint}</span>
+            </div>
+
+            <AnimatePresence initial={false}>
+              {visibleWidgets.map((widget) => {
+                const layout = layouts[widget.id];
+                if (!layout) {
+                  return null;
+                }
+
+                return (
+                  <DraggableWidgetCard
+                    key={widget.id}
+                    widget={widget}
+                    layout={layout}
+                    surfaceRef={surfaceRef}
+                    surfaceHeight={surfaceHeight}
+                    onMove={onMoveWidget}
+                    onFocus={onFocusWidget}
+                    onHide={onHideWidget}
+                  />
+                );
+              })}
+            </AnimatePresence>
+
+            {visibleWidgets.length === 0 ? (
+              <motion.div
+                {...hubPopMotion(reducedMotion)}
+                className="absolute inset-0 flex items-center justify-center p-6"
+              >
+                <div className="flex max-w-md flex-col items-center gap-4 rounded-[1.75rem] border border-dashed border-border/70 bg-background/75 px-6 py-8 text-center shadow-sm backdrop-blur">
+                  <Badge variant="outline">{ds.emptyBadge}</Badge>
+                  <div className="flex flex-col gap-2">
+                    <h3 className="text-lg font-semibold tracking-tight">{ds.emptyTitle}</h3>
+                    <p className="text-sm text-muted-foreground">{ds.emptyBody}</p>
+                  </div>
+                  <div className="flex flex-wrap justify-center gap-2">
+                    {hiddenWidgets.slice(0, 3).map((widget) => (
+                      <Button key={widget.id} type="button" variant="outline" size="sm" onClick={() => onOpenWidget(widget.id)}>
+                        <Plus data-icon="inline-start" />
+                        {widget.label}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              </motion.div>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </motion.section>
   );
 }

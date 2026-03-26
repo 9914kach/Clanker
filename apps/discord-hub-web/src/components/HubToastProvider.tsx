@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { X } from "lucide-react";
 import { cn } from "@clanker/ui/lib/utils";
+import { useHubLocale } from "@/components/locale-provider";
 
 type ToastKind = "info" | "success" | "error" | "chaos";
 
@@ -33,14 +34,8 @@ function randomId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function pickChaosTitle(base: string) {
-  const options = [
-    base,
-    "System whispers:",
-    "Neutralen OS says:",
-    "Not a bug. A feature.",
-    "Mysterious but valid:",
-  ];
+function pickChaosTitle(base: string, alternates: readonly string[]) {
+  const options = [base, ...alternates];
   return options[Math.floor(Math.random() * options.length)] ?? base;
 }
 
@@ -77,7 +72,15 @@ function stylesForKind(kind: ToastKind) {
   };
 }
 
-function ToastStack({ toasts, dismiss }: { toasts: readonly ToastItem[]; dismiss: (id: string) => void }) {
+function ToastStack({
+  toasts,
+  dismiss,
+  dismissAria,
+}: {
+  toasts: readonly ToastItem[];
+  dismiss: (id: string) => void;
+  dismissAria: string;
+}) {
   const reducedMotion = useReducedMotion() ?? false;
 
   return (
@@ -112,7 +115,7 @@ function ToastStack({ toasts, dismiss }: { toasts: readonly ToastItem[]; dismiss
                   type="button"
                   onClick={() => dismiss(t.id)}
                   className="rounded-lg p-1 text-muted-foreground transition hover:bg-muted/50 hover:text-foreground"
-                  aria-label="Dismiss"
+                  aria-label={dismissAria}
                 >
                   <X className="size-4" />
                 </button>
@@ -126,6 +129,7 @@ function ToastStack({ toasts, dismiss }: { toasts: readonly ToastItem[]; dismiss
 }
 
 export function HubToastProvider({ children }: { children: React.ReactNode }) {
+  const { copy } = useHubLocale();
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const timeoutsRef = useRef(new Map<string, number>());
 
@@ -152,7 +156,8 @@ export function HubToastProvider({ children }: { children: React.ReactNode }) {
       const now = Date.now();
       const kind = toast.kind ?? "info";
       const ttlMs = toast.ttlMs ?? (kind === "error" ? 7_500 : kind === "chaos" ? 6_000 : 4_500);
-      const title = kind === "chaos" ? pickChaosTitle(toast.title) : toast.title;
+      const title =
+        kind === "chaos" ? pickChaosTitle(toast.title, copy.toastChaosTitles) : toast.title;
       const item: ToastItem = {
         id,
         kind,
@@ -165,7 +170,7 @@ export function HubToastProvider({ children }: { children: React.ReactNode }) {
       const handle = window.setTimeout(() => dismiss(id), ttlMs);
       timeoutsRef.current.set(id, handle);
     },
-    [dismiss],
+    [copy.toastChaosTitles, dismiss],
   );
 
   useEffect(() => () => clear(), [clear]);
@@ -175,7 +180,7 @@ export function HubToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={api}>
       {children}
-      <ToastStack toasts={toasts} dismiss={dismiss} />
+      <ToastStack toasts={toasts} dismiss={dismiss} dismissAria={copy.common.dismissAria} />
     </ToastContext.Provider>
   );
 }

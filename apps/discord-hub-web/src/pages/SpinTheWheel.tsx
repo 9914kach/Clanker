@@ -18,7 +18,9 @@ import { Textarea } from "@clanker/ui/components/textarea";
 import { useHubAudio } from "@/components/HubAudioProvider";
 import SpinWheel from "@/components/SpinWheel";
 import { useHubToasts } from "@/components/HubToastProvider";
+import { useHubLocale } from "@/components/locale-provider";
 import { apiUrl } from "@/config";
+import { toBcp47 } from "@/i18n/hub-copy";
 import { useHubLayout } from "@/hooks/use-hub-layout";
 import { buildWheelCollabDraft, useWheelCollab } from "@/hooks/use-wheel-collab";
 import { normalizeWheelCollabRoom, type WheelCollabAction } from "@/lib/hub-collab";
@@ -86,6 +88,9 @@ function computeRotationForWinner(
 }
 
 export default function SpinTheWheelPage() {
+  const { copy, locale } = useHubLocale();
+  const w = copy.spinWheel;
+  const tt = w.toasts;
   const { me } = useHubLayout();
   const toasts = useHubToasts();
   const { play } = useHubAudio();
@@ -117,7 +122,7 @@ export default function SpinTheWheelPage() {
   const [groupName, setGroupName] = useState("");
   const [autoSaveSessions, setAutoSaveSessions] = useState(true);
   const [collabEnabled, setCollabEnabled] = useState(false);
-  const [collabRoomInput, setCollabRoomInput] = useState("neutralen-wheel");
+  const [collabRoomInput, setCollabRoomInput] = useState(w.defaultCollabRoom);
 
   const collabDraft = useMemo(
     () =>
@@ -161,12 +166,12 @@ export default function SpinTheWheelPage() {
       if (me.status === "user" && action.triggeredById !== me.profile.id) {
         toasts.push({
           kind: "info",
-          title: "Room update",
-          message: `${action.triggeredByName} updated the shared wheel.`,
+          title: tt.roomUpdate,
+          message: tt.roomUpdateMessage(action.triggeredByName),
         });
       }
     },
-    [me, toasts],
+    [me, toasts, tt],
   );
 
   const collab = useWheelCollab({
@@ -203,18 +208,18 @@ export default function SpinTheWheelPage() {
       if (!res.ok) {
         const msg = await readApiError(res);
         setApiError(msg);
-        toasts.push({ kind: "error", title: "Couldn’t load groups", message: msg });
+        toasts.push({ kind: "error", title: tt.loadGroupsFail, message: msg });
         return;
       }
       const data = (await res.json()) as { groups: ApiWheelGroup[] };
       setGroups(Array.isArray(data.groups) ? data.groups : []);
     } catch {
-      setApiError("Kunde inte nå backend.");
-      toasts.push({ kind: "error", title: "Backend unreachable", message: "The hub API didn’t answer." });
+      setApiError(tt.backendUnreachableMessage);
+      toasts.push({ kind: "error", title: tt.backendUnreachable, message: tt.backendUnreachableMessage });
     } finally {
       setGroupsLoading(false);
     }
-  }, [toasts]);
+  }, [toasts, tt.backendUnreachable, tt.backendUnreachableMessage, tt.loadGroupsFail]);
 
   const refreshSessions = useCallback(async () => {
     setSessionsLoading(true);
@@ -225,18 +230,18 @@ export default function SpinTheWheelPage() {
       if (!res.ok) {
         const msg = await readApiError(res);
         setApiError(msg);
-        toasts.push({ kind: "error", title: "Couldn’t load sessions", message: msg });
+        toasts.push({ kind: "error", title: tt.loadSessionsFail, message: msg });
         return;
       }
       const data = (await res.json()) as { sessions: ApiWheelSession[] };
       setSessions(Array.isArray(data.sessions) ? data.sessions : []);
     } catch {
-      setApiError("Kunde inte nå backend.");
-      toasts.push({ kind: "error", title: "Backend unreachable", message: "The hub API didn’t answer." });
+      setApiError(tt.backendUnreachableMessage);
+      toasts.push({ kind: "error", title: tt.backendUnreachable, message: tt.backendUnreachableMessage });
     } finally {
       setSessionsLoading(false);
     }
-  }, [toasts]);
+  }, [toasts, tt.backendUnreachable, tt.backendUnreachableMessage, tt.loadSessionsFail]);
 
   useEffect(() => {
     if (me.status !== "user") return;
@@ -317,14 +322,22 @@ export default function SpinTheWheelPage() {
               if (!res.ok) {
                 const msg = await readApiError(res);
                 setApiError(msg);
-                toasts.push({ kind: "error", title: "Couldn’t save session", message: msg });
+                toasts.push({ kind: "error", title: tt.saveSessionFail, message: msg });
                 return;
               }
-              toasts.push({ kind: "success", title: "Session saved", message: winner ? `Winner: ${winner}` : "Teams recorded." });
+              toasts.push({
+                kind: "success",
+                title: tt.sessionSaved,
+                message: winner ? tt.sessionSavedWinner(winner) : tt.sessionSavedTeams,
+              });
               void refreshSessions();
             } catch {
-              setApiError("Kunde inte nå backend.");
-              toasts.push({ kind: "error", title: "Couldn’t save session", message: "Backend unreachable." });
+              setApiError(tt.backendUnreachableMessage);
+              toasts.push({
+                kind: "error",
+                title: tt.saveSessionFail,
+                message: tt.backendUnreachableMessage,
+              });
             }
           })();
         }
@@ -344,7 +357,25 @@ export default function SpinTheWheelPage() {
         });
       }
     },
-    [autoSaveSessions, collab, isReady, me, participants, play, refreshSessions, rotationDeg, seed, selectedGroupId, shuffleSalt, spinSalt, spinning, teamCount, teamMode, toasts],
+    [
+      autoSaveSessions,
+      collab,
+      isReady,
+      me,
+      participants,
+      play,
+      refreshSessions,
+      rotationDeg,
+      seed,
+      selectedGroupId,
+      shuffleSalt,
+      spinSalt,
+      spinning,
+      teamCount,
+      teamMode,
+      toasts,
+      tt,
+    ],
   );
 
   const onWheelAnimationComplete = useCallback(() => {
@@ -404,18 +435,39 @@ export default function SpinTheWheelPage() {
           if (!res.ok) {
             const msg = await readApiError(res);
             setApiError(msg);
-            toasts.push({ kind: "error", title: "Couldn’t save session", message: msg });
+            toasts.push({ kind: "error", title: tt.saveSessionFail, message: msg });
             return;
           }
-          toasts.push({ kind: "success", title: "Session saved", message: "Teams recorded." });
+          toasts.push({ kind: "success", title: tt.sessionSaved, message: tt.sessionSavedTeams });
           void refreshSessions();
         } catch {
-          setApiError("Kunde inte nå backend.");
-          toasts.push({ kind: "error", title: "Couldn’t save session", message: "Backend unreachable." });
+          setApiError(tt.backendUnreachableMessage);
+          toasts.push({
+            kind: "error",
+            title: tt.saveSessionFail,
+            message: tt.backendUnreachableMessage,
+          });
         }
       })();
     }
-  }, [autoSaveSessions, collab, me, participants, play, refreshSessions, seed, selectedGroupId, shuffleSalt, teamCount, teamMode, toasts]);
+  }, [
+    autoSaveSessions,
+    collab,
+    me,
+    participants,
+    play,
+    refreshSessions,
+    seed,
+    selectedGroupId,
+    shuffleSalt,
+    teamCount,
+    teamMode,
+    toasts,
+    tt.backendUnreachableMessage,
+    tt.saveSessionFail,
+    tt.sessionSaved,
+    tt.sessionSavedTeams,
+  ]);
 
   const makeTeamsNow = useCallback(() => {
     if (participants.length === 0) return;
@@ -464,18 +516,39 @@ export default function SpinTheWheelPage() {
           if (!res.ok) {
             const msg = await readApiError(res);
             setApiError(msg);
-            toasts.push({ kind: "error", title: "Couldn’t save session", message: msg });
+            toasts.push({ kind: "error", title: tt.saveSessionFail, message: msg });
             return;
           }
-          toasts.push({ kind: "success", title: "Session saved", message: "Teams recorded." });
+          toasts.push({ kind: "success", title: tt.sessionSaved, message: tt.sessionSavedTeams });
           void refreshSessions();
         } catch {
-          setApiError("Kunde inte nå backend.");
-          toasts.push({ kind: "error", title: "Couldn’t save session", message: "Backend unreachable." });
+          setApiError(tt.backendUnreachableMessage);
+          toasts.push({
+            kind: "error",
+            title: tt.saveSessionFail,
+            message: tt.backendUnreachableMessage,
+          });
         }
       })();
     }
-  }, [autoSaveSessions, collab, me, participants, play, refreshSessions, seed, selectedGroupId, shuffleSalt, teamCount, teamMode, toasts]);
+  }, [
+    autoSaveSessions,
+    collab,
+    me,
+    participants,
+    play,
+    refreshSessions,
+    seed,
+    selectedGroupId,
+    shuffleSalt,
+    teamCount,
+    teamMode,
+    toasts,
+    tt.backendUnreachableMessage,
+    tt.saveSessionFail,
+    tt.sessionSaved,
+    tt.sessionSavedTeams,
+  ]);
 
   const removeParticipant = useCallback(
     (name: string) => {
@@ -492,15 +565,15 @@ export default function SpinTheWheelPage() {
         const key = name.toLocaleLowerCase();
         if (next.has(key)) {
           next.delete(key);
-          toasts.push({ kind: "info", title: "Curse lifted", message: name });
+          toasts.push({ kind: "info", title: w.curseLifted, message: name });
         } else {
           next.add(key);
-          toasts.push({ kind: "chaos", title: "Marked as cursed", message: name });
+          toasts.push({ kind: "chaos", title: w.markedCursed, message: name });
         }
         return next;
       });
     },
-    [toasts],
+    [toasts, w.curseLifted, w.markedCursed],
   );
 
   const clearSelectedGroup = useCallback(() => {
@@ -536,7 +609,7 @@ export default function SpinTheWheelPage() {
   }, []);
 
   const createGroup = useCallback(async () => {
-    const name = groupName.trim() || "Ny grupp";
+    const name = groupName.trim() || w.newGroupDefault;
     setApiError(null);
     try {
       const res = await fetch(apiUrl("/api/wheel/groups"), {
@@ -548,21 +621,25 @@ export default function SpinTheWheelPage() {
       if (!res.ok) {
         const msg = await readApiError(res);
         setApiError(msg);
-        toasts.push({ kind: "error", title: "Couldn’t save group", message: msg });
+          toasts.push({ kind: "error", title: tt.saveGroupFail, message: msg });
         return;
       }
       clearSelectedGroup();
       await refreshGroups();
-      toasts.push({ kind: "success", title: "Group saved", message: name });
+      toasts.push({ kind: "success", title: tt.groupSaved, message: name });
     } catch {
-      setApiError("Kunde inte nå backend.");
-      toasts.push({ kind: "error", title: "Couldn’t save group", message: "Backend unreachable." });
+      setApiError(tt.backendUnreachableMessage);
+      toasts.push({
+        kind: "error",
+        title: tt.saveGroupFail,
+        message: tt.backendUnreachableMessage,
+      });
     }
-  }, [clearSelectedGroup, groupName, participants, refreshGroups, toasts]);
+  }, [clearSelectedGroup, groupName, participants, refreshGroups, toasts, tt.backendUnreachableMessage, tt.groupSaved, tt.saveGroupFail, w.newGroupDefault]);
 
   const updateGroup = useCallback(async () => {
     if (!selectedGroupId) return;
-    const name = groupName.trim() || "Ny grupp";
+    const name = groupName.trim() || w.newGroupDefault;
     setApiError(null);
     try {
       const res = await fetch(apiUrl(`/api/wheel/groups/${encodeURIComponent(selectedGroupId)}`), {
@@ -574,16 +651,20 @@ export default function SpinTheWheelPage() {
       if (!res.ok) {
         const msg = await readApiError(res);
         setApiError(msg);
-        toasts.push({ kind: "error", title: "Couldn’t update group", message: msg });
+        toasts.push({ kind: "error", title: tt.updateGroupFail, message: msg });
         return;
       }
       await refreshGroups();
-      toasts.push({ kind: "success", title: "Group updated", message: name });
+      toasts.push({ kind: "success", title: tt.groupUpdated, message: name });
     } catch {
-      setApiError("Kunde inte nå backend.");
-      toasts.push({ kind: "error", title: "Couldn’t update group", message: "Backend unreachable." });
+      setApiError(tt.backendUnreachableMessage);
+      toasts.push({
+        kind: "error",
+        title: tt.updateGroupFail,
+        message: tt.backendUnreachableMessage,
+      });
     }
-  }, [groupName, participants, refreshGroups, selectedGroupId, toasts]);
+  }, [groupName, participants, refreshGroups, selectedGroupId, toasts, tt, w.newGroupDefault]);
 
   const deleteGroup = useCallback(async (id: string) => {
     setApiError(null);
@@ -595,56 +676,56 @@ export default function SpinTheWheelPage() {
       if (!res.ok) {
         const msg = await readApiError(res);
         setApiError(msg);
-        toasts.push({ kind: "error", title: "Couldn’t delete group", message: msg });
+        toasts.push({ kind: "error", title: tt.deleteGroupFail, message: msg });
         return;
       }
       if (selectedGroupId === id) clearSelectedGroup();
       await refreshGroups();
-      toasts.push({ kind: "chaos", title: "Group deleted", message: "Gone. Reduced to atoms." });
+      toasts.push({ kind: "chaos", title: tt.groupDeleted, message: tt.groupDeletedMessage });
     } catch {
-      setApiError("Kunde inte nå backend.");
-      toasts.push({ kind: "error", title: "Couldn’t delete group", message: "Backend unreachable." });
+      setApiError(tt.backendUnreachableMessage);
+      toasts.push({
+        kind: "error",
+        title: tt.deleteGroupFail,
+        message: tt.backendUnreachableMessage,
+      });
     }
-  }, [clearSelectedGroup, refreshGroups, selectedGroupId, toasts]);
+  }, [clearSelectedGroup, refreshGroups, selectedGroupId, toasts, tt]);
 
-  if (me.status === "loading") return <div>Laddar…</div>;
+  if (me.status === "loading") return <div>{w.loading}</div>;
   if (me.status === "guest") return <Navigate to="/login" replace />;
-  if (me.status === "backend_error") return <div>Backendproblem. Försök igen senare.</div>;
+  if (me.status === "backend_error") return <div>{w.backendError}</div>;
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Spin the Wheel</h1>
-        <p className="text-sm text-muted-foreground">
-          Snurra fram en spelare och skapa lag med (valfri) seed för repeatable resultat.
-        </p>
+        <h1 className="text-2xl font-semibold tracking-tight">{w.pageTitle}</h1>
+        <p className="text-sm text-muted-foreground">{w.pageSubtitle}</p>
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            Shared wheel beta
+            {w.collabTitle}
             <Badge variant={collab.connected ? "secondary" : "outline"}>
-              {collab.connected ? "connected" : collab.status}
+              {collab.connected ? w.collabConnected : collab.status}
             </Badge>
-            {collab.synced ? <Badge variant="outline">synced</Badge> : null}
+            {collab.synced ? <Badge variant="outline">{w.collabSynced}</Badge> : null}
           </CardTitle>
-          <CardDescription>
-            Realtime-rum med Yjs/y-websocket. Draften synkas live och spins/team-resultat broadcastas till alla i rummet.
-          </CardDescription>
+          <CardDescription>{w.collabDesc}</CardDescription>
         </CardHeader>
         <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1fr)_auto]">
           <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium">Room</label>
+              <label className="text-sm font-medium">{w.roomLabel}</label>
               <Input
                 value={collabRoomInput}
                 onChange={(event) => setCollabRoomInput(normalizeWheelCollabRoom(event.target.value))}
-                placeholder="neutralen-wheel"
+                placeholder={w.defaultCollabRoom}
               />
             </div>
             <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-              <span>{collab.presence.length} närvarande i rummet</span>
+              <span>{w.presenceCount(collab.presence.length)}</span>
               {collab.presence.map((peer) => (
                 <Badge key={`${peer.userId}-${peer.clientId}`} variant="outline">
                   {peer.name}
@@ -655,7 +736,7 @@ export default function SpinTheWheelPage() {
           <div className="flex flex-col items-start justify-between gap-3 rounded-xl border border-border/60 bg-card p-3">
             <label className="flex items-center gap-3 text-sm font-medium">
               <Switch checked={collabEnabled} onCheckedChange={setCollabEnabled} />
-              <span>Realtime enabled</span>
+              <span>{w.realtimeEnabled}</span>
             </label>
             <div className="flex flex-wrap gap-2">
               <Button
@@ -666,12 +747,12 @@ export default function SpinTheWheelPage() {
                   void navigator.clipboard.writeText(collab.room || collabRoomInput);
                   toasts.push({
                     kind: "info",
-                    title: "Room copied",
+                    title: tt.roomCopied,
                     message: collab.room || collabRoomInput,
                   });
                 }}
               >
-                Kopiera room
+                {w.copyRoom}
               </Button>
             </div>
           </div>
@@ -682,8 +763,8 @@ export default function SpinTheWheelPage() {
         <div className="flex flex-col gap-6">
           <Card>
             <CardHeader>
-              <CardTitle>Deltagare</CardTitle>
-              <CardDescription>En rad per namn. Komma funkar också.</CardDescription>
+              <CardTitle>{w.participantsTitle}</CardTitle>
+              <CardDescription>{w.participantsDesc}</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
               <Textarea
@@ -691,14 +772,12 @@ export default function SpinTheWheelPage() {
                 onChange={(e) => setRawParticipants(e.target.value)}
                 rows={7}
                 className={inputClassName()}
-                placeholder={"Alice\nBob\nCharlie"}
+                placeholder={w.participantsTextareaPlaceholder}
               />
 
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="text-sm text-muted-foreground">
-                  {participants.length === 0
-                    ? "Inga deltagare än"
-                    : `${participants.length} deltagare`}
+                  {participants.length === 0 ? w.noParticipants : w.participantCount(participants.length)}
                 </div>
                 <Button
                   type="button"
@@ -707,7 +786,7 @@ export default function SpinTheWheelPage() {
                   onClick={() => setRawParticipants("")}
                   disabled={participants.length === 0}
                 >
-                  Rensa
+                  {w.clear}
                 </Button>
               </div>
 
@@ -726,7 +805,7 @@ export default function SpinTheWheelPage() {
                               ? "border-warning/60 bg-warning/10"
                               : "border-border bg-card",
                           ].join(" ")}
-                          title="Click to remove. Right-click for more crimes."
+                          title={w.participantChipTitle}
                         >
                           <span className="max-w-[16rem] truncate">{p}</span>
                           <span className="text-muted-foreground">×</span>
@@ -734,32 +813,30 @@ export default function SpinTheWheelPage() {
                       </ContextMenuTrigger>
 
                       <ContextMenuContent>
-                        <ContextMenuLabel>Participant</ContextMenuLabel>
-                        <ContextMenuItem onSelect={() => removeParticipant(p)}>
-                          Remove
-                        </ContextMenuItem>
+                        <ContextMenuLabel>{w.participantMenuLabel}</ContextMenuLabel>
+                        <ContextMenuItem onSelect={() => removeParticipant(p)}>{w.remove}</ContextMenuItem>
                         <ContextMenuItem
                           onSelect={() => {
                             void navigator.clipboard.writeText(p);
-                            toasts.push({ kind: "info", title: "Copied", message: p });
+                            toasts.push({ kind: "info", title: copy.common.copied, message: p });
                           }}
                         >
-                          Copy name
+                          {w.copyName}
                         </ContextMenuItem>
                         <ContextMenuSeparator />
                         <ContextMenuItem onSelect={() => toggleCursed(p)}>
-                          {cursedNames.has(p.toLocaleLowerCase()) ? "Uncurse" : "Mark as cursed"}
+                          {cursedNames.has(p.toLocaleLowerCase()) ? w.uncurse : w.markCursed}
                         </ContextMenuItem>
                         <ContextMenuItem
                           onSelect={() =>
                             toasts.push({
                               kind: "chaos",
-                              title: "Accusation filed",
-                              message: `${p} is now under investigation.`,
+                              title: w.accuseTitle,
+                              message: w.accuseMessage(p),
                             })
                           }
                         >
-                          Accuse (ceremonial)
+                          {w.accuseMenuLabel}
                         </ContextMenuItem>
                       </ContextMenuContent>
                     </ContextMenu>
@@ -771,12 +848,12 @@ export default function SpinTheWheelPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Lag & seed</CardTitle>
-              <CardDescription>Styr hur lagen skapas (och om det ska vara deterministiskt).</CardDescription>
+              <CardTitle>{w.teamsTitle}</CardTitle>
+              <CardDescription>{w.teamsDesc}</CardDescription>
             </CardHeader>
             <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium">Antal lag</label>
+                <label className="text-sm font-medium">{w.teamCount}</label>
                 <Input
                   type="number"
                   min={1}
@@ -788,38 +865,38 @@ export default function SpinTheWheelPage() {
               </div>
 
               <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium">Fördelning</label>
+                <label className="text-sm font-medium">{w.distribution}</label>
                 <select
                   value={teamMode}
                   onChange={(e) => setTeamMode(e.target.value as TeamMode)}
                   className={inputClassName()}
                 >
-                  <option value="balanced">Balanserade lag (rekommenderas)</option>
-                  <option value="equal">Exakt jämna lag</option>
+                  <option value="balanced">{w.modeBalanced}</option>
+                  <option value="equal">{w.modeEqual}</option>
                 </select>
                 {teamMode === "equal" && !canMakeEqualTeams ? (
                   <div className="text-xs text-warning">
-                    Kan inte skapa exakt jämna lag: {participants.length} deltagare är inte delbart med {teamCount}.
+                    {w.equalTeamsWarning(participants.length, teamCount)}
                   </div>
                 ) : null}
               </div>
 
               <div className="md:col-span-2 flex flex-col gap-2">
-                <label className="text-sm font-medium">Seed (valfritt)</label>
+                <label className="text-sm font-medium">{w.seedLabel}</label>
                 <Input
                   value={seed}
                   onChange={(e) => setSeed(e.target.value)}
                   className={inputClassName()}
-                  placeholder="t.ex. scrim-2026-03-25"
+                  placeholder={w.seedPlaceholder}
                 />
                 <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                   <span>
                     {seedUsed ? (
                       <>
-                        Senast använd seed: <code>{seedUsed}</code>
+                        {w.seedLastUsed} <code>{seedUsed}</code>
                       </>
                     ) : (
-                      "Lämna tomt för slumpmässigt seed."
+                      w.seedEmptyHint
                     )}
                   </span>
                   {seedUsed ? (
@@ -829,10 +906,10 @@ export default function SpinTheWheelPage() {
                       variant="outline"
                       onClick={() => {
                         void navigator.clipboard.writeText(seedUsed);
-                        toasts.push({ kind: "info", title: "Seed copied", message: seedUsed });
+                        toasts.push({ kind: "info", title: tt.seedCopied, message: seedUsed });
                       }}
                     >
-                      Kopiera
+                      {w.copySeed}
                     </Button>
                   ) : null}
                 </div>
@@ -840,21 +917,21 @@ export default function SpinTheWheelPage() {
 
               <label className="md:col-span-2 flex items-center gap-2 text-sm">
                 <Switch checked={autoSaveSessions} onCheckedChange={setAutoSaveSessions} />
-                <span>Auto-spara sessioner</span>
+                <span>{w.autoSave}</span>
               </label>
 
               <div className="md:col-span-2 flex flex-wrap gap-2">
                 <Button type="button" onClick={() => runSpin({ alsoMakeTeams: true })} disabled={!isReady || spinning}>
-                  Snurra & skapa lag
+                  {w.spinAndTeams}
                 </Button>
                 <Button type="button" variant="outline" onClick={() => runSpin({ alsoMakeTeams: false })} disabled={!isReady || spinning}>
-                  Snurra
+                  {w.spinOnly}
                 </Button>
                 <Button type="button" variant="outline" onClick={makeTeamsNow} disabled={participants.length === 0}>
-                  Skapa lag
+                  {w.makeTeams}
                 </Button>
                 <Button type="button" variant="outline" onClick={reshuffleTeams} disabled={participants.length === 0}>
-                  Blanda om lag
+                  {w.reshuffle}
                 </Button>
               </div>
             </CardContent>
@@ -862,8 +939,8 @@ export default function SpinTheWheelPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Sparade grupper</CardTitle>
-              <CardDescription>Spara deltagarlistor som du återanvänder.</CardDescription>
+              <CardTitle>{w.groupsTitle}</CardTitle>
+              <CardDescription>{w.groupsDesc}</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
               {apiError ? (
@@ -876,12 +953,12 @@ export default function SpinTheWheelPage() {
                 <Input
                   value={groupName}
                   onChange={(e) => setGroupName(e.target.value)}
-                  placeholder="Gruppnamn"
+                  placeholder={w.groupNamePlaceholder}
                   className={inputClassName()}
                 />
                 <div className="flex flex-wrap gap-2">
                   <Button type="button" onClick={createGroup} disabled={participants.length === 0 || groupsLoading}>
-                    Spara ny
+                    {w.saveNew}
                   </Button>
                   <Button
                     type="button"
@@ -889,10 +966,10 @@ export default function SpinTheWheelPage() {
                     onClick={updateGroup}
                     disabled={!selectedGroupId || participants.length === 0 || groupsLoading}
                   >
-                    Uppdatera
+                    {w.update}
                   </Button>
                   <Button type="button" variant="outline" onClick={refreshGroups} disabled={groupsLoading}>
-                    Uppdatera lista
+                    {w.refreshList}
                   </Button>
                 </div>
               </div>
@@ -900,18 +977,18 @@ export default function SpinTheWheelPage() {
               {selectedGroupId ? (
                 <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
                   <div className="text-muted-foreground">
-                    Vald grupp: <code>{selectedGroupId}</code>
+                    {w.selectedGroup} <code>{selectedGroupId}</code>
                   </div>
                   <Button type="button" variant="outline" size="sm" onClick={clearSelectedGroup}>
-                    Avmarkera
+                    {w.clearSelection}
                   </Button>
                 </div>
               ) : null}
 
               {groupsLoading ? (
-                <div className="text-sm text-muted-foreground">Laddar grupper…</div>
+                <div className="text-sm text-muted-foreground">{w.loadingGroups}</div>
               ) : groups.length === 0 ? (
-                <div className="text-sm text-muted-foreground">Inga sparade grupper än.</div>
+                <div className="text-sm text-muted-foreground">{w.noGroups}</div>
               ) : (
                 <div className="flex flex-col gap-2">
                   {groups.map((g) => (
@@ -919,12 +996,12 @@ export default function SpinTheWheelPage() {
                       <button type="button" className="min-w-0 flex-1 text-left" onClick={() => loadGroup(g)}>
                         <div className="truncate text-sm font-medium">{g.name}</div>
                         <div className="text-xs text-muted-foreground">
-                          {g.participants.length} deltagare · uppdaterad{" "}
-                          {new Date(g.updatedAt).toLocaleString()}
+                          {g.participants.length} {w.participantsUpdated}{" "}
+                          {new Date(g.updatedAt).toLocaleString(toBcp47(locale))}
                         </div>
                       </button>
                       <Button type="button" size="sm" variant="outline" onClick={() => deleteGroup(g.id)}>
-                        Ta bort
+                        {w.removeGroup}
                       </Button>
                     </div>
                   ))}
@@ -937,13 +1014,13 @@ export default function SpinTheWheelPage() {
         <div className="flex flex-col gap-6">
           <Card>
             <CardHeader>
-              <CardTitle>Hjulet</CardTitle>
-              <CardDescription>Snurrar slumpmässigt fram en spelare.</CardDescription>
+              <CardTitle>{w.wheelTitle}</CardTitle>
+              <CardDescription>{w.wheelDesc}</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
               {participants.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-border bg-card p-6 text-sm text-muted-foreground">
-                  Lägg till deltagare för att se hjulet.
+                  {w.addParticipantsHint}
                 </div>
               ) : (
                 <SpinWheel
@@ -958,16 +1035,16 @@ export default function SpinTheWheelPage() {
               <Separator />
 
               <div className="flex flex-col gap-1">
-                <div className="text-sm font-medium">Vald spelare</div>
+                <div className="text-sm font-medium">{w.selectedPlayer}</div>
                 <div className="text-sm text-muted-foreground">
                   {winnerName ? (
                     <span>
                       <code>{winnerName}</code>
                     </span>
                   ) : highlightIndex !== null && spinning ? (
-                    <span>Snurrar…</span>
+                    <span>{w.spinning}</span>
                   ) : (
-                    <span>Ingen än.</span>
+                    <span>{w.noneYet}</span>
                   )}
                 </div>
               </div>
@@ -976,23 +1053,23 @@ export default function SpinTheWheelPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Lag</CardTitle>
-              <CardDescription>Resultatet från senaste lagbygget.</CardDescription>
+              <CardTitle>{w.teamsResultTitle}</CardTitle>
+              <CardDescription>{w.teamsResultDesc}</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
               {teamMode === "equal" && !canMakeEqualTeams ? (
                 <div className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning-foreground">
-                  Exakt jämna lag kräver att deltagarantalet är delbart med antal lag.
+                  {w.equalTeamsBanner}
                 </div>
               ) : null}
 
               {teams.length === 0 ? (
-                <div className="text-sm text-muted-foreground">Inga lag ännu. Klicka på “Skapa lag”.</div>
+                <div className="text-sm text-muted-foreground">{w.noTeamsYet}</div>
               ) : (
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   {teams.map((team, idx) => (
                     <div key={idx} className="rounded-lg border border-border bg-card p-3">
-                      <div className="mb-2 text-sm font-medium">Lag {idx + 1}</div>
+                      <div className="mb-2 text-sm font-medium">{w.teamLabel(idx)}</div>
                       <div className="flex flex-col gap-1 text-sm">
                         {team.map((p) => (
                           <div key={p} className="flex items-center justify-between gap-2">
@@ -1011,37 +1088,42 @@ export default function SpinTheWheelPage() {
             <CardHeader>
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <CardTitle>Senaste sessioner</CardTitle>
-                  <CardDescription>Team/winner-historik sparad i backend.</CardDescription>
+                  <CardTitle>{w.sessionsTitle}</CardTitle>
+                  <CardDescription>{w.sessionsDesc}</CardDescription>
                 </div>
                 <Button type="button" size="sm" variant="outline" onClick={refreshSessions} disabled={sessionsLoading}>
-                  Uppdatera
+                  {w.refresh}
                 </Button>
               </div>
             </CardHeader>
             <CardContent className="flex flex-col gap-2">
               {sessionsLoading ? (
-                <div className="text-sm text-muted-foreground">Laddar sessioner…</div>
+                <div className="text-sm text-muted-foreground">{w.loadingSessions}</div>
               ) : sessions.length === 0 ? (
-                <div className="text-sm text-muted-foreground">Inga sessioner ännu.</div>
+                <div className="text-sm text-muted-foreground">{w.noSessions}</div>
               ) : (
                 sessions.map((s) => (
                   <div key={s.id} className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2">
                     <button type="button" className="min-w-0 flex-1 text-left" onClick={() => loadSession(s)}>
                       <div className="truncate text-sm font-medium">
-                        {s.winner ? `Winner: ${s.winner}` : "Lag skapade"}
+                        {s.winner ? w.sessionWinner(s.winner) : w.sessionTeamsOnly}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        {s.participants.length} deltagare · {s.teamCount} lag · {new Date(s.createdAt).toLocaleString()}
+                        {w.sessionMetaParticipants(
+                          s.participants.length,
+                          s.teamCount,
+                          new Date(s.createdAt).toLocaleString(toBcp47(locale)),
+                        )}
                         {s.seed ? (
                           <>
-                            {" "}· seed <code>{s.seed}</code>
+                            {" "}
+                            {w.sessionSeedPrefix} <code>{s.seed}</code>
                           </>
                         ) : null}
                       </div>
                     </button>
                     <Button type="button" size="sm" variant="outline" onClick={() => loadSession(s)}>
-                      Ladda
+                      {w.load}
                     </Button>
                   </div>
                 ))

@@ -17,6 +17,7 @@ import {
   CardTitle,
 } from "@clanker/ui/components/card";
 import { apiUrl } from "@/config";
+import { useHubLocale } from "@/components/locale-provider";
 import { useHubLayout } from "@/hooks/use-hub-layout";
 import type { LeagueRankedEntry } from "@/lib/league-format";
 
@@ -79,15 +80,6 @@ type LeagueForm = {
   statusMessage: string;
 };
 
-const defaultLeagueForm: LeagueForm = {
-  riotId: "",
-  tagLine: "",
-  region: "EUW",
-  autoSync: true,
-  rankPreference: "solo",
-  statusMessage: "Ready for ranked grind.",
-};
-
 async function parseJson<T>(res: Response): Promise<T | null> {
   try {
     return (await res.json()) as T;
@@ -97,9 +89,31 @@ async function parseJson<T>(res: Response): Promise<T | null> {
 }
 
 export default function ProfileSettingsPage() {
+  const { copy, locale, setLocale } = useHubLocale();
+  const ps = copy.profileSettings;
   const { me } = useHubLayout();
   const location = useLocation();
-  const [leagueForm, setLeagueForm] = useState<LeagueForm>(defaultLeagueForm);
+
+  const makeEmptyLeagueForm = useCallback(
+    (): LeagueForm => ({
+      riotId: "",
+      tagLine: "",
+      region: "EUW",
+      autoSync: true,
+      rankPreference: "solo",
+      statusMessage: ps.defaultStatusMessage,
+    }),
+    [ps.defaultStatusMessage],
+  );
+
+  const [leagueForm, setLeagueForm] = useState<LeagueForm>(() => ({
+    riotId: "",
+    tagLine: "",
+    region: "EUW",
+    autoSync: true,
+    rankPreference: "solo",
+    statusMessage: copy.profileSettings.defaultStatusMessage,
+  }));
   const [leagueMessage, setLeagueMessage] = useState("");
   const [leagueBusy, setLeagueBusy] = useState(false);
   const [profileSettings, setProfileSettings] = useState({
@@ -133,9 +147,9 @@ export default function ProfileSettingsPage() {
         });
       }
     } catch {
-      setLeagueMessage("Kunde inte läsa League-status just nu.");
+      setLeagueMessage(ps.errors.leagueStatusRead);
     }
-  }, []);
+  }, [ps.errors.leagueStatusRead]);
 
   useEffect(() => {
     if (me.status === "user") {
@@ -166,7 +180,7 @@ export default function ProfileSettingsPage() {
 
       if (!res.ok) {
         const payload = await parseJson<{ error?: string }>(res);
-        setLeagueMessage(payload?.error ?? "Kunde inte koppla League-kontot.");
+        setLeagueMessage(payload?.error ?? ps.errors.connectFailed);
         return;
       }
 
@@ -174,9 +188,9 @@ export default function ProfileSettingsPage() {
         LeagueStatusResponse & { message?: string }
       >(res);
       await refreshLeague();
-      setLeagueMessage(payload?.message ?? "League-konto kopplat.");
+      setLeagueMessage(payload?.message ?? ps.success.connected);
     } catch {
-      setLeagueMessage("Nätverksfel vid koppling av League-konto.");
+      setLeagueMessage(ps.errors.connectNetwork);
     } finally {
       setLeagueBusy(false);
     }
@@ -193,7 +207,7 @@ export default function ProfileSettingsPage() {
 
       if (!res.ok) {
         const payload = await parseJson<{ error?: string }>(res);
-        setLeagueMessage(payload?.error ?? "Kunde inte köra synk.");
+        setLeagueMessage(payload?.error ?? ps.errors.syncFailed);
         return;
       }
 
@@ -201,9 +215,9 @@ export default function ProfileSettingsPage() {
         LeagueStatusResponse & { message?: string }
       >(res);
       await refreshLeague();
-      setLeagueMessage(payload?.message ?? "League-data synkad.");
+      setLeagueMessage(payload?.message ?? ps.success.synced);
     } catch {
-      setLeagueMessage("Nätverksfel vid synk.");
+      setLeagueMessage(ps.errors.syncNetwork);
     } finally {
       setLeagueBusy(false);
     }
@@ -218,21 +232,23 @@ export default function ProfileSettingsPage() {
         credentials: "include",
       });
       if (!res.ok) {
-        setLeagueMessage("Kunde inte koppla bort League-kontot.");
+        setLeagueMessage(ps.errors.disconnectFailed);
         return;
       }
 
-      setLeagueForm(defaultLeagueForm);
-      setLeagueMessage("League-konto bortkopplat.");
+      setLeagueForm(makeEmptyLeagueForm());
+      setLeagueMessage(ps.success.disconnected);
     } catch {
-      setLeagueMessage("Nätverksfel vid bortkoppling.");
+      setLeagueMessage(ps.errors.disconnectNetwork);
     } finally {
       setLeagueBusy(false);
     }
   };
 
   if (me.status === "loading") {
-    return <div className="mx-auto max-w-4xl px-5 py-10 text-muted-foreground">Laddar profil…</div>;
+    return (
+      <div className="mx-auto max-w-4xl px-5 py-10 text-muted-foreground">{copy.common.loadingProfile}</div>
+    );
   }
   if (me.status === "guest") {
     return <Navigate to="/login" replace />;
@@ -242,13 +258,11 @@ export default function ProfileSettingsPage() {
       <div className="mx-auto max-w-lg px-5 py-10">
         <Card>
           <CardHeader>
-            <CardTitle>Backend nårs inte</CardTitle>
-            <CardDescription>
-              <code className="text-foreground">discord-hub-api</code> körs inte eller har avslutats.
-            </CardDescription>
+            <CardTitle>{ps.backendTitle}</CardTitle>
+            <CardDescription>{ps.backendDescription}</CardDescription>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground">
-            <p>Starta API:t och ladda om sidan.</p>
+            <p>{ps.backendBody}</p>
           </CardContent>
         </Card>
       </div>
@@ -260,24 +274,22 @@ export default function ProfileSettingsPage() {
   return (
     <div className="flex flex-col gap-6">
       <header>
-        <h1 className="text-3xl font-semibold tracking-tight">Profilinställningar</h1>
+        <h1 className="text-3xl font-semibold tracking-tight">{ps.pageTitle}</h1>
         <p className="mt-2 text-muted-foreground">
-          Koppla League, kör synk och styr vad som visas på din{" "}
+          {ps.pageIntroBefore}{" "}
           <Link to={profilePath} className="text-foreground underline-offset-4 hover:underline">
-            publika profil
+            {ps.publicProfileLinkLabel}
           </Link>
-          . Rank och matcher visas på profilen efter lyckad synk.
+          {ps.pageIntroAfter}
         </p>
       </header>
 
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <FontAwesomeIcon icon={faPalette} /> Tema och färger
+            <FontAwesomeIcon icon={faPalette} /> {ps.themeCardTitle}
           </CardTitle>
-          <CardDescription>
-            Diagramfärger (chart-1–5) och primärknapp följer valt färgtema i temamenyn i sidhuvudet.
-          </CardDescription>
+          <CardDescription>{ps.themeCardDesc}</CardDescription>
         </CardHeader>
         <CardContent className="flex max-w-md flex-col gap-3">
           <div
@@ -290,10 +302,32 @@ export default function ProfileSettingsPage() {
             <span className="min-w-0 flex-1 bg-chart-4" />
             <span className="min-w-0 flex-1 bg-chart-5" />
           </div>
-          <p className="text-muted-foreground text-sm">
-            Byt ljust/mörkt tema och accent där — inställningarna påverkar hela hubben, inklusive
-            din publika profil.
-          </p>
+          <p className="text-muted-foreground text-sm">{ps.themeCardBody}</p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{ps.languageCardTitle}</CardTitle>
+          <CardDescription>{ps.languageCardDesc}</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant={locale === "sv" ? "default" : "outline"}
+            onClick={() => setLocale("sv")}
+          >
+            {ps.languageSv}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={locale === "en" ? "default" : "outline"}
+            onClick={() => setLocale("en")}
+          >
+            {ps.languageEn}
+          </Button>
         </CardContent>
       </Card>
 
@@ -301,13 +335,13 @@ export default function ProfileSettingsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <FontAwesomeIcon icon={faUserGear} /> Profil
+              <FontAwesomeIcon icon={faUserGear} /> {ps.profileCardTitle}
             </CardTitle>
-            <CardDescription>Grundinställningar för profilsidan.</CardDescription>
+            <CardDescription>{ps.profileCardDesc}</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3 text-sm">
             <label className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
-              <span>Visa online-status</span>
+              <span>{ps.showOnline}</span>
               <input
                 type="checkbox"
                 checked={profileSettings.showOnlineStatus}
@@ -317,7 +351,7 @@ export default function ProfileSettingsPage() {
               />
             </label>
             <label className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
-              <span>Visa rank på profil</span>
+              <span>{ps.showRank}</span>
               <input
                 type="checkbox"
                 checked={profileSettings.showRank}
@@ -327,7 +361,7 @@ export default function ProfileSettingsPage() {
               />
             </label>
             <label className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
-              <span>Dela champion pool</span>
+              <span>{ps.shareChampionPool}</span>
               <input
                 type="checkbox"
                 checked={profileSettings.shareChampionPool}
@@ -342,14 +376,14 @@ export default function ProfileSettingsPage() {
         <Card id="league" className="scroll-mt-28">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <FontAwesomeIcon icon={faLink} /> Synka League of Legends
+              <FontAwesomeIcon icon={faLink} /> {ps.leagueCardTitle}
             </CardTitle>
-            <CardDescription>Koppla konto och hämta rank samt senaste matcher via Riot API.</CardDescription>
+            <CardDescription>{ps.leagueCardDesc}</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="flex flex-col gap-1 text-sm">
-                Riot ID
+                {ps.riotId}
                 <input
                   type="text"
                   value={leagueForm.riotId}
@@ -359,7 +393,7 @@ export default function ProfileSettingsPage() {
                 />
               </label>
               <label className="flex flex-col gap-1 text-sm">
-                Tagline
+                {ps.tagline}
                 <input
                   type="text"
                   value={leagueForm.tagLine}
@@ -369,7 +403,7 @@ export default function ProfileSettingsPage() {
                 />
               </label>
               <label className="flex flex-col gap-1 text-sm">
-                Region
+                {ps.region}
                 <select
                   value={leagueForm.region}
                   onChange={(e) =>
@@ -385,7 +419,7 @@ export default function ProfileSettingsPage() {
                 </select>
               </label>
               <label className="flex flex-col gap-1 text-sm">
-                Rank-källa
+                {ps.rankSource}
                 <select
                   value={leagueForm.rankPreference}
                   onChange={(e) =>
@@ -396,8 +430,8 @@ export default function ProfileSettingsPage() {
                   }
                   className="rounded-md border border-input bg-background px-3 py-2"
                 >
-                  <option value="solo">Solo Queue</option>
-                  <option value="flex">Flex Queue</option>
+                  <option value="solo">{ps.rankSolo}</option>
+                  <option value="flex">{ps.rankFlex}</option>
                 </select>
               </label>
             </div>
@@ -408,11 +442,11 @@ export default function ProfileSettingsPage() {
                 checked={leagueForm.autoSync}
                 onChange={(e) => setLeagueForm((prev) => ({ ...prev, autoSync: e.target.checked }))}
               />
-              Auto-synk när datahämtning aktiveras
+              {ps.autoSync}
             </label>
 
             <label className="flex flex-col gap-1 text-sm">
-              Statusmeddelande
+              {ps.statusMessage}
               <input
                 type="text"
                 value={leagueForm.statusMessage}
@@ -420,33 +454,32 @@ export default function ProfileSettingsPage() {
                   setLeagueForm((prev) => ({ ...prev, statusMessage: e.target.value }))
                 }
                 className="rounded-md border border-input bg-background px-3 py-2"
-                placeholder="Ready for ranked grind."
+                placeholder={ps.statusPlaceholder}
               />
             </label>
 
             <div className="flex flex-wrap gap-2">
               <Button type="button" disabled={leagueBusy} onClick={submitLeagueConnect}>
                 <FontAwesomeIcon icon={faLink} data-icon="inline-start" />
-                Koppla konto
+                {ps.connect}
               </Button>
               <Button type="button" variant="secondary" disabled={leagueBusy} onClick={submitLeagueSync}>
                 <FontAwesomeIcon icon={faRotate} data-icon="inline-start" />
-                Synka nu
+                {ps.syncNow}
               </Button>
               <Button type="button" variant="outline" disabled={leagueBusy} onClick={submitLeagueDisconnect}>
                 <FontAwesomeIcon icon={faUnlink} data-icon="inline-start" />
-                Koppla bort
+                {ps.disconnect}
               </Button>
             </div>
 
             {leagueMessage ? <p className="text-sm text-muted-foreground">{leagueMessage}</p> : null}
             <p className="text-muted-foreground text-xs">
-              Snapshot lagras i minnet på servern tills omstart — detaljerad rank och matchhistorik
-              visas på{" "}
+              {ps.leagueFootnoteBefore}{" "}
               <Link to={profilePath} className="text-foreground underline-offset-4 hover:underline">
-                din publika profil
+                {ps.leagueFootnoteLinkLabel}
               </Link>{" "}
-              efter synk.
+              {ps.leagueFootnoteAfter}
             </p>
           </CardContent>
         </Card>

@@ -1,5 +1,6 @@
 import type { ComponentType } from "react";
 import { Dices, Home, Settings, UserRound } from "lucide-react";
+import type { HubCopy } from "@/i18n/hub-copy";
 
 export type HubToolTone = "useful" | "social" | "chaos";
 
@@ -49,5 +50,30 @@ export const HUB_ME_TOOL = {
 
 export function hubToolById(id: string): HubTool | null {
   return HUB_TOOLS.find((t) => t.id === id) ?? null;
+}
+
+export function localizeHubTools(copy: HubCopy): HubTool[] {
+  return HUB_TOOLS.map((tool) => {
+    const localized =
+      tool.id === "dashboard"
+        ? copy.tools.dashboard
+        : tool.id === "spin-the-wheel"
+          ? copy.tools.spinTheWheel
+          : copy.tools.profileSettings;
+    return {
+      ...tool,
+      label: localized.label,
+      description: localized.description,
+    };
+  });
+}
+
+export function localizeMeTool(copy: HubCopy, path: string): HubTool {
+  return {
+    ...HUB_ME_TOOL,
+    label: copy.tools.me.label,
+    description: copy.tools.me.description,
+    path,
+  };
 }
 

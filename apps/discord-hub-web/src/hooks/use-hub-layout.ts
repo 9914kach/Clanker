@@ -1,4 +1,5 @@
 import { useOutletContext } from "react-router-dom";
+import type { HubActionTone } from "@/config/hub-actions";
 
 export type HubProfile = {
   id: string;
@@ -20,6 +21,24 @@ export type HubLayoutContextValue = {
   logout: () => Promise<void>;
   refreshMe: () => Promise<void>;
   openCommandPalette: () => void;
+  setDesktopShellState: (state: HubDesktopShellState | null) => void;
+};
+
+export type HubDesktopShellWidget = {
+  id: string;
+  label: string;
+  tone: HubActionTone;
+};
+
+export type HubDesktopShellState = {
+  widgets: readonly HubDesktopShellWidget[];
+  hiddenWidgetIds: readonly string[];
+  audioEnabled: boolean;
+  revealWidget: (id: string) => void;
+  hideWidget: (id: string) => void;
+  resetLayout: () => void;
+  triggerChaos: () => void;
+  toggleAudio: () => void;
 };
 
 export function useHubLayout(): HubLayoutContextValue {
