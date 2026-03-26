@@ -31,6 +31,12 @@ export type HubContextTarget =
       pinned: boolean;
     }
   | {
+      type: "navBookmark";
+      bookmarkId: string;
+      label: string;
+      path: string;
+    }
+  | {
       type: "profile";
       profileId: string | null;
       profilePath: string | null;
@@ -139,23 +145,29 @@ function resolveAnchorTarget(anchor: HTMLAnchorElement): HubContextTarget {
 }
 
 export function resolveHubContextTarget(target: EventTarget | null): HubContextTarget {
-  if (!(target instanceof Element)) {
+  let el: Element | null = null;
+  if (target instanceof Element) {
+    el = target;
+  } else if (target instanceof Node) {
+    el = target.parentElement;
+  }
+  if (!el) {
     return { type: "shell.surface", area: "fallback" };
   }
 
-  const explicitTarget = target.closest<HTMLElement>(`[${HUB_CONTEXT_ATTR}]`);
-  const anchor = target.closest<HTMLAnchorElement>("a[href]");
-  if (anchor && (!explicitTarget || (explicitTarget !== anchor && explicitTarget.contains(anchor)))) {
+  const anchor = el.closest<HTMLAnchorElement>("a[href]");
+  if (anchor) {
+    const fromAnchor = parseTarget(anchor.getAttribute(HUB_CONTEXT_ATTR));
+    if (fromAnchor) {
+      return fromAnchor;
+    }
     return resolveAnchorTarget(anchor);
   }
 
+  const explicitTarget = el.closest<HTMLElement>(`[${HUB_CONTEXT_ATTR}]`);
   const parsedExplicitTarget = parseTarget(explicitTarget?.getAttribute(HUB_CONTEXT_ATTR) ?? null);
   if (parsedExplicitTarget) {
     return parsedExplicitTarget;
-  }
-
-  if (anchor) {
-    return resolveAnchorTarget(anchor);
   }
 
   return { type: "shell.surface", area: "fallback" };

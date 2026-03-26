@@ -46,7 +46,7 @@ export default function HubLiveTicker({ variant }: { variant: HubLiveTickerVaria
       data-compact={variant === "compact" ? "true" : undefined}
       className={cn(
         "hub-live-ticker-wrap group min-w-0 overflow-hidden",
-        variant === "top" ? "py-1 pl-1" : "py-0.5 pl-0.5",
+        variant === "top" ? "py-0 pl-0.5" : "py-0.5 pl-0.5",
       )}
     >
       <span className="sr-only">
@@ -76,7 +76,7 @@ export default function HubLiveTicker({ variant }: { variant: HubLiveTickerVaria
               key={`${line.friend}-${index}`}
               className={cn(
                 "flex items-center gap-[var(--hub-live-gap)]",
-                variant === "compact" ? "text-xs" : "text-sm",
+                variant === "compact" ? "text-xs" : "text-xs leading-tight",
               )}
             >
               <span className="font-medium text-foreground">{line.friend}</span>

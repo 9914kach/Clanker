@@ -1,0 +1,48 @@
+---
+description: Clanker — monorepo-struktur, discord-hub vision och konventioner
+alwaysApply: true
+---
+
+# Projekt: Clanker — Neutralen OS / discord-hub
+
+## Vision: Neutralen OS
+
+`discord-hub-web` är inte en vanlig webbapp — det är ett **community-skal** (Neutralen OS) som ser och beter sig som ett skrivbords-OS. Allt kretsar kring det:
+
+- **Desktop surface** med dragbara, storleksändringsbara **widgets** (moduler) på ett rutnät (16 px baseline)
+- **Shell-chrome**: nav, dock, statusrad, brand-block — allt är `HubShellObjectKind`-annoterat
+- **Högerklick** öppnar ett skal-specifikt kontextmeny (inte webbläsarens) — kontexten avgörs av `HubContextTarget`
+- **Command palette** (Cmdk-inspirerad) med actions sorterade i sektioner: Navigation, System, Chaos
+- **Tre toner**: `useful` (blå/neutral), `social` (grön/lila), `chaos` (röd/orange/kaotisk)
+- **Ljud-provider** (HubAudioProvider): `dock`, `panel`, `confirm`, `chaos` — alltid spela rätt ljud vid rätt åtgärd
+- **Layout-edit-läge**: eget undo/redo-läge, autosave, session-utkast — separerat från normal interaktion
+
+## Appar och roller
+
+| Sökväg | Runtime | Nyckelbibliotek |
+|--------|---------|-----------------|
+| `apps/discord-hub-web` | Browser (Vite + React) | React Router v6, Framer Motion, `@clanker/ui`, Yjs, shadcn/ui |
+| `apps/discord-hub-api` | Node (Hono) | Hono, PostgreSQL (`pg`), Jose (JWT), Zod, Yjs WS-server |
+| `apps/dev-tools-web` | Browser (Vite + React) | shadcn/ui, `@clanker/ui` |
+| `bots/discord-bot` | Node | discord.js |
+| `packages/ui` | Delat komponentbibliotek | shadcn/ui, Tailwind |
+
+## Infrastruktur
+
+- **Docker Compose** i rot; profiler styr vad som startar (t.ex. `--profile discord`)
+- Kör på **Raspberry Pi** (homelab) — undvik tunga dependencies
+- Postgres körs på workstation (LAN); Pi/API använder `DATABASE_URL` mot desktop-IP
+- Hemligheter via `.env`; committa aldrig
+
+## Nyckelkonventioner i discord-hub-web
+
+- **Alias**: `@/` → `src/`; dela via `@clanker/ui`, aldrig kors-import mellan appar
+- **Copy/i18n**: ALL användarsynlig text bor i `src/i18n/hub-copy.ts` (SV + EN). Lägg aldrig strängar direkt i JSX — gå via `copy.*`
+- **Actions**: actions registreras i `src/config/hub-actions.ts` via `buildHubActions()`. Nya skalåtgärder läggs där
+- **Kontextmeny**: använd `hubContextData(target)` för att annotera element; menyn byggs i `HubGlobalContextMenu`
+- **Motion**: Återanvänd `hubEnterMotion()` och `hubPopMotion()` från `src/lib/hub-motion.ts`. `AnimatePresence` på route-/layout-nivå
+- **Widgets**: varje widget har `HubDesktopWidgetLayout` (x, y, w, h, z, hidden) + ett `widgetId`. Grid = 16 px
+- **Toner**: håll tonen konsekvent — `chaos`-åtgärder får kaos-ljud + kaos-toast; `useful` är neutral
+- **Routing**: React Router v6 loaders för datahämtning; `useNavigate` / `<Link>` för navigation
+- **API**: Hono route handlers + Zod-validering; returnera typad JSON; auth via Bearer JWT (Jose)
+- **Realtid**: Yjs + y-websocket för delad tillstånd (spin-the-wheel collab)

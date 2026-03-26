@@ -2,6 +2,30 @@ import type { HubActionApi } from "@/config/hub-actions";
 import type { HubDesktopShellState } from "@/hooks/use-hub-layout";
 import type { HubCopy } from "@/i18n/hub-copy";
 import type { HubContextMenuItem, HubContextMenuSection, HubContextTarget } from "@/lib/hub-shell-context";
+import { isExternalNavPath } from "@/lib/hub-nav-bookmarks";
+
+function openNavBookmarkDestination(path: string, actions: HubActionApi): void {
+  const t = path.trim();
+  if (isExternalNavPath(t)) {
+    if (t.startsWith("mailto:") || t.startsWith("tel:")) {
+      window.location.href = t;
+      return;
+    }
+    window.open(t, "_blank", "noopener,noreferrer");
+    return;
+  }
+  const internal = t.startsWith("/") ? t : `/${t}`;
+  actions.openPath(internal);
+}
+
+function navBookmarkCopyTarget(path: string): string {
+  const t = path.trim();
+  if (isExternalNavPath(t)) {
+    return t;
+  }
+  const internal = t.startsWith("/") ? t : `/${t}`;
+  return toAbsoluteUrl(internal);
+}
 
 function section(id: string, label: string | undefined, items: Array<HubContextMenuItem | null>): HubContextMenuSection | null {
   const filtered = items.filter((item): item is HubContextMenuItem => Boolean(item));
@@ -63,6 +87,9 @@ export function buildHubShellMenu(params: {
   gridSnapEnabled: boolean;
   toggleGridSnap?: () => void;
   isDashboardRoute: boolean;
+  onNavBookmarkAdd?: () => void;
+  onNavBookmarkEdit?: (bookmarkId: string) => void;
+  onNavBookmarkDelete?: (bookmarkId: string) => void;
 }): HubContextMenuSection[] {
   const {
     copy,
@@ -76,6 +103,9 @@ export function buildHubShellMenu(params: {
     gridSnapEnabled,
     toggleGridSnap,
     isDashboardRoute,
+    onNavBookmarkAdd,
+    onNavBookmarkEdit,
+    onNavBookmarkDelete,
   } = params;
   const m = copy.shellMenu;
   const em = copy.editMode;
@@ -130,16 +160,49 @@ export function buildHubShellMenu(params: {
         section("edit-desktop-arrange", m.shell, [
           desktopShell
             ? {
-                id: "edit-reset-desktop",
-                label: m.resetDesktop,
-                onSelect: desktopOnly(desktopShell.resetLayout),
+                id: "edit-undo-layout",
+                label: m.undoLayout,
+                shortcut: "Ctrl/⌘ Z",
+                disabled: !desktopShell.canUndoLayout,
+                onSelect: desktopOnly(desktopShell.undoLayout),
+              }
+            : null,
+          desktopShell
+            ? {
+                id: "edit-redo-layout",
+                label: m.redoLayout,
+                shortcut: "Ctrl/⌘ ⇧ Z",
+                disabled: !desktopShell.canRedoLayout,
+                onSelect: desktopOnly(desktopShell.redoLayout),
+              }
+            : null,
+          desktopShell
+            ? {
+                id: "edit-discard-layout",
+                label: m.discardLayoutDraft,
+                onSelect: desktopOnly(desktopShell.discardLayoutDraft),
               }
             : null,
           desktopShell
             ? {
                 id: "edit-save-layout",
-                label: em.saveLayout,
-                onSelect: desktopOnly(desktopShell.acknowledgeLayoutSaved),
+                label: m.saveLayoutCommitted,
+                onSelect: desktopOnly(desktopShell.saveLayoutCommitted),
+              }
+            : null,
+          desktopShell
+            ? {
+                id: "edit-autosave-layout",
+                label: desktopShell.autosaveLayoutEnabled ? m.autosaveLayoutOff : m.autosaveLayoutOn,
+                checked: desktopShell.autosaveLayoutEnabled,
+                onSelect: desktopOnly(desktopShell.toggleAutosaveLayout),
+              }
+            : null,
+          desktopShell
+            ? {
+                id: "edit-reset-desktop",
+                label: m.resetDesktop,
+                onSelect: desktopOnly(desktopShell.resetLayout),
               }
             : null,
         ]),
@@ -497,6 +560,83 @@ export function buildHubShellMenu(params: {
     ].filter((menu): menu is HubContextMenuSection => Boolean(menu));
   }
 
+  if (target.type === "navBookmark") {
+    const path = target.path.trim();
+    const open = () => openNavBookmarkDestination(path, actions);
+    const openTab = () => {
+      if (isExternalNavPath(path)) {
+        window.open(path.trim(), "_blank", "noopener,noreferrer");
+        return;
+      }
+      const rel = path.startsWith("/") ? path : `/${path}`;
+      window.open(toAbsoluteUrl(rel), "_blank", "noopener,noreferrer");
+    };
+    const copyPath = () => {
+      const clip = navBookmarkCopyTarget(path);
+      actions.copyText(clip, c.copied, clip);
+    };
+
+    if (layoutEditMode) {
+      return [
+        editExitSection(m, toggleLayoutEditMode),
+        section("nav-bm-edit", m.layoutEditing, [
+          onNavBookmarkEdit
+            ? {
+                id: "nb-edit",
+                label: copy.navBookmarks.editBookmark,
+                onSelect: () => onNavBookmarkEdit(target.bookmarkId),
+              }
+            : null,
+          onNavBookmarkDelete
+            ? {
+                id: "nb-del",
+                label: copy.navBookmarks.deleteBookmark,
+                tone: "danger",
+                onSelect: () => onNavBookmarkDelete(target.bookmarkId),
+              }
+            : null,
+        ]),
+        section("nav-bm-use", m.shellUsageWhileEditing, [
+          {
+            id: "nb-open",
+            label: m.openModule,
+            onSelect: open,
+          },
+          {
+            id: "nb-tab",
+            label: m.openInNewTab,
+            onSelect: openTab,
+          },
+          {
+            id: "nb-copy",
+            label: m.copyModulePath,
+            onSelect: copyPath,
+          },
+        ]),
+      ].filter((menu): menu is HubContextMenuSection => Boolean(menu));
+    }
+
+    return [
+      section("nav-bm-main", target.label, [
+        {
+          id: "nb-open",
+          label: m.openModule,
+          onSelect: open,
+        },
+        {
+          id: "nb-tab",
+          label: m.openInNewTab,
+          onSelect: openTab,
+        },
+        {
+          id: "nb-copy",
+          label: m.copyModulePath,
+          onSelect: copyPath,
+        },
+      ]),
+    ].filter((menu): menu is HubContextMenuSection => Boolean(menu));
+  }
+
   if (target.type === "tool") {
     if (layoutEditMode) {
       return [
@@ -678,6 +818,13 @@ export function buildHubShellMenu(params: {
       return [
         editExitSection(m, toggleLayoutEditMode),
         section("shell-object-edit", m.layoutEditing, [
+          target.kind === "navGroup" && onNavBookmarkAdd
+            ? {
+                id: "obj-add-bookmark",
+                label: copy.navBookmarks.addFromNavGroup,
+                onSelect: onNavBookmarkAdd,
+              }
+            : null,
           placeholder("obj-dup", m.duplicatePlaceholder),
           placeholder("obj-detach", m.detachPlaceholder),
         ]),

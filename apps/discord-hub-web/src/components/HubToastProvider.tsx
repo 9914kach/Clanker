@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { X } from "lucide-react";
 import { cn } from "@clanker/ui/lib/utils";
+import { useHubPrefsOptional } from "@/components/HubPrefsProvider";
 import { useHubLocale } from "@/components/locale-provider";
 
 type ToastKind = "info" | "success" | "error" | "chaos";
@@ -130,6 +131,7 @@ function ToastStack({
 
 export function HubToastProvider({ children }: { children: React.ReactNode }) {
   const { copy } = useHubLocale();
+  const hubPrefs = useHubPrefsOptional();
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const timeoutsRef = useRef(new Map<string, number>());
 
@@ -155,14 +157,23 @@ export function HubToastProvider({ children }: { children: React.ReactNode }) {
       const id = randomId();
       const now = Date.now();
       const kind = toast.kind ?? "info";
-      const ttlMs = toast.ttlMs ?? (kind === "error" ? 7_500 : kind === "chaos" ? 6_000 : 4_500);
+      const verbosity = hubPrefs?.prefs.copyStyle.toastVerbosity ?? "normal";
+      let baseTtl = toast.ttlMs ?? (kind === "error" ? 7_500 : kind === "chaos" ? 6_000 : 4_500);
+      if (verbosity === "minimal") {
+        baseTtl = Math.round(baseTtl * 0.72);
+      } else if (verbosity === "verbose") {
+        baseTtl = Math.round(baseTtl * 1.35);
+      }
+      const ttlMs = baseTtl;
       const title =
         kind === "chaos" ? pickChaosTitle(toast.title, copy.toastChaosTitles) : toast.title;
+      const message =
+        verbosity === "minimal" && kind !== "error" ? null : (toast.message ?? null);
       const item: ToastItem = {
         id,
         kind,
         title,
-        message: toast.message ?? null,
+        message,
         createdAt: now,
         ttlMs,
       };
@@ -170,7 +181,7 @@ export function HubToastProvider({ children }: { children: React.ReactNode }) {
       const handle = window.setTimeout(() => dismiss(id), ttlMs);
       timeoutsRef.current.set(id, handle);
     },
-    [copy.toastChaosTitles, dismiss],
+    [copy.toastChaosTitles, dismiss, hubPrefs?.prefs.copyStyle.toastVerbosity],
   );
 
   useEffect(() => () => clear(), [clear]);

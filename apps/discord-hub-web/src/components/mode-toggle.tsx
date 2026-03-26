@@ -14,6 +14,7 @@ import {
   type ColorPalette,
   useTheme,
 } from "@/components/theme-provider";
+import { cn } from "@clanker/ui/lib/utils";
 
 type Appearance = "dark" | "light" | "system";
 
@@ -53,13 +54,13 @@ function PaletteSwatchPreview({ palette }: { palette: ColorPalette }) {
   );
 }
 
-export function ModeToggle() {
+export function ModeToggle({ triggerClassName }: { triggerClassName?: string }) {
   const { theme, setTheme, colorPalette, setColorPalette } = useTheme();
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="icon" className="relative">
+        <Button variant="outline" size="icon" className={cn("relative", triggerClassName)}>
           <Sun className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 transition-all dark:scale-0 dark:-rotate-90" />
           <Moon className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 scale-0 rotate-90 transition-all dark:scale-100 dark:rotate-0" />
           <span

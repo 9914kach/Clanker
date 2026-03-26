@@ -1,5 +1,7 @@
 /** App UI copy: Swedish / English. Tone is informal / playful per CLANKER_VISION. */
 
+import type { HubNavBookmarkIconKey } from "@/lib/hub-nav-bookmark-icons";
+
 export type HubLocale = "sv" | "en";
 
 export const HUB_LOCALE_STORAGE_KEY = "discord-hub-locale";
@@ -44,9 +46,6 @@ export type HubCopy = {
     myProfileOffline: string;
     settings: string;
     wheel: string;
-    paletteBadge: (palette: string) => string;
-    audioBadge: (online: boolean) => string;
-    desktopMode: string;
     runningApp: string;
     identityNavHint: string;
     panelWheel: { label: string; detail: string };
@@ -55,9 +54,11 @@ export type HubCopy = {
     panelDefault: { label: string; detail: string };
     layoutEditEnter: string;
     layoutEditExit: string;
+    /** Dev-only: toggle browser vs shell right-click menu. */
+    devNativeContextButtonShell: string;
+    devNativeContextButtonBrowser: string;
     shellObjectNavGroup: string;
     shellObjectBrandBlock: string;
-    shellObjectStatusStrip: string;
     shellObjectDockBar: string;
     shellObjectDesktopChrome: string;
     shellObjectDesktopZone: string;
@@ -86,6 +87,24 @@ export type HubCopy = {
     restoreAllTitle: string;
     restoreAllMessage: string;
     desktopOnlyToast: string;
+    discardLayout: string;
+    discardLayoutDetail: string;
+    undoLayout: string;
+    redoLayout: string;
+    autosaveEnable: string;
+    autosaveDisable: string;
+    unsavedBadge: string;
+    shortcutsHelp: string;
+    shortcutsHelpTitle: string;
+    shortcutsLines: readonly string[];
+    doneSaveExit: string;
+    doneSaveExitDetail: string;
+    cancelDiscardExit: string;
+    cancelDiscardExitDetail: string;
+    layoutDiscardedTitle: string;
+    layoutDiscardedMessage: string;
+    /** Layout edit: accessible label for reorderable top-bar nav tabs. */
+    shellReorderDragHandleAria: (itemLabel: string) => string;
   };
   tools: {
     dashboard: { label: string; description: string };
@@ -128,6 +147,10 @@ export type HubCopy = {
       hamsterTitle: string;
       hamsterMessage: string;
       copiedDiscordId: (id: string) => string;
+      devNativeContextBrowserTitle: string;
+      devNativeContextBrowserMessage: string;
+      devNativeContextShellTitle: string;
+      devNativeContextShellMessage: string;
     };
     navDashboard: { label: string; description: string; keywords: readonly string[] };
     navWheel: { label: string; description: string; keywords: readonly string[] };
@@ -144,6 +167,8 @@ export type HubCopy = {
     systemCopyHandle: { label: string; description: string; keywords: readonly string[] };
     chaosGoblin: { label: string; description: string; keywords: readonly string[]; reveal: readonly string[] };
     chaosHamster: { label: string; description: string; keywords: readonly string[]; reveal: readonly string[] };
+    devNativeBrowserMenu: { label: string; description: string; keywords: readonly string[] };
+    devShellContextMenu: { label: string; description: string; keywords: readonly string[] };
   };
   shellMenu: {
     desktop: string;
@@ -196,6 +221,33 @@ export type HubCopy = {
     gridSnapOff: string;
     layoutSavedToast: string;
     desktopOnlyAction: string;
+    saveLayoutCommitted: string;
+    discardLayoutDraft: string;
+    undoLayout: string;
+    redoLayout: string;
+    autosaveLayoutOn: string;
+    autosaveLayoutOff: string;
+  };
+  /** Primärnav: användarbokmärken (layout-läge + högerklick). */
+  navBookmarks: {
+    addFromNavGroup: string;
+    editBookmark: string;
+    deleteBookmark: string;
+    dialogAddTitle: string;
+    dialogEditTitle: string;
+    dialogDescription: string;
+    labelField: string;
+    pathField: string;
+    pathHint: string;
+    iconField: string;
+    iconNames: Record<HubNavBookmarkIconKey, string>;
+    save: string;
+    cancel: string;
+    deleteConfirm: string;
+    toastAdded: string;
+    toastUpdated: string;
+    toastRemoved: string;
+    validationBoth: string;
   };
   toastChaosTitles: readonly string[];
   leagueFormat: {
@@ -277,6 +329,8 @@ export type HubCopy = {
     dragHintNormal: string;
     dragHintEdit: string;
     widgetPositionResetToast: string;
+    editStickyHelp: string;
+    resizeHandleAria: string;
   };
   profileSettings: {
     pageTitle: string;
@@ -516,6 +570,111 @@ export type HubCopy = {
     hintEnv: string;
     retry: string;
   };
+  hubPrefsPanel: {
+    title: string;
+    description: string;
+    openButton: string;
+    closeButton: string;
+    resetAll: string;
+    resetAllConfirm: string;
+    savedToast: string;
+    tabs: {
+      widget: string;
+      desktop: string;
+      copy: string;
+    };
+    widget: {
+      noWidgetSelected: string;
+      selectWidgetHint: string;
+      widgetLabel: string;
+      sizePreset: string;
+      sizeCompact: string;
+      sizeCozy: string;
+      sizeExpanded: string;
+      toneOverride: string;
+      toneInherit: string;
+      toneUseful: string;
+      toneSocial: string;
+      toneChaos: string;
+      glassOpacity: string;
+      glassOpacityHint: string;
+      blurStrength: string;
+      blurNone: string;
+      blurLight: string;
+      blurMedium: string;
+      blurStrong: string;
+      showSubtitle: string;
+      showSubtitleDesc: string;
+      showToneBadge: string;
+      showToneBadgeDesc: string;
+      resetWidget: string;
+    };
+    desktop: {
+      stylePack: string;
+      stylePackDefault: string;
+      stylePackMidnight: string;
+      stylePackPaper: string;
+      stylePackSignal: string;
+      gridDensity: string;
+      gridCompact: string;
+      gridCozy: string;
+      gridExpanded: string;
+      snapStrength: string;
+      snapRelaxed: string;
+      snapStandard: string;
+      snapFirm: string;
+      dockPosition: string;
+      dockBottom: string;
+      dockLeft: string;
+      dockScale: string;
+      dockSm: string;
+      dockMd: string;
+      dockLg: string;
+      animationIntensity: string;
+      animationIntensityHint: string;
+    };
+    inspectCursor: {
+      sectionTitle: string;
+      sectionHint: string;
+      presetLabel: string;
+      presetCrosshair: string;
+      presetDot: string;
+      presetRing: string;
+      presetBracket: string;
+      colorLabel: string;
+      colorPrimary: string;
+      colorAccent: string;
+      colorForeground: string;
+      colorCustom: string;
+      customHexLabel: string;
+      customHexHint: string;
+      sizeLabel: string;
+      sizeHint: string;
+    };
+    copy: {
+      personality: string;
+      personalityCalm: string;
+      personalityNormal: string;
+      personalityChaotic: string;
+      personalityCalmDesc: string;
+      personalityNormalDesc: string;
+      personalityChaoticDesc: string;
+      toastVerbosity: string;
+      toastMinimal: string;
+      toastNormal: string;
+      toastVerbose: string;
+      toastMinimalDesc: string;
+      toastNormalDesc: string;
+      toastVerboseDesc: string;
+      memeFrequency: string;
+      memeOff: string;
+      memeLow: string;
+      memeNormal: string;
+      memeOffDesc: string;
+      memeLowDesc: string;
+      memeNormalDesc: string;
+    };
+  };
 };
 
 const SV: HubCopy = {
@@ -553,9 +712,6 @@ const SV: HubCopy = {
     myProfileOffline: "Min profil (offline)",
     settings: "Inställningar",
     wheel: "Hjul",
-    paletteBadge: (p) => `palett ${p}`,
-    audioBadge: (on) => (on ? "ljud på" : "ljud av"),
-    desktopMode: "Skrivbordsläge",
     runningApp: "Körande app",
     identityNavHint: "Högerklicka för identitetsåtgärder.",
     panelWheel: {
@@ -576,9 +732,10 @@ const SV: HubCopy = {
     },
     layoutEditEnter: "Layout",
     layoutEditExit: "Klar",
+    devNativeContextButtonShell: "Dev: högerklick använder skalmenyn. Klicka för webbläsarens meny.",
+    devNativeContextButtonBrowser: "Dev: högerklick använder webbläsarens meny. Klicka för skalmenyn.",
     shellObjectNavGroup: "Primär navigation",
     shellObjectBrandBlock: "Systemmärke och ticker",
-    shellObjectStatusStrip: "Statusrad",
     shellObjectDockBar: "Docka",
     shellObjectDesktopChrome: "Skrivbordskrom",
     shellObjectDesktopZone: "Skrivbordsyta",
@@ -606,6 +763,30 @@ const SV: HubCopy = {
     restoreAllTitle: "Moduler väckta",
     restoreAllMessage: "Alla sovande moduler är tillbaka på skrivbordet.",
     desktopOnlyToast: "Byt till skrivbordet för den här åtgärden.",
+    discardLayout: "Ångra session",
+    discardLayoutDetail: "Återställ utkastet till hur det var när du öppnade layout-läge",
+    undoLayout: "Ångra",
+    redoLayout: "Gör om",
+    autosaveEnable: "Autospara på",
+    autosaveDisable: "Autospara av",
+    unsavedBadge: "Osparade ändringar",
+    shortcutsHelp: "Kortkommandon",
+    shortcutsHelpTitle: "Layout — kortkommandon",
+    shortcutsLines: [
+      "Esc — rensa markering",
+      "Pilar — flytta markerade moduler (rutnät om magnet är på)",
+      "Ctrl/⌘+Z — ångra · Ctrl/⌘+Shift+Z eller Ctrl/⌘+Y — gör om",
+      "] — lägg markerade överst",
+      "Shift eller Ctrl/⌘+klick — flerval",
+      "Topbar: dra flikar för ordning (sparas lokalt).",
+    ],
+    doneSaveExit: "Klar",
+    doneSaveExitDetail: "Spara layout och lämna layout-läge",
+    cancelDiscardExit: "Avbryt",
+    cancelDiscardExitDetail: "Kasta ändringar och lämna layout-läge",
+    layoutDiscardedTitle: "Layout återställd",
+    layoutDiscardedMessage: "Utkastet matchar startläget för sessionen.",
+    shellReorderDragHandleAria: (itemLabel) => `Flytta ${itemLabel}`,
   },
   tools: {
     dashboard: {
@@ -660,6 +841,10 @@ const SV: HubCopy = {
       hamsterTitle: "Hamstern lugnad",
       hamsterMessage: "Latens förbättrad andligt, om inte tekniskt.",
       copiedDiscordId: (id) => `Discord-ID: ${id}`,
+      devNativeContextBrowserTitle: "Webbläsarens högerklick",
+      devNativeContextBrowserMessage: "Inspect och sidans egen meny fungerar igen.",
+      devNativeContextShellTitle: "Skal-högerklick",
+      devNativeContextShellMessage: "Hubbens kontextmeny är tillbaka.",
     },
     navDashboard: {
       label: "Öppna dashboard",
@@ -738,6 +923,16 @@ const SV: HubCopy = {
       keywords: ["hamster", "server", "ritual", "snacks"],
       reveal: ["hamster", "snacks", "ritual"],
     },
+    devNativeBrowserMenu: {
+      label: "Webbläsarens högerklick (dev)",
+      description: "Släpp igenom Inspect och sidans meny i stället för skalmenyn.",
+      keywords: ["inspect", "devtools", "högerklick", "webbläsare", "native", "context", "dev"],
+    },
+    devShellContextMenu: {
+      label: "Skal-högerklick (standard)",
+      description: "Återgå till hubbens egna högerklicksmeny.",
+      keywords: ["shell", "skal", "högerklick", "context", "neutralen"],
+    },
   },
   shellMenu: {
     desktop: "Skrivbord",
@@ -790,6 +985,46 @@ const SV: HubCopy = {
     gridSnapOff: "Rutnätsfäste av",
     layoutSavedToast: "Layout sparad lokalt",
     desktopOnlyAction: "Endast på skrivbordet",
+    saveLayoutCommitted: "Spara layout",
+    discardLayoutDraft: "Ångra session",
+    undoLayout: "Ångra",
+    redoLayout: "Gör om",
+    autosaveLayoutOn: "Autospara layout på",
+    autosaveLayoutOff: "Autospara layout av",
+  },
+  navBookmarks: {
+    addFromNavGroup: "Lägg till bokmärke…",
+    editBookmark: "Redigera bokmärke…",
+    deleteBookmark: "Ta bort bokmärke",
+    dialogAddTitle: "Nytt bokmärke",
+    dialogEditTitle: "Redigera bokmärke",
+    dialogDescription:
+      "Namn och mål (t.ex. /dashboard eller en https-länk). Som ett webbläsarbokmärke i topbaren.",
+    labelField: "Visningsnamn",
+    pathField: "Mål (sökväg eller URL)",
+    pathHint: "Intern: /profile/settings · Extern: https://…",
+    iconField: "Ikon",
+    iconNames: {
+      Bookmark: "Bokmärke",
+      Home: "Hem",
+      Settings: "Inställningar",
+      Workflow: "Flöde",
+      Star: "Stjärna",
+      LayoutDashboard: "Panel",
+      User: "Profil",
+      Search: "Sök",
+      Link2: "Länk",
+      Bell: "Klocka",
+      Heart: "Hjärta",
+      Zap: "Energi",
+    },
+    save: "Spara",
+    cancel: "Avbryt",
+    deleteConfirm: "Ta bort",
+    toastAdded: "Bokmärke tillagt",
+    toastUpdated: "Bokmärke uppdaterat",
+    toastRemoved: "Bokmärke borttaget",
+    validationBoth: "Fyll i både namn och mål.",
   },
   toastChaosTitles: [
     "Systemet viskar:",
@@ -903,6 +1138,8 @@ const SV: HubCopy = {
     dragHintNormal: "Öppna layout-läge för att flytta moduler",
     dragHintEdit: "dra i titelfält",
     widgetPositionResetToast: "Modulens plats är tillbaka till standard.",
+    editStickyHelp: "Dra · ändra storlek · högerklick · spara",
+    resizeHandleAria: "Ändra storlek",
   },
   profileSettings: {
     pageTitle: "Profilinställningar",
@@ -1158,6 +1395,112 @@ const SV: HubCopy = {
       "Lägg värden från apps/discord-hub-api/.env.example i repots .env och kör om npm run dev:discord-stack.",
     retry: "Försök igen",
   },
+  hubPrefsPanel: {
+    title: "Shell-inställningar",
+    description: "Anpassa widgets, skrivbord och ton.",
+    openButton: "Anpassa",
+    closeButton: "Stäng",
+    resetAll: "Återställ allt",
+    resetAllConfirm: "Alla inställningar återställda.",
+    savedToast: "Inställningar sparade",
+    tabs: {
+      widget: "Widget",
+      desktop: "Skrivbord",
+      copy: "Ton & copy",
+    },
+    widget: {
+      noWidgetSelected: "Ingen widget vald",
+      selectWidgetHint: "Välj en widget nedan för att anpassa den.",
+      widgetLabel: "Widget",
+      sizePreset: "Storlek",
+      sizeCompact: "Kompakt",
+      sizeCozy: "Normal",
+      sizeExpanded: "Utbyggd",
+      toneOverride: "Ton",
+      toneInherit: "Ärvd",
+      toneUseful: "Useful",
+      toneSocial: "Social",
+      toneChaos: "Chaos",
+      glassOpacity: "Opacitet",
+      glassOpacityHint: "Kortets fyllnadsnivå (0 = genomskinlig, 100 = solid).",
+      blurStrength: "Blur",
+      blurNone: "Ingen",
+      blurLight: "Lätt",
+      blurMedium: "Medel",
+      blurStrong: "Stark",
+      showSubtitle: "Visa undertitel",
+      showSubtitleDesc: "Visa widgetens beskrivningsrad.",
+      showToneBadge: "Visa ton-badge",
+      showToneBadgeDesc: "Visa tone-märket i kortets header.",
+      resetWidget: "Återställ widget",
+    },
+    desktop: {
+      stylePack: "Stilpaket",
+      stylePackDefault: "Standard",
+      stylePackMidnight: "Midnight",
+      stylePackPaper: "Paper",
+      stylePackSignal: "Signal",
+      gridDensity: "Rutnätsdensitet",
+      gridCompact: "Kompakt",
+      gridCozy: "Normal",
+      gridExpanded: "Luftigt",
+      snapStrength: "Snap-styrka",
+      snapRelaxed: "Avslappnad",
+      snapStandard: "Standard",
+      snapFirm: "Strikt",
+      dockPosition: "Dock-position",
+      dockBottom: "Nederkant",
+      dockLeft: "Vänster",
+      dockScale: "Dock-storlek",
+      dockSm: "Liten",
+      dockMd: "Medel",
+      dockLg: "Stor",
+      animationIntensity: "Animationsintensitet",
+      animationIntensityHint: "0 = minimal rörelse, 100 = fulla transitioner.",
+    },
+    inspectCursor: {
+      sectionTitle: "Inspect-pekare (dev)",
+      sectionHint:
+        "När du släpper igenom webbläsarens högerklick och Inspect visas denna pekare i stället för standardmusen.",
+      presetLabel: "Stil",
+      presetCrosshair: "Hårkors",
+      presetDot: "Punkt",
+      presetRing: "Ring",
+      presetBracket: "Hörn",
+      colorLabel: "Färg",
+      colorPrimary: "Primary",
+      colorAccent: "Accent",
+      colorForeground: "Text",
+      colorCustom: "Egen hex",
+      customHexLabel: "Hex-färg",
+      customHexHint: "#RGB eller #RRGGBB, t.ex. #38bdf8.",
+      sizeLabel: "Storlek",
+      sizeHint: "Relativ skala för pekaren (50–200 %).",
+    },
+    copy: {
+      personality: "Personlighet",
+      personalityCalm: "Lugn",
+      personalityNormal: "Normal",
+      personalityChaotic: "Kaotisk",
+      personalityCalmDesc: "Kortfattad och saklig – inga galenskaper.",
+      personalityNormalDesc: "Balanserat – lekfullt men inte överdrivet.",
+      personalityChaoticDesc: "Fullt kaos-läge. Du vet vad du gör.",
+      toastVerbosity: "Toast-verbositet",
+      toastMinimal: "Minimal",
+      toastNormal: "Normal",
+      toastVerbose: "Utförlig",
+      toastMinimalDesc: "Kort TTL, ingen meddelandetext.",
+      toastNormalDesc: "Standard timing och innehåll.",
+      toastVerboseDesc: "Längre TTL, mer text.",
+      memeFrequency: "Meme-frekvens",
+      memeOff: "Av",
+      memeLow: "Låg",
+      memeNormal: "Normal",
+      memeOffDesc: "Inga memes eller easter eggs. Tryggt.",
+      memeLowDesc: "Sällsynta easter eggs – lätt kryddat.",
+      memeNormalDesc: "Normalt chaos-läge. Förväntad nivå av vansinne.",
+    },
+  },
 };
 
 const EN: HubCopy = {
@@ -1195,9 +1538,6 @@ const EN: HubCopy = {
     myProfileOffline: "My profile offline",
     settings: "Settings",
     wheel: "Wheel",
-    paletteBadge: (p) => `palette ${p}`,
-    audioBadge: (on) => (on ? "audio online" : "audio muted"),
-    desktopMode: "Desktop mode",
     runningApp: "Running app",
     identityNavHint: "Right-click for identity actions.",
     panelWheel: {
@@ -1218,9 +1558,10 @@ const EN: HubCopy = {
     },
     layoutEditEnter: "Layout",
     layoutEditExit: "Done",
+    devNativeContextButtonShell: "Dev: right-click uses the shell menu. Click for the browser menu.",
+    devNativeContextButtonBrowser: "Dev: right-click uses the browser menu. Click for the shell menu.",
     shellObjectNavGroup: "Primary navigation",
     shellObjectBrandBlock: "System brand & ticker",
-    shellObjectStatusStrip: "Status strip",
     shellObjectDockBar: "Dock",
     shellObjectDesktopChrome: "Desktop chrome",
     shellObjectDesktopZone: "Desktop surface",
@@ -1248,6 +1589,30 @@ const EN: HubCopy = {
     restoreAllTitle: "Modules restored",
     restoreAllMessage: "Every sleeping module is back on the desktop.",
     desktopOnlyToast: "Switch to the desktop for this action.",
+    discardLayout: "Discard session",
+    discardLayoutDetail: "Revert the draft to how it was when you opened layout mode",
+    undoLayout: "Undo",
+    redoLayout: "Redo",
+    autosaveEnable: "Autosave on",
+    autosaveDisable: "Autosave off",
+    unsavedBadge: "Unsaved changes",
+    shortcutsHelp: "Shortcuts",
+    shortcutsHelpTitle: "Layout shortcuts",
+    shortcutsLines: [
+      "Esc — clear selection",
+      "Arrow keys — nudge selected modules (grid step when snap is on)",
+      "Ctrl/⌘+Z — undo · Ctrl/⌘+Shift+Z or Ctrl/⌘+Y — redo",
+      "] — bring selected to front",
+      "Shift or Ctrl/⌘+click — multi-select",
+      "Top bar: drag tabs to reorder (saved locally).",
+    ],
+    doneSaveExit: "Done",
+    doneSaveExitDetail: "Save layout and exit layout mode",
+    cancelDiscardExit: "Cancel",
+    cancelDiscardExitDetail: "Discard changes and exit layout mode",
+    layoutDiscardedTitle: "Layout reverted",
+    layoutDiscardedMessage: "Draft matches the start of this edit session.",
+    shellReorderDragHandleAria: (itemLabel) => `Move ${itemLabel}`,
   },
   tools: {
     dashboard: {
@@ -1302,6 +1667,10 @@ const EN: HubCopy = {
       hamsterTitle: "Hamster appeased",
       hamsterMessage: "Latency improved spiritually, if not technically.",
       copiedDiscordId: (id) => `Discord ID: ${id}`,
+      devNativeContextBrowserTitle: "Browser right-click",
+      devNativeContextBrowserMessage: "Inspect and the page menu work again.",
+      devNativeContextShellTitle: "Shell right-click",
+      devNativeContextShellMessage: "The hub context menu is back.",
     },
     navDashboard: {
       label: "Open dashboard",
@@ -1380,6 +1749,16 @@ const EN: HubCopy = {
       keywords: ["hamster", "server", "ritual", "snack"],
       reveal: ["hamster", "snack", "ritual"],
     },
+    devNativeBrowserMenu: {
+      label: "Browser right-click (dev)",
+      description: "Let Inspect and the page menu through instead of the shell menu.",
+      keywords: ["inspect", "devtools", "right-click", "browser", "native", "context", "dev"],
+    },
+    devShellContextMenu: {
+      label: "Shell right-click (default)",
+      description: "Return to the hub’s own context menu.",
+      keywords: ["shell", "right-click", "context", "neutralen"],
+    },
   },
   shellMenu: {
     desktop: "Desktop",
@@ -1432,6 +1811,46 @@ const EN: HubCopy = {
     gridSnapOff: "Grid snap off",
     layoutSavedToast: "Layout saved locally",
     desktopOnlyAction: "Desktop only",
+    saveLayoutCommitted: "Save layout",
+    discardLayoutDraft: "Discard session",
+    undoLayout: "Undo",
+    redoLayout: "Redo",
+    autosaveLayoutOn: "Layout autosave on",
+    autosaveLayoutOff: "Layout autosave off",
+  },
+  navBookmarks: {
+    addFromNavGroup: "Add bookmark…",
+    editBookmark: "Edit bookmark…",
+    deleteBookmark: "Remove bookmark",
+    dialogAddTitle: "New bookmark",
+    dialogEditTitle: "Edit bookmark",
+    dialogDescription:
+      "Label and destination (e.g. /dashboard or an https URL). Like a browser bookmark in the top bar.",
+    labelField: "Display name",
+    pathField: "Target (path or URL)",
+    pathHint: "Internal: /profile/settings · External: https://…",
+    iconField: "Icon",
+    iconNames: {
+      Bookmark: "Bookmark",
+      Home: "Home",
+      Settings: "Settings",
+      Workflow: "Workflow",
+      Star: "Star",
+      LayoutDashboard: "Dashboard",
+      User: "User",
+      Search: "Search",
+      Link2: "Link",
+      Bell: "Bell",
+      Heart: "Heart",
+      Zap: "Zap",
+    },
+    save: "Save",
+    cancel: "Cancel",
+    deleteConfirm: "Remove",
+    toastAdded: "Bookmark added",
+    toastUpdated: "Bookmark updated",
+    toastRemoved: "Bookmark removed",
+    validationBoth: "Enter both a name and a destination.",
   },
   toastChaosTitles: [
     "System whispers:",
@@ -1541,6 +1960,8 @@ const EN: HubCopy = {
     dragHintNormal: "Enter layout mode to rearrange modules",
     dragHintEdit: "drag from the title bars",
     widgetPositionResetToast: "Module position reset to default.",
+    editStickyHelp: "Drag · resize · right-click · save",
+    resizeHandleAria: "Resize",
   },
   profileSettings: {
     pageTitle: "Profile settings",
@@ -1787,6 +2208,112 @@ const EN: HubCopy = {
     hintEnv:
       "Add values from apps/discord-hub-api/.env.example to the repo .env and restart npm run dev:discord-stack.",
     retry: "Try again",
+  },
+  hubPrefsPanel: {
+    title: "Shell preferences",
+    description: "Customise widgets, desktop, and tone.",
+    openButton: "Customise",
+    closeButton: "Close",
+    resetAll: "Reset all",
+    resetAllConfirm: "All preferences reset.",
+    savedToast: "Preferences saved",
+    tabs: {
+      widget: "Widget",
+      desktop: "Desktop",
+      copy: "Tone & copy",
+    },
+    widget: {
+      noWidgetSelected: "No widget selected",
+      selectWidgetHint: "Pick a widget below to customise it.",
+      widgetLabel: "Widget",
+      sizePreset: "Size",
+      sizeCompact: "Compact",
+      sizeCozy: "Cozy",
+      sizeExpanded: "Expanded",
+      toneOverride: "Tone",
+      toneInherit: "Inherit",
+      toneUseful: "Useful",
+      toneSocial: "Social",
+      toneChaos: "Chaos",
+      glassOpacity: "Opacity",
+      glassOpacityHint: "Card fill level (0 = transparent, 100 = solid).",
+      blurStrength: "Blur",
+      blurNone: "None",
+      blurLight: "Light",
+      blurMedium: "Medium",
+      blurStrong: "Strong",
+      showSubtitle: "Show subtitle",
+      showSubtitleDesc: "Show the widget description line.",
+      showToneBadge: "Show tone badge",
+      showToneBadgeDesc: "Show the tone badge in the card header.",
+      resetWidget: "Reset widget",
+    },
+    desktop: {
+      stylePack: "Style pack",
+      stylePackDefault: "Default",
+      stylePackMidnight: "Midnight",
+      stylePackPaper: "Paper",
+      stylePackSignal: "Signal",
+      gridDensity: "Grid density",
+      gridCompact: "Compact",
+      gridCozy: "Cozy",
+      gridExpanded: "Airy",
+      snapStrength: "Snap strength",
+      snapRelaxed: "Relaxed",
+      snapStandard: "Standard",
+      snapFirm: "Firm",
+      dockPosition: "Dock position",
+      dockBottom: "Bottom",
+      dockLeft: "Left",
+      dockScale: "Dock size",
+      dockSm: "Small",
+      dockMd: "Medium",
+      dockLg: "Large",
+      animationIntensity: "Animation intensity",
+      animationIntensityHint: "0 = minimal motion, 100 = full transitions.",
+    },
+    inspectCursor: {
+      sectionTitle: "Inspect cursor (dev)",
+      sectionHint:
+        "When the browser context menu and Inspect are enabled, this pointer replaces the default cursor.",
+      presetLabel: "Style",
+      presetCrosshair: "Crosshair",
+      presetDot: "Dot",
+      presetRing: "Ring",
+      presetBracket: "Corners",
+      colorLabel: "Colour",
+      colorPrimary: "Primary",
+      colorAccent: "Accent",
+      colorForeground: "Foreground",
+      colorCustom: "Custom hex",
+      customHexLabel: "Hex colour",
+      customHexHint: "#RGB or #RRGGBB, e.g. #38bdf8.",
+      sizeLabel: "Size",
+      sizeHint: "Relative scale for the pointer (50–200%).",
+    },
+    copy: {
+      personality: "Personality",
+      personalityCalm: "Calm",
+      personalityNormal: "Normal",
+      personalityChaotic: "Chaotic",
+      personalityCalmDesc: "Brief and factual — no nonsense.",
+      personalityNormalDesc: "Balanced — playful but not over the top.",
+      personalityChaoticDesc: "Full chaos mode. You know what you’re doing.",
+      toastVerbosity: "Toast verbosity",
+      toastMinimal: "Minimal",
+      toastNormal: "Normal",
+      toastVerbose: "Verbose",
+      toastMinimalDesc: "Short TTL, no message body.",
+      toastNormalDesc: "Standard timing and content.",
+      toastVerboseDesc: "Longer TTL, more text.",
+      memeFrequency: "Meme frequency",
+      memeOff: "Off",
+      memeLow: "Low",
+      memeNormal: "Normal",
+      memeOffDesc: "No memes or easter eggs. Safe.",
+      memeLowDesc: "Rare easter eggs — lightly seasoned.",
+      memeNormalDesc: "Normal chaos mode. Expected level of madness.",
+    },
   },
 };
 

@@ -81,3 +81,19 @@
 code {
   @apply rounded-md bg-muted px-1.5 py-0.5 text-sm text-primary;
 }
+
+/*
+ * Dev: Inspect / webbläsarens meny. Klass sätts på document.documentElement (HubLayout)
+ * så cursor:none gäller hela appen inkl. toast-stack och andra noder utanför layout-roten.
+ */
+.hub-shell-inspect-cursor-active,
+.hub-shell-inspect-cursor-active * {
+  cursor: none !important;
+}
+
+.hub-shell-inspect-cursor-active input,
+.hub-shell-inspect-cursor-active textarea,
+.hub-shell-inspect-cursor-active select,
+.hub-shell-inspect-cursor-active [contenteditable="true"] {
+  cursor: text !important;
+}

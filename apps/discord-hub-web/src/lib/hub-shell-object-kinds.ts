@@ -5,7 +5,6 @@
 export type HubShellObjectKind =
   | "navGroup"
   | "brandBlock"
-  | "statusStrip"
   | "dockBar"
   | "routePanel"
   | "desktopZone"

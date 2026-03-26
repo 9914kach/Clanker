@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
-import { Command, LayoutGrid, LayoutPanelTop, SearchIcon, Workflow } from "lucide-react";
+import { Command, Inspect, LayoutGrid, SearchIcon, Settings2 } from "lucide-react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@clanker/ui/components/button";
 import {
@@ -18,7 +18,7 @@ import { useHubToasts } from "@/components/HubToastProvider";
 import { useHubLocale } from "@/components/locale-provider";
 import { ModeToggle } from "@/components/mode-toggle";
 import { useTheme } from "@/components/theme-provider";
-import { buildHubActions, createHubActionApi } from "@/config/hub-actions";
+import { buildHubActions, createHubActionApi, type HubAction } from "@/config/hub-actions";
 import { HUB_TOOLS, localizeHubTools, localizeMeTool, type HubTool } from "@/config/hub-tools";
 import { apiUrl } from "@/config";
 import type {
@@ -31,12 +31,38 @@ import type { HubCopy } from "@/i18n/hub-copy";
 import { discordAvatarUrl } from "@/lib/discordCdn";
 import { hubContextData, isTextEditingTarget, resolveHubContextTarget, type HubContextTarget } from "@/lib/hub-shell-context";
 import { buildHubShellMenu } from "@/lib/hub-shell-menu";
+import HubNavBookmarkDialog from "@/components/HubNavBookmarkDialog";
+import HubPrefsPanel from "@/components/HubPrefsPanel";
+import HubShellInspectCursor from "@/components/HubShellInspectCursor";
+import { useHubPrefs } from "@/components/HubPrefsProvider";
+import { HubShellReorderablePrimaryNav } from "@/components/HubShellReorderableChrome";
+import {
+  createBookmarkNavId,
+  loadNavBookmarks,
+  loadPrimaryNavOrder,
+  saveNavBookmarks,
+  type HubNavBookmark,
+} from "@/lib/hub-nav-bookmarks";
+import { normalizeNavBookmarkIconKey, type HubNavBookmarkIconKey } from "@/lib/hub-nav-bookmark-icons";
+import { HUB_PRIMARY_NAV_ORDER_KEY, saveOrder } from "@/lib/hub-shell-layout-order";
 
 /** Text-raden i headern (rullande kompisrader). Sätt till `false` för att dölja. */
 const SHOW_HUB_LIVE_TICKER = true;
 const DOCK_STORAGE_KEY = "hub.dock.pins.v1";
 const LAYOUT_EDIT_KEY = "hub.shell.layoutEdit.v1";
 const GRID_SNAP_KEY = "hub.shell.gridSnap.v1";
+const NATIVE_BROWSER_CONTEXT_KEY = "hub.dev.native-browser-context.v1";
+
+function readNativeBrowserContextMenu(): boolean {
+  if (!import.meta.env.DEV) {
+    return false;
+  }
+  try {
+    return localStorage.getItem(NATIVE_BROWSER_CONTEXT_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
 
 function readGridSnapEnabled(): boolean {
   try {
@@ -110,6 +136,9 @@ export default function HubLayout() {
   const [desktopShellState, setDesktopShellState] = useState<HubDesktopShellState | null>(null);
   const [layoutEditMode, setLayoutEditMode] = useState(readLayoutEditMode);
   const [gridSnapEnabled, setGridSnapEnabled] = useState(readGridSnapEnabled);
+  const [nativeBrowserContextMenu, setNativeBrowserContextMenu] = useState(readNativeBrowserContextMenu);
+  const [prefsPanelOpen, setPrefsPanelOpen] = useState(false);
+  const { prefs: hubPrefs } = useHubPrefs();
   const [shellContextMenu, setShellContextMenu] = useState<{
     target: HubContextTarget;
     position: { x: number; y: number };
@@ -118,9 +147,17 @@ export default function HubLayout() {
   const leaderTimeoutRef = useRef<number | null>(null);
   const awaitingLeaderRef = useRef(false);
   const isDashboardRoute = pathname === "/dashboard";
+  const inspectCursorActive = import.meta.env.DEV && nativeBrowserContextMenu;
   const panelMeta = workspaceMeta(pathname, copy.chrome);
   const defaultPinnedIds = useMemo(() => HUB_TOOLS.map((tool) => tool.id), []);
   const [pinnedIds, setPinnedIds] = useState<string[]>(() => loadPins(defaultPinnedIds));
+  const [navBookmarks, setNavBookmarks] = useState<Record<string, HubNavBookmark>>(() => loadNavBookmarks());
+  const [primaryNavOrder, setPrimaryNavOrder] = useState<string[]>(() =>
+    loadPrimaryNavOrder(loadNavBookmarks()),
+  );
+  const [bookmarkDialog, setBookmarkDialog] = useState<null | { mode: "add" } | { mode: "edit"; id: string }>(
+    null,
+  );
 
   const refreshMe = useCallback(async () => {
     try {
@@ -159,6 +196,14 @@ export default function HubLayout() {
   }, [pinnedIds]);
 
   useEffect(() => {
+    saveOrder(HUB_PRIMARY_NAV_ORDER_KEY, primaryNavOrder);
+  }, [primaryNavOrder]);
+
+  useEffect(() => {
+    saveNavBookmarks(navBookmarks);
+  }, [navBookmarks]);
+
+  useEffect(() => {
     try {
       localStorage.setItem(LAYOUT_EDIT_KEY, layoutEditMode ? "true" : "false");
     } catch {
@@ -174,6 +219,29 @@ export default function HubLayout() {
     }
   }, [gridSnapEnabled]);
 
+  useEffect(() => {
+    if (!import.meta.env.DEV) {
+      return;
+    }
+    try {
+      localStorage.setItem(NATIVE_BROWSER_CONTEXT_KEY, nativeBrowserContextMenu ? "true" : "false");
+    } catch {
+      /* ignore */
+    }
+  }, [nativeBrowserContextMenu]);
+
+  /** På <html>: HubLayout rot täcker inte ToastProvider m.m. — annars cursor:none bara delvis och pekaren känns omvänd. */
+  useEffect(() => {
+    if (!inspectCursorActive) {
+      document.documentElement.classList.remove("hub-shell-inspect-cursor-active");
+      return;
+    }
+    document.documentElement.classList.add("hub-shell-inspect-cursor-active");
+    return () => {
+      document.documentElement.classList.remove("hub-shell-inspect-cursor-active");
+    };
+  }, [inspectCursorActive]);
+
   const toggleLayoutEditMode = useCallback(() => {
     setLayoutEditMode((prev) => !prev);
     play("panel");
@@ -184,15 +252,87 @@ export default function HubLayout() {
     play("panel");
   }, [play]);
 
-  const exitLayoutEdit = useCallback(() => {
+  const doneLayoutEdit = useCallback(() => {
+    desktopShellState?.saveLayoutCommitted();
     setLayoutEditMode(false);
+    play("panel");
+  }, [desktopShellState, play]);
+
+  const cancelLayoutEdit = useCallback(() => {
+    desktopShellState?.discardLayoutDraft();
+    setLayoutEditMode(false);
+    play("panel");
+  }, [desktopShellState, play]);
+
+  const removeNavBookmark = useCallback(
+    (bookmarkId: string) => {
+      setShellContextMenu(null);
+      setPrimaryNavOrder((p) => p.filter((x) => x !== bookmarkId));
+      setNavBookmarks((b) => {
+        const n = { ...b };
+        delete n[bookmarkId];
+        return n;
+      });
+      toasts.push({ kind: "info", title: copy.navBookmarks.toastRemoved });
+      play("panel");
+    },
+    [copy.navBookmarks.toastRemoved, play, toasts],
+  );
+
+  const commitNavBookmark = useCallback(
+    (payload: { bookmarkId?: string; label: string; path: string; iconKey: HubNavBookmarkIconKey }) => {
+      const label = payload.label.trim();
+      const path = payload.path.trim();
+      const iconKey = normalizeNavBookmarkIconKey(payload.iconKey);
+      if (!label || !path) {
+        toasts.push({ kind: "info", title: copy.navBookmarks.validationBoth });
+        return;
+      }
+      setShellContextMenu(null);
+      if (payload.bookmarkId) {
+        setNavBookmarks((b) => ({
+          ...b,
+          [payload.bookmarkId!]: { label, path, iconKey },
+        }));
+        toasts.push({ kind: "success", title: copy.navBookmarks.toastUpdated });
+        play("confirm");
+      } else {
+        const id = createBookmarkNavId();
+        setNavBookmarks((b) => ({ ...b, [id]: { label, path, iconKey } }));
+        setPrimaryNavOrder((p) => [...p, id]);
+        toasts.push({ kind: "success", title: copy.navBookmarks.toastAdded });
+        play("confirm");
+      }
+      setBookmarkDialog(null);
+    },
+    [
+      copy.navBookmarks.toastAdded,
+      copy.navBookmarks.toastUpdated,
+      copy.navBookmarks.validationBoth,
+      play,
+      toasts,
+    ],
+  );
+
+  const openNavBookmarkAdd = useCallback(() => {
+    setShellContextMenu(null);
+    setBookmarkDialog({ mode: "add" });
     play("panel");
   }, [play]);
 
-  const saveLayoutAck = useCallback(() => {
-    desktopShellState?.acknowledgeLayoutSaved();
-    play("confirm");
-  }, [desktopShellState, play]);
+  const openNavBookmarkEdit = useCallback((bookmarkId: string) => {
+    setShellContextMenu(null);
+    setBookmarkDialog({ mode: "edit", id: bookmarkId });
+    play("panel");
+  }, [play]);
+
+  const deleteNavBookmarkFromDialog = useCallback(() => {
+    if (bookmarkDialog?.mode !== "edit") {
+      return;
+    }
+    removeNavBookmark(bookmarkDialog.id);
+    setBookmarkDialog(null);
+  }, [bookmarkDialog, removeNavBookmark]);
 
   const logout = useCallback(async () => {
     await fetch(apiUrl("/api/auth/logout"), {
@@ -228,6 +368,20 @@ export default function HubLayout() {
   }, []);
 
   useEffect(() => {
+    if (!layoutEditMode) return;
+    setPrefsPanelOpen(false);
+    if (commandOpen) {
+      handleCommandOpenChange(false);
+    }
+  }, [layoutEditMode, commandOpen, handleCommandOpenChange]);
+
+  useEffect(() => {
+    if (!layoutEditMode) {
+      setBookmarkDialog(null);
+    }
+  }, [layoutEditMode]);
+
+  useEffect(() => {
     const clearLeader = () => {
       awaitingLeaderRef.current = false;
       if (leaderTimeoutRef.current) {
@@ -239,6 +393,12 @@ export default function HubLayout() {
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
+        if (layoutEditMode) {
+          if (commandOpen) {
+            handleCommandOpenChange(false);
+          }
+          return;
+        }
         if (commandOpen) {
           handleCommandOpenChange(false);
         } else {
@@ -247,7 +407,72 @@ export default function HubLayout() {
         return;
       }
 
-      if (commandOpen || event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) {
+      if (commandOpen) {
+        return;
+      }
+
+      const ds = desktopShellState;
+      const onDashboard = pathname === "/dashboard";
+      if (layoutEditMode && onDashboard && ds && !isTextEditingTarget(event.target)) {
+        if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
+          event.preventDefault();
+          if (event.shiftKey) {
+            ds.redoLayout();
+          } else {
+            ds.undoLayout();
+          }
+          play("panel");
+          return;
+        }
+        if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "y") {
+          event.preventDefault();
+          ds.redoLayout();
+          play("panel");
+          return;
+        }
+        if (!event.metaKey && !event.ctrlKey && !event.altKey && !event.repeat) {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            if (ds.selectedWidgetIds.length > 0) {
+              ds.clearWidgetSelection();
+              play("panel");
+            }
+            return;
+          }
+          if (event.key === "ArrowLeft") {
+            event.preventDefault();
+            ds.nudgeSelectedWidgets(-1, 0);
+            play("panel");
+            return;
+          }
+          if (event.key === "ArrowRight") {
+            event.preventDefault();
+            ds.nudgeSelectedWidgets(1, 0);
+            play("panel");
+            return;
+          }
+          if (event.key === "ArrowUp") {
+            event.preventDefault();
+            ds.nudgeSelectedWidgets(0, -1);
+            play("panel");
+            return;
+          }
+          if (event.key === "ArrowDown") {
+            event.preventDefault();
+            ds.nudgeSelectedWidgets(0, 1);
+            play("panel");
+            return;
+          }
+          if (event.key === "]") {
+            event.preventDefault();
+            ds.bringSelectedWidgetsToFront();
+            play("panel");
+            return;
+          }
+        }
+      }
+
+      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) {
         return;
       }
 
@@ -257,37 +482,42 @@ export default function HubLayout() {
       }
 
       const key = event.key.toLowerCase();
-      if (awaitingLeaderRef.current) {
-        clearLeader();
-        if (key === "d") {
-          event.preventDefault();
-          play("dock");
-          navigate("/dashboard");
-          return;
-        }
-        if (key === "w") {
-          event.preventDefault();
-          play("dock");
-          navigate("/tools/spin-the-wheel");
-          return;
-        }
-        if (key === "s") {
-          event.preventDefault();
-          play("dock");
-          navigate("/profile/settings");
-          return;
-        }
-      }
 
-      if (key === "g") {
-        awaitingLeaderRef.current = true;
-        if (leaderTimeoutRef.current) {
-          window.clearTimeout(leaderTimeoutRef.current);
+      if (!layoutEditMode) {
+        if (awaitingLeaderRef.current) {
+          clearLeader();
+          if (key === "d") {
+            event.preventDefault();
+            play("dock");
+            navigate("/dashboard");
+            return;
+          }
+          if (key === "w") {
+            event.preventDefault();
+            play("dock");
+            navigate("/tools/spin-the-wheel");
+            return;
+          }
+          if (key === "s") {
+            event.preventDefault();
+            play("dock");
+            navigate("/profile/settings");
+            return;
+          }
         }
-        leaderTimeoutRef.current = window.setTimeout(() => {
-          awaitingLeaderRef.current = false;
-          leaderTimeoutRef.current = null;
-        }, 1000);
+
+        if (key === "g") {
+          awaitingLeaderRef.current = true;
+          if (leaderTimeoutRef.current) {
+            window.clearTimeout(leaderTimeoutRef.current);
+          }
+          leaderTimeoutRef.current = window.setTimeout(() => {
+            awaitingLeaderRef.current = false;
+            leaderTimeoutRef.current = null;
+          }, 1000);
+        }
+      } else {
+        clearLeader();
       }
     };
 
@@ -296,7 +526,16 @@ export default function HubLayout() {
       window.removeEventListener("keydown", onKeyDown);
       clearLeader();
     };
-  }, [commandOpen, handleCommandOpenChange, navigate, openCommandPalette, play]);
+  }, [
+    commandOpen,
+    desktopShellState,
+    handleCommandOpenChange,
+    layoutEditMode,
+    navigate,
+    openCommandPalette,
+    pathname,
+    play,
+  ]);
 
   const localizedHubToolList = useMemo(() => localizeHubTools(copy), [copy]);
 
@@ -376,14 +615,18 @@ export default function HubLayout() {
   );
 
   const actionApi = useMemo(() => createHubActionApi(actionEnvironment), [actionEnvironment]);
-  const actions = useMemo(() => buildHubActions(actionEnvironment), [actionEnvironment]);
+  const baseActions = useMemo(() => buildHubActions(actionEnvironment), [actionEnvironment]);
 
   const navButtonClassName = (isActive: boolean) =>
     cn(
-      "inline-flex items-center gap-2 rounded-2xl border px-3 py-2 text-sm font-medium transition",
+      "inline-flex items-center gap-1.5 rounded-xl border px-2 py-1 text-xs font-medium transition",
       "border-border/60 bg-background/45 hover:bg-muted/65 hover:text-foreground",
       isActive && "border-primary/40 bg-primary/12 text-foreground shadow-[0_0_0_1px_color-mix(in_oklab,var(--primary)_12%,transparent)]",
     );
+
+  /** Kompakt topbar — matchar ungefär halv tidigare vertikal höjd. */
+  const hubTopbarButtonClass =
+    "h-7 min-h-7 gap-1 px-2 text-xs has-[>svg]:px-2 [&_svg:not([class*='size-'])]:size-3.5";
 
   const normalizeContextTarget = useCallback(
     (target: HubContextTarget): HubContextTarget => {
@@ -407,10 +650,49 @@ export default function HubLayout() {
     setShellContextMenu(null);
   }, []);
 
+  const toggleDevNativeContextMenu = useCallback(() => {
+    closeShellContextMenu();
+    play("panel");
+    const next = !nativeBrowserContextMenu;
+    setNativeBrowserContextMenu(next);
+    const t = copy.actions.toasts;
+    toasts.push({
+      kind: "info",
+      title: next ? t.devNativeContextBrowserTitle : t.devNativeContextShellTitle,
+      message: next ? t.devNativeContextBrowserMessage : t.devNativeContextShellMessage,
+    });
+  }, [
+    closeShellContextMenu,
+    copy.actions.toasts,
+    nativeBrowserContextMenu,
+    play,
+    toasts,
+  ]);
+
+  const actions = useMemo((): HubAction[] => {
+    if (!import.meta.env.DEV) {
+      return baseActions;
+    }
+    const d = copy.actions;
+    const devKeywords = [...d.devNativeBrowserMenu.keywords, ...d.devShellContextMenu.keywords] as readonly string[];
+    return [
+      ...baseActions,
+      {
+        id: "dev-toggle-native-context",
+        label: nativeBrowserContextMenu ? d.devShellContextMenu.label : d.devNativeBrowserMenu.label,
+        description: nativeBrowserContextMenu ? d.devShellContextMenu.description : d.devNativeBrowserMenu.description,
+        section: "System",
+        tone: "useful",
+        keywords: devKeywords,
+        icon: Inspect,
+        onSelect: toggleDevNativeContextMenu,
+      },
+    ];
+  }, [baseActions, copy.actions, nativeBrowserContextMenu, toggleDevNativeContextMenu]);
+
   const openShellContextMenu = useCallback(
     (event: ReactMouseEvent<HTMLElement>) => {
-      // In dev, leave the native context menu (Inspect, reload, etc.) untouched.
-      if (import.meta.env.DEV) {
+      if (nativeBrowserContextMenu) {
         closeShellContextMenu();
         return;
       }
@@ -421,13 +703,21 @@ export default function HubLayout() {
       }
 
       event.preventDefault();
-      const target = normalizeContextTarget(resolveHubContextTarget(event.target));
+      const native = event.nativeEvent;
+      const atPoint =
+        native instanceof MouseEvent &&
+        typeof document !== "undefined" &&
+        typeof document.elementFromPoint === "function"
+          ? document.elementFromPoint(native.clientX, native.clientY)
+          : null;
+      const hit = atPoint ?? event.target;
+      const target = normalizeContextTarget(resolveHubContextTarget(hit));
       setShellContextMenu({
         target,
         position: { x: event.clientX, y: event.clientY },
       });
     },
-    [closeShellContextMenu, normalizeContextTarget],
+    [closeShellContextMenu, nativeBrowserContextMenu, normalizeContextTarget],
   );
 
   useEffect(() => {
@@ -451,6 +741,9 @@ export default function HubLayout() {
             gridSnapEnabled,
             toggleGridSnap,
             isDashboardRoute,
+            onNavBookmarkAdd: layoutEditMode ? openNavBookmarkAdd : undefined,
+            onNavBookmarkEdit: layoutEditMode ? openNavBookmarkEdit : undefined,
+            onNavBookmarkDelete: layoutEditMode ? removeNavBookmark : undefined,
           })
         : [],
     [
@@ -460,6 +753,9 @@ export default function HubLayout() {
       gridSnapEnabled,
       isDashboardRoute,
       layoutEditMode,
+      openNavBookmarkAdd,
+      openNavBookmarkEdit,
+      removeNavBookmark,
       shellContextMenu,
       toggleDockPin,
       toggleGridSnap,
@@ -472,7 +768,14 @@ export default function HubLayout() {
     me.status === "user" ? (
         <NavLink
           to={profilePath!}
-          className="flex items-center gap-2 rounded-[1.25rem] border border-border/60 bg-background/45 px-2.5 py-2 transition hover:bg-muted/65"
+          tabIndex={layoutEditMode ? -1 : undefined}
+          onClick={(e) => {
+            if (layoutEditMode) e.preventDefault();
+          }}
+          className={cn(
+            "flex items-center gap-1.5 rounded-xl border border-border/60 bg-background/45 px-2 py-1 transition hover:bg-muted/65",
+            layoutEditMode && "pointer-events-none select-none",
+          )}
           title={copy.chrome.identityNavHint}
           {...hubContextData({
             type: "shell.identity",
@@ -482,7 +785,7 @@ export default function HubLayout() {
             displayName,
           })}
         >
-          <Avatar size="default">
+          <Avatar size="sm">
             <AvatarImage
               src={discordAvatarUrl(me.profile.id, me.profile.avatar, 64)}
               alt=""
@@ -492,12 +795,14 @@ export default function HubLayout() {
             </AvatarFallback>
           </Avatar>
           <div className="hidden min-w-0 flex-col md:flex">
-            <span className="truncate text-sm font-medium">{displayName}</span>
-            <span className="truncate text-xs text-muted-foreground">@{me.profile.username}</span>
+            <span className="truncate text-xs font-medium leading-tight">{displayName}</span>
+            <span className="truncate text-[0.65rem] leading-tight text-muted-foreground">
+              @{me.profile.username}
+            </span>
           </div>
         </NavLink>
       ) : (
-        <div className="hidden rounded-[1.25rem] border border-border/60 bg-background/45 px-3 py-2 text-sm text-muted-foreground md:block">
+        <div className="hidden rounded-xl border border-border/60 bg-background/45 px-2 py-1 text-xs text-muted-foreground md:block">
           {me.status === "loading"
             ? copy.layout.loadingAccount
             : me.status === "backend_error"
@@ -507,44 +812,102 @@ export default function HubLayout() {
       );
 
   const renderActions = () => (
-    <div className="flex items-center justify-end gap-2">
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        onClick={(event) => {
-          play("panel");
-          openCommandPalette(event.currentTarget);
-        }}
+    <div className="flex items-center justify-end gap-1.5">
+      <div
+        className={cn(
+          "flex items-center gap-1.5",
+          layoutEditMode && "pointer-events-none select-none",
+        )}
+        inert={layoutEditMode ? true : undefined}
       >
-        <SearchIcon data-icon="inline-start" />
-        {copy.common.command}
-      </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className={hubTopbarButtonClass}
+          onClick={(event) => {
+            play("panel");
+            openCommandPalette(event.currentTarget);
+          }}
+        >
+          <SearchIcon data-icon="inline-start" />
+          {copy.common.command}
+        </Button>
+        <Button
+          type="button"
+          variant={prefsPanelOpen ? "secondary" : "outline"}
+          size="sm"
+          className={hubTopbarButtonClass}
+          onClick={() => {
+            play("panel");
+            setPrefsPanelOpen((prev) => !prev);
+          }}
+          title={copy.hubPrefsPanel.openButton}
+        >
+          <Settings2 data-icon="inline-start" />
+          <span className="hidden sm:inline">{copy.hubPrefsPanel.openButton}</span>
+        </Button>
+        {import.meta.env.DEV ? (
+          <Button
+            type="button"
+            variant={nativeBrowserContextMenu ? "secondary" : "outline"}
+            size="sm"
+            className={hubTopbarButtonClass}
+            onClick={toggleDevNativeContextMenu}
+            title={
+              nativeBrowserContextMenu
+                ? copy.chrome.devNativeContextButtonBrowser
+                : copy.chrome.devNativeContextButtonShell
+            }
+            aria-label={
+              nativeBrowserContextMenu
+                ? copy.chrome.devNativeContextButtonBrowser
+                : copy.chrome.devNativeContextButtonShell
+            }
+          >
+            <Inspect className="size-3.5" />
+          </Button>
+        ) : null}
+        <ModeToggle triggerClassName="size-7 rounded-md [&_svg]:size-3.5" />
+        {me.status === "user" ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className={hubTopbarButtonClass}
+            onClick={logout}
+          >
+            {copy.common.logOut}
+          </Button>
+        ) : (
+          <Button asChild size="sm" className={hubTopbarButtonClass}>
+            <Link to="/login">{copy.common.logIn}</Link>
+          </Button>
+        )}
+      </div>
       <Button
         type="button"
         variant={layoutEditMode ? "default" : "outline"}
         size="sm"
+        className={hubTopbarButtonClass}
         onClick={toggleLayoutEditMode}
         title={layoutEditMode ? copy.chrome.layoutEditExit : copy.chrome.layoutEditEnter}
       >
         <LayoutGrid data-icon="inline-start" />
         {layoutEditMode ? copy.chrome.layoutEditExit : copy.chrome.layoutEditEnter}
       </Button>
-      <ModeToggle />
-      {me.status === "user" ? (
-        <Button type="button" variant="outline" size="sm" onClick={logout}>
-          {copy.common.logOut}
-        </Button>
-      ) : (
-        <Button asChild size="sm">
-          <Link to="/login">{copy.common.logIn}</Link>
-        </Button>
-      )}
     </div>
   );
 
   return (
-    <div className="relative flex h-dvh flex-col overflow-hidden bg-background text-foreground" onContextMenu={openShellContextMenu}>
+    <div
+      className={cn(
+        "relative flex h-dvh flex-col overflow-hidden bg-background text-foreground",
+        layoutEditMode && "ring-2 ring-inset ring-primary/30",
+      )}
+      onContextMenu={openShellContextMenu}
+    >
+      <HubShellInspectCursor active={inspectCursorActive} prefs={hubPrefs.inspectCursor} />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,color-mix(in_oklab,var(--primary)_18%,transparent),transparent_24%),radial-gradient(circle_at_bottom_right,color-mix(in_oklab,var(--accent)_14%,transparent),transparent_28%),linear-gradient(180deg,color-mix(in_oklab,var(--background)_94%,black),var(--background))]" />
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_right,color-mix(in_oklab,var(--border)_18%,transparent)_1px,transparent_1px),linear-gradient(to_bottom,color-mix(in_oklab,var(--border)_14%,transparent)_1px,transparent_1px)] bg-[size:96px_96px] opacity-35" />
 
@@ -552,19 +915,26 @@ export default function HubLayout() {
         className="relative z-20 border-b border-border/55 bg-background/45 backdrop-blur-xl supports-[backdrop-filter]:bg-background/35"
         {...hubContextData({ type: "shell.nav", area: "topbar" })}
       >
-        <div className="flex flex-col gap-3 px-4 py-3 md:px-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-col gap-1.5 px-3 py-1 md:px-4 lg:flex-row lg:items-center lg:gap-2 lg:gap-y-0">
+          <div className="flex flex-wrap items-center justify-between gap-2 lg:contents">
             <HubShellObject
               as="div"
               objectId="shell.brandRow"
               objectKind="brandBlock"
               label={copy.chrome.shellObjectBrandBlock}
               layoutEditMode={layoutEditMode}
-              className="flex min-w-0 items-center gap-3"
+              className="flex min-w-0 shrink-0 items-center gap-2 lg:order-1"
             >
               <Link
                 to="/dashboard"
-                className="flex items-center gap-3 rounded-[1.4rem] border border-border/60 bg-background/45 px-3 py-2 transition hover:bg-muted/65"
+                tabIndex={layoutEditMode ? -1 : undefined}
+                onClick={(e) => {
+                  if (layoutEditMode) e.preventDefault();
+                }}
+                className={cn(
+                  "flex items-center gap-2 rounded-xl border border-border/60 bg-background/45 px-2 py-1 transition hover:bg-muted/65",
+                  layoutEditMode && "pointer-events-none select-none",
+                )}
                 {...hubContextData({
                   type: "tool",
                   toolId: "dashboard",
@@ -573,121 +943,55 @@ export default function HubLayout() {
                   pinned: true,
                 })}
               >
-                <div className="rounded-xl border border-border/60 bg-primary/14 p-2 text-primary">
-                  <Command className="size-4" />
+                <div className="rounded-lg border border-border/60 bg-primary/14 p-1 text-primary">
+                  <Command className="size-3.5" />
                 </div>
                 <div className="min-w-0">
-                  <div className="truncate text-sm font-semibold tracking-[0.04em]">{copy.chrome.brandTitle}</div>
-                  <div className="truncate text-[0.7rem] uppercase tracking-[0.22em] text-muted-foreground">
+                  <div className="truncate text-xs font-semibold tracking-[0.04em] leading-tight">
+                    {copy.chrome.brandTitle}
+                  </div>
+                  <div className="truncate text-[0.62rem] uppercase leading-tight tracking-[0.18em] text-muted-foreground">
                     {copy.chrome.brandTagline}
                   </div>
                 </div>
               </Link>
-
-              {SHOW_HUB_LIVE_TICKER ? (
-                <div className="hidden min-w-0 flex-1 lg:block">
-                  <HubLiveTicker variant="top" />
-                </div>
-              ) : null}
             </HubShellObject>
 
-            <div className="flex flex-wrap items-center justify-end gap-2">
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 lg:order-4 lg:ml-auto">
               {renderIdentity()}
               {renderActions()}
             </div>
           </div>
 
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <HubShellObject
-              as="nav"
-              objectId="shell.nav.primary"
-              objectKind="navGroup"
-              label={copy.chrome.shellObjectNavGroup}
+          {SHOW_HUB_LIVE_TICKER ? (
+            <div className="hidden min-w-0 flex-1 basis-0 lg:order-2 lg:flex">
+              <HubLiveTicker variant="top" />
+            </div>
+          ) : null}
+
+          <HubShellObject
+            as="nav"
+            objectId="shell.nav.primary"
+            objectKind="navGroup"
+            label={copy.chrome.shellObjectNavGroup}
+            layoutEditMode={layoutEditMode}
+            layoutEditChrome="none"
+            className="flex min-w-0 shrink-0 flex-col gap-0 lg:order-3"
+            aria-label={copy.chrome.shellObjectNavGroup}
+          >
+            <HubShellReorderablePrimaryNav
+              order={primaryNavOrder}
+              onReorder={setPrimaryNavOrder}
               layoutEditMode={layoutEditMode}
-              className="flex flex-wrap items-center gap-2"
-              aria-label={copy.chrome.shellObjectNavGroup}
-            >
-              <NavLink
-                to="/dashboard"
-                end
-                className={({ isActive }) => navButtonClassName(isActive)}
-                {...hubContextData({
-                  type: "tool",
-                  toolId: "desktop",
-                  label: copy.chrome.toolDesktop,
-                  path: "/dashboard",
-                  pinned: true,
-                })}
-              >
-                <LayoutPanelTop className="size-4" />
-                {copy.chrome.navDesktop}
-              </NavLink>
-
-              {profilePath ? (
-                <NavLink
-                  to={profilePath}
-                  className={({ isActive }) => navButtonClassName(isActive)}
-                  {...hubContextData({
-                    type: "profile",
-                    profileId,
-                    profilePath,
-                    label: copy.chrome.myProfile,
-                    isOwnProfile: true,
-                  })}
-                >
-                  {copy.chrome.myProfile}
-                </NavLink>
-              ) : (
-                <span className={navButtonClassName(false)}>{copy.chrome.myProfileOffline}</span>
-              )}
-
-              <NavLink
-                to="/profile/settings"
-                className={({ isActive }) => navButtonClassName(isActive)}
-                {...hubContextData({
-                  type: "panel",
-                  panelId: "settings",
-                  panelLabel: copy.chrome.panelSettings.label,
-                })}
-              >
-                {copy.chrome.settings}
-              </NavLink>
-
-              <NavLink
-                to="/tools/spin-the-wheel"
-                className={({ isActive }) => navButtonClassName(isActive)}
-                {...hubContextData({
-                  type: "tool",
-                  toolId: "spin-the-wheel",
-                  label: copy.chrome.panelWheel.label,
-                  path: "/tools/spin-the-wheel",
-                  pinned: pinnedIds.includes("spin-the-wheel"),
-                })}
-              >
-                <Workflow className="size-4" />
-                {copy.chrome.wheel}
-              </NavLink>
-            </HubShellObject>
-
-            <HubShellObject
-              as="div"
-              objectId="shell.statusStrip"
-              objectKind="statusStrip"
-              label={copy.chrome.shellObjectStatusStrip}
-              layoutEditMode={layoutEditMode}
-              className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
-            >
-              <span className="rounded-full border border-border/60 bg-background/40 px-2.5 py-1">
-                {copy.chrome.paletteBadge(colorPalette)}
-              </span>
-              <span className="rounded-full border border-border/60 bg-background/40 px-2.5 py-1">
-                {copy.chrome.audioBadge(audioEnabled)}
-              </span>
-              <span className="rounded-full border border-border/60 bg-background/40 px-2.5 py-1">
-                {isDashboardRoute ? copy.chrome.desktopMode : panelMeta.label}
-              </span>
-            </HubShellObject>
-          </div>
+              play={play}
+              copy={copy}
+              navButtonClassName={navButtonClassName}
+              profilePath={profilePath}
+              profileId={profileId}
+              pinnedIds={pinnedIds}
+              navBookmarks={navBookmarks}
+            />
+          </HubShellObject>
         </div>
       </header>
 
@@ -716,7 +1020,13 @@ export default function HubLayout() {
                 </div>
                 <div className="text-xs text-muted-foreground">{panelMeta.detail}</div>
               </div>
-              <div className="min-h-0 flex-1 overflow-auto px-4 py-5 md:px-5 md:py-6">
+              <div
+                className={cn(
+                  "min-h-0 flex-1 overflow-auto px-4 py-5 md:px-5 md:py-6",
+                  layoutEditMode &&
+                    "[&_a]:pointer-events-none [&_button]:pointer-events-none [&_input]:pointer-events-none [&_select]:pointer-events-none [&_textarea]:pointer-events-none [&_[role=button]]:pointer-events-none",
+                )}
+              >
                 <Outlet context={contextValue} />
               </div>
             </HubShellObject>
@@ -734,12 +1044,19 @@ export default function HubLayout() {
         desktopShell={desktopShellState}
         gridSnapEnabled={gridSnapEnabled}
         onToggleGridSnap={toggleGridSnap}
-        onExitLayoutEdit={exitLayoutEdit}
-        onSaveLayout={saveLayoutAck}
+        onCancelLayoutEdit={cancelLayoutEdit}
+        onDoneLayoutEdit={doneLayoutEdit}
+        onSaveLayoutCommitted={() => desktopShellState?.saveLayoutCommitted()}
+        onDiscardLayoutDraft={() => desktopShellState?.discardLayoutDraft()}
+        onUndoLayout={() => desktopShellState?.undoLayout()}
+        onRedoLayout={() => desktopShellState?.redoLayout()}
+        onToggleAutosaveLayout={() => desktopShellState?.toggleAutosaveLayout()}
         copy={copy}
         onDesktopOnlyAction={() => {
           toasts.push({ kind: "info", title: copy.editMode.desktopOnlyToast });
         }}
+        dockPosition={hubPrefs.dock.position}
+        dockScale={hubPrefs.dock.scale}
       />
       <HubCommandPalette
         open={commandOpen}
@@ -751,6 +1068,35 @@ export default function HubLayout() {
         position={shellContextMenu?.position ?? { x: 0, y: 0 }}
         sections={shellMenuSections}
         onClose={closeShellContextMenu}
+      />
+      <HubNavBookmarkDialog
+        open={bookmarkDialog !== null}
+        mode={bookmarkDialog?.mode === "edit" ? "edit" : "add"}
+        initialBookmarkId={bookmarkDialog?.mode === "edit" ? bookmarkDialog.id : null}
+        initialLabel={
+          bookmarkDialog?.mode === "edit" ? (navBookmarks[bookmarkDialog.id]?.label ?? "") : ""
+        }
+        initialPath={
+          bookmarkDialog?.mode === "edit" ? (navBookmarks[bookmarkDialog.id]?.path ?? "") : ""
+        }
+        initialIconKey={
+          bookmarkDialog?.mode === "edit"
+            ? normalizeNavBookmarkIconKey(navBookmarks[bookmarkDialog.id]?.iconKey)
+            : "Bookmark"
+        }
+        copy={copy.navBookmarks}
+        onOpenChange={(next) => {
+          if (!next) {
+            setBookmarkDialog(null);
+          }
+        }}
+        onCommit={commitNavBookmark}
+        onDelete={bookmarkDialog?.mode === "edit" ? deleteNavBookmarkFromDialog : undefined}
+      />
+      <HubPrefsPanel
+        open={prefsPanelOpen}
+        onClose={() => setPrefsPanelOpen(false)}
+        widgets={desktopShellState?.widgets ?? []}
       />
     </div>
   );

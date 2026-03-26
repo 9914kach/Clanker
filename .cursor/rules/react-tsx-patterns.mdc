@@ -1,0 +1,44 @@
+---
+description: React/TSX-mönster för discord-hub-web och dev-tools-web
+globs: apps/**/*.tsx,packages/**/*.tsx
+alwaysApply: false
+---
+
+# React / TSX-mönster
+
+## Komponenter
+
+- Enbart funktionella komponenter; inga klasser
+- Props: typas inline eller som lokal `interface`; exportera om den används på annat håll
+- Håll komponenter smala — extrahera logik till `use-*.ts`-hook när state/effects växer bortom ~3 rader
+- Komponenter i `src/components/`; hooks i `src/hooks/use-*.ts`; en fil per modul
+
+## Neutralen OS-specifikt
+
+- **Strängar i JSX**: aldrig hårdkodade — gå alltid via `copy.*` från `useHubCopy()` / `hub-copy.ts`
+- **Ljud**: kalla `play("dock" | "panel" | "confirm" | "chaos")` vid rätt interaktion; matcha tonen mot åtgärden
+- **Kontextmeny**: annotera interaktiva element med `{...hubContextData({ type: "widget", ... })}` så skalmenyn får rätt kontext
+- **Nya actions**: lägg till i `buildHubActions()` i `hub-actions.ts`; exponera via `HubActionApi` om de ska vara anropbara utifrån
+- **Widget-layout**: använd `HubDesktopWidgetLayout`-typen; snappa mot `HUB_DESKTOP_LAYOUT_GRID` (16 px)
+- **Toner**: håll `tone`-värdet konsekvent (`useful` / `social` / `chaos`) genom action, widget och toast
+
+## Framer Motion
+
+- Återanvänd `hubEnterMotion(reducedMotion, y?, durationScale?)` och `hubPopMotion()` från `src/lib/hub-motion.ts`
+- Definiera inte varianter inline — lägg dem i `hub-motion.ts` om de ska återanvändas
+- `AnimatePresence` wrappas på route- eller layout-nivå, inte djupt inne i listor
+- Skala alltid duration via `hubMotionDurationScale(animationIntensity)` om du respekterar användarens intensitetsinställning
+
+## Hooks och state
+
+- Custom hooks: `src/hooks/use-*.ts`, en hook per fil
+- `useCallback`/`useMemo` bara när identitet spelar roll (ref-callbacks, dyra beräkningar) — inte som default
+- `useEffect` med cleanup-funktion för allt som rör DOM eller externa resurser
+- Datahämtning: React Router v6 loaders eller en dedikerad fetch-hook — inte rå `useEffect`
+
+## Importer och generellt
+
+- Alias `@/` för all intra-app-import; `@clanker/ui` för delat komponentbibliotek
+- Ingen `any` — använd `unknown` + narrowing eller korrekt typ
+- Ingen `style={{}}` när en Tailwind-klass täcker behovet
+- Lämna inte kvar `console.log` i levererad kod

@@ -53,7 +53,28 @@ export type HubDesktopShellState = {
   openAddModuleFlow: () => void;
   /** Wake every hidden desktop module at once. */
   revealAllHiddenWidgets: () => void;
-  /** Confirm layout is persisted (desktop layout already auto-saves). */
+  /** Commit draft layout to persisted storage (and session baseline). */
+  saveLayoutCommitted: () => void;
+  /** Revert draft to the snapshot taken when this edit session started. */
+  discardLayoutDraft: () => void;
+  undoLayout: () => void;
+  redoLayout: () => void;
+  canUndoLayout: boolean;
+  canRedoLayout: boolean;
+  /** Draft differs from session baseline (unsaved in this session). */
+  isLayoutDirty: boolean;
+  autosaveLayoutEnabled: boolean;
+  toggleAutosaveLayout: () => void;
+  selectedWidgetIds: readonly string[];
+  setWidgetSelection: (ids: readonly string[]) => void;
+  toggleWidgetInSelection: (id: string, additive: boolean) => void;
+  clearWidgetSelection: () => void;
+  nudgeSelectedWidgets: (dx: number, dy: number) => void;
+  bringSelectedWidgetsToFront: () => void;
+  moveWidget: (id: string, position: { x: number; y: number }) => void;
+  moveWidgetsByDelta: (ids: readonly string[], dx: number, dy: number) => void;
+  resizeWidget: (id: string, size: { w: number; h: number }) => void;
+  /** @deprecated Use saveLayoutCommitted; kept for context menu parity. */
   acknowledgeLayoutSaved: () => void;
 };
 

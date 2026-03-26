@@ -27,8 +27,16 @@ Uppdatera listan när du börjar eller avslutar något; flytta gärna färdiga p
   - Command palette + action-registry i shell  
   - Dashboard som desktop surface med dragbara widgets och context menu  
   - Central ljudprovider med mute-state  
-  - Shared wheel beta via Yjs/y-websocket med presence och synkade action-resultat
-- [ ] *(lägg till nästa funktion eller milstolpe här)*
+  - Shared wheel beta via Yjs/y-websocket med presence och synkade action-resultat  
+- [x] (2026-03-26) **Layout edit — session, undo/redo, spara/kasta, autospara, resize, guider, multival**  
+  - Utkast vs sparad layout; dock-verktygsrad; kortkommandon i shell; context menu-paritet  
+- [x] (2026-03-26) **Fas 2 — Core customization (HubPrefsPanel + prefs-datamodell)**  
+  - Widget-nivå: storlek (compact/cozy/expanded), tone override, glassOpacity, blur, showSubtitle/badge  
+  - Desktop-nivå: style packs (default/midnight/paper/signal), gridDensity + snapStrength kopplade till layout, dock position + scale, animationsintensitet  
+  - Copy/ton: personality (calm/normal/chaotic), toast-verbositet, meme-frekvens  
+  - UI: `HubPrefsPanel` (slide-in panel, flikar Widget/Desktop/Ton) via "Anpassa"-knapp i headern  
+  - Prefs sparas i `localStorage` via `hub.prefs.v1`; i18n för SV + EN  
+- [ ] **Fas 3–4** — backend-sync av prefs, temamigration, per-widget egna ikoner/paletter, global personalitets-copy i alla strängar
 
 ## Dev tools (`dev-tools-web`)
 
