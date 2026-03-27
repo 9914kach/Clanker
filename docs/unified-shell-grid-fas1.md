@@ -96,3 +96,135 @@ unifiedShellGrid?: {
 - [ ] Valt enum vs två bools för edit-läge.
 - [ ] Lista vilka `orderedLists` som ingår i MVP (t.ex. enbart `primaryNav` först).
 - [ ] API-schema och migrering av tom `unifiedShellGrid` dokumenterad för drift.
+
+---
+
+<<<<<<< ours
+## 4. Leverabler per iteration (RACI + acceptance criteria)
+
+> Syfte: göra arbetet styrbart och repeterbart med tydligt ansvar, godkännande, samråd och informationsflöde.
+
+| Iteration | Leverabler | Responsible (utför) | Accountable (godkänner) | Consulted (säkerhet/drift) | Informed (ledning/support) |
+|-----------|------------|----------------------|---------------------------|-----------------------------|----------------------------|
+| **I1 — Edit mode-kontrakt** | Inför `layoutEditMode.v2` som enum (`off \| desktop \| shell`) + migrering från `hub.shell.layoutEdit.v1`; uppdaterad copy i SV/EN | **Frontend Lead** | **Produktägare (PO)** | **Säkerhetsansvarig**, **SRE/Driftansvarig** | **Engineering Manager**, **Support Lead** |
+| **I2 — API & payload** | Additiv `unifiedShellGrid` i `HubSettingsPayload`; validering i API med bakåtkompatibilitet; dokumenterad merge-strategi | **Backend Lead** | **Tech Lead** | **Säkerhetsansvarig**, **SRE/Driftansvarig** | **Engineering Manager**, **Support Lead** |
+| **I3 — Web-sync & fallback** | Web-klient läser/skriv `orderedLists`; fallback från localStorage; lazy push vid nästa `PUT`; telemetri för sync-fel | **Frontend Lead** | **Tech Lead** | **SRE/Driftansvarig**, **Säkerhetsansvarig** | **Produktägare (PO)**, **Support Lead** |
+| **I4 — Verifiering & release readiness** | E2E-smoke, rollback-check, release-notes, support-runbook för nya edit-lägen | **QA Lead** | **Release Manager** | **SRE/Driftansvarig**, **Säkerhetsansvarig** | **Engineering Manager**, **Support Lead**, **Produktägare (PO)** |
+
+### Acceptance criteria per iteration (roll + deadline)
+
+#### I1 — Edit mode-kontrakt
+
+1. **Migrering fungerar för befintliga användare** (`true` → `desktop`, `false` → `off`) utan förlust av layoutdata.  
+   - **Ägare:** Frontend Lead  
+   - **Deadline:** **2026-04-08**
+2. **Shell-reorder är inaktivt i `desktop`-läge och aktivt i `shell`-läge** enligt policy i Fas 0.  
+   - **Ägare:** Frontend Lead  
+   - **Deadline:** **2026-04-08**
+3. **SV/EN-copy för edit-lägen finns och används i UI** (inga hårdkodade strängar).  
+   - **Ägare:** Frontend Lead  
+   - **Deadline:** **2026-04-09**
+4. **PO sign-off på interaktionsflöde** efter demo.  
+   - **Ägare:** Produktägare (PO)  
+   - **Deadline:** **2026-04-10**
+
+#### I2 — API & payload
+
+1. **`GET`/`PUT /api/me/hub-settings` accepterar payload både med och utan `unifiedShellGrid`**.  
+   - **Ägare:** Backend Lead  
+   - **Deadline:** **2026-04-15**
+2. **Schema-validering blockerar ogiltiga `itemIds` per list-id** med tydligt felmeddelande.  
+   - **Ägare:** Backend Lead  
+   - **Deadline:** **2026-04-15**
+3. **Säkerhetsgranskning av payload-yta klar** (input-validering, storleksgränser, missbruksfall).  
+   - **Ägare:** Säkerhetsansvarig  
+   - **Deadline:** **2026-04-16**
+4. **Drift har godkänt deploy/rollback-rutin för schemaändringen**.  
+   - **Ägare:** SRE/Driftansvarig  
+   - **Deadline:** **2026-04-17**
+
+#### I3 — Web-sync & fallback
+
+1. **Klient använder `orderedLists` från server när tillgängligt, annars fallback till localStorage**.  
+   - **Ägare:** Frontend Lead  
+   - **Deadline:** **2026-04-22**
+2. **Lazy push från fallback-data till server sker exakt en gång per profil** (idempotent).  
+   - **Ägare:** Frontend Lead  
+   - **Deadline:** **2026-04-22**
+3. **Konfliktpolicy (last-write-wins eller fältvis merge) är implementerad och dokumenterad**.  
+   - **Ägare:** Tech Lead  
+   - **Deadline:** **2026-04-23**
+4. **Support har verifierat felsökningssteg för synkavvikelser i runbook**.  
+   - **Ägare:** Support Lead  
+   - **Deadline:** **2026-04-24**
+
+#### I4 — Verifiering & release readiness
+
+1. **E2E-smoke passerar på staging för Desktop Edit + Shell Edit + sync**.  
+   - **Ägare:** QA Lead  
+   - **Deadline:** **2026-04-29**
+2. **Rollback-test är genomfört utan dataförlust i `hub_user_settings.payload`**.  
+   - **Ägare:** Release Manager  
+   - **Deadline:** **2026-04-29**
+3. **Release notes och support-runbook publicerade och kommunicerade**.  
+   - **Ägare:** Release Manager  
+   - **Deadline:** **2026-04-30**
+4. **Slutligt go/no-go-beslut dokumenterat** med signerad ansvarskedja (RACI).  
+   - **Ägare:** Engineering Manager  
+   - **Deadline:** **2026-04-30**
+=======
+## 4. Datahantering (granskningsplan)
+
+### 4.1 Klassning av artefakter
+
+Varje artefakt som tas fram under analys, test och verifiering ska märkas med en informationsklass innan den delas:
+
+| Artefakt | Exempel | Klass |
+|----------|---------|-------|
+| Publik dokumentation | Beslutsunderlag utan miljöspecifika detaljer | **Publik** |
+| Intern drift-/debug-dokumentation | Interna flödesbeskrivningar, icke-publik topologi | **Intern** |
+| Råloggar och export med potentiella identifierare | request/response-loggar, Teleporter-export, debug-token-spår | **Känslig** |
+
+**Minimikrav:** klassning måste vara explicit i artefaktens header eller ärendetext innan bilaga.
+
+### 4.2 Maskningsregler före delning
+
+Innan en artefakt delas utanför ursprunglig felsökningskontext ska följande maskning tillämpas:
+
+- Klient-IP ska hash:as (stabil env-saltad hash), aldrig visas i klartext.
+- Interna zonnamn, hostnames och interna URI:er ska redigeras eller ersättas med neutrala alias.
+- Tokens, session-id och korrelations-id med säkerhetsvärde ska maskas eller trunkeras.
+- Person-/kontoidentifierare som inte behövs för felsökningen ska pseudonymiseras.
+
+**Policy:** om osäkerhet finns, behandla artefakten som **känslig** och maska innan delning.
+
+### 4.3 Retention-policy
+
+Grundpolicy för lagringstid (om inte striktare regel gäller i incident eller avtal):
+
+- **Råloggar:** 14 dagar.
+- **Sanerade rapporter / sammanfattningar:** 90 dagar.
+- **Temporära felsökningsutdrag:** rensas så snart ärendet är stängt, senast inom 14 dagar.
+
+Avvikelser ska dokumenteras med orsak, ägare och slutdatum för extra retention.
+
+### 4.4 Delningspolicy: debug-token och Teleporter-export
+
+`debug-token` och `Teleporter`-export ska hanteras i separat flöde:
+
+- Delas endast via separat, avsedd kanal (inte i öppna issue-/PR-kommentarer).
+- Åtkomst ska vara tidsbegränsad och minimerad till berörda mottagare.
+- Länkar/exporter ska ha utgångstid och återkallas när felsökningen är klar.
+- Referens i ärende/PR ska peka på **att** material finns, men inte innehålla hemligt innehåll.
+
+### 4.5 Obligatorisk checklista före bilaga i ärende/PR
+
+Följande punkter måste passera innan artefakter bifogas i issue, incident eller PR:
+
+- [ ] Artefakt har klassning: publik / intern / känslig.
+- [ ] Maskning är genomförd enligt policy (IP, zonnamn, tokens, identifierare).
+- [ ] Retention-tid är satt enligt policy och dokumenterad.
+- [ ] Eventuell debug-token/Teleporter-export delas i separat kanal med tidsbegränsad åtkomst.
+- [ ] Ägare för artefakten är utsedd (vem ansvarar för borttag/rensning).
+- [ ] Slutkontroll gjord: inga känsliga råvärden kvar i bilagan.
+>>>>>>> theirs

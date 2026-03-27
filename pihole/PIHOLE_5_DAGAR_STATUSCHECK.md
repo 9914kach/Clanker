@@ -98,6 +98,28 @@ En enkel loggrad per ändring räcker.
 
 ---
 
+
+## 7b) Tolkning och heuristiska trösklar
+
+För att bedöma stabilitet konsekvent, följ samma mätmodell vid varje uppföljning:
+
+1. **Tre mätserier (måste finnas i samma körning):**
+   - cache-hit: `p50` och `p95`
+   - cache-miss: `p50` och `p95`
+   - andel felkoder: `SERVFAIL` + `NXDOMAIN` som andel av total query-volym
+2. **Fast mätfönster:**
+   - Basfönster: senaste **24h**
+   - Peakfönster: sammanhängande **2h** med högst query-volym inom samma dygn
+3. **Tydlig query-tagging i SQL/loggparser:**
+   - Märk varje rad som minst `cache_hit` eller `cache_miss` innan aggregering
+   - Exempel på enkel SQL-idé: `CASE WHEN cached = 1 THEN 'cache_hit' ELSE 'cache_miss' END AS query_tag`
+   - Säkerställ att parsern även normaliserar svarskod så `SERVFAIL`/`NXDOMAIN` kan räknas exakt
+4. **Go/No-go-regel (hård):**
+   - **Go** endast om **alla tre** mätserier ligger inom definierade gränser i både 24h- och 2h-fönster
+   - **No-go** om någon serie bryter gränsen i något av fönstren
+
+> Rekommendation: dokumentera tröskelvärden i samma loggrad som mätresultatet (ex. `hit_p95_ms<=X`, `miss_p95_ms<=Y`, `servfail_nxdomain_pct<=Z`) för spårbarhet.
+
 ## 7) Beslutsregel efter 5 dagar
 
 Om allt fungerar stabilt:
@@ -121,6 +143,78 @@ Om du vill öka integritet senare:
 - Uppdatera gravity/blocklists
 - Snabb koll i Query Log på nya false positives
 - Backup/export av Pi-hole-installningen (Teleporter)
+
+---
+
+
+## Separat rollback-avsnitt
+
+Använd detta avsnitt om en förändring orsakar avbrott eller om någon gate i verifieringen fallerar.
+
+### Exakt ordning (måste följas)
+
+1. **Återställ konfig** till senast känd fungerande version.
+2. **Restart** av tjänster (minst `clanker-pihole`, vid behov hela compose-stacken).
+3. **DNS-smoke** (3 snabba tester mot tillåten + blockerad domän).
+4. **Policy-smoke** (bekräfta att policy/filterregler beter sig enligt förväntan).
+5. **Portscan** (bekräfta att endast avsedda portar är öppna).
+
+> Kör stegen i exakt ordning ovan. Hoppa inte över steg även om ett tidigare steg ser grönt ut.
+
+### Minimikrav för status “recovered”
+
+Sätt status till **recovered** först när samtliga krav är uppfyllda:
+
+- **DNS-smoke: 3/3 passerar** (alla tre tester gröna).
+- **Inga FTL-fel senaste 10 minuterna** i logg.
+- Policy-smoke visar förväntat resultat utan regressionsfel.
+- Portscan visar inga oplanerade/exponerade portar.
+
+### Eskaleringsregel om gate fallerar
+
+Om någon gate fallerar (DNS-smoke, policy-smoke eller portscan):
+
+- **Freeze:a ändringar direkt** (inga fler config- eller deploy-ändringar).
+- **Återgå till senaste image/backup** enligt återställningsrutin.
+- Dokumentera fel, tidpunkt och vilken gate som fallerade innan nya försök.
+
+### Protokollmall (signeras av ansvarig)
+
+Kopiera mallen nedan vid varje rollback/recovery:
+
+```text
+Rollback-/Recovery-protokoll
+
+Datum: ____-__-__
+Starttid (UTC): __:__
+Sluttid (UTC): __:__
+Ansvarig (namn): ____________________
+Signatur: ____________________
+
+Trigger/incident:
+- ________________________________________________
+
+Genomförd ordning (markera):
+[ ] 1) Återställ konfig
+[ ] 2) Restart
+[ ] 3) DNS-smoke
+[ ] 4) Policy-smoke
+[ ] 5) Portscan
+
+Gate-resultat:
+- DNS-smoke: [ ] 3/3 pass   [ ] Ej godkänd
+- FTL-fel senaste 10 min: [ ] Inga fel   [ ] Fel finns
+- Policy-smoke: [ ] Godkänd   [ ] Ej godkänd
+- Portscan: [ ] Godkänd   [ ] Ej godkänd
+
+Slutstatus:
+[ ] Recovered
+[ ] Eskalerad (freeze + återgång till senaste image/backup)
+
+Kommentarer/åtgärder:
+- ________________________________________________
+- ________________________________________________
+```
 
 ---
 
