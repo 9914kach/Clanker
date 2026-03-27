@@ -1,5 +1,8 @@
 # Clanker Vision
 
+Implementation-oriented task backlog for the Discord hub feel:
+- [Discord Hub — Vision Feel Task Backlog](./discord-hub-feel-tasks.md)
+
 ## Overview
 
 Clanker is not meant to be a corporate dashboard, a sterile admin panel, or a generic community tool.

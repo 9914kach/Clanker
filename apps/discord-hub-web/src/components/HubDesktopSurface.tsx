@@ -36,7 +36,20 @@ export type HubDesktopWidget = {
   content: ReactNode;
 };
 
+export type HubDesktopContainer = {
+  id: string;
+  label: string;
+  description: string;
+  tone: "useful" | "social" | "chaos";
+  icon: ComponentType<{ className?: string }>;
+  content: ReactNode;
+};
+
 export type { HubDesktopWidgetLayout };
+
+type HubSurfaceCardItem =
+  | ({ kind: "widget"; hideable: true } & HubDesktopWidget)
+  | ({ kind: "container"; hideable: false } & HubDesktopContainer);
 
 const GUIDE_THRESHOLD = 6;
 
@@ -147,7 +160,7 @@ function collectGuideLines(
 }
 
 function DraggableWidgetCard({
-  widget,
+  item,
   layout,
   visualPrefs,
   surfaceRef,
@@ -165,7 +178,7 @@ function DraggableWidgetCard({
   onResizeWidget,
   resizeAria,
 }: {
-  widget: HubDesktopWidget;
+  item: HubSurfaceCardItem;
   layout: HubDesktopWidgetLayout;
   visualPrefs: HubWidgetVisualPrefs;
   surfaceRef: React.RefObject<HTMLDivElement | null>;
@@ -187,7 +200,7 @@ function DraggableWidgetCard({
   const ds = copy.desktopSurface;
   const reducedMotion = useReducedMotion() ?? false;
   const dragControls = useDragControls();
-  const Icon = widget.icon;
+  const Icon = item.icon;
   const [widgetDragActive, setWidgetDragActive] = useState(false);
   const pointerFollow = useHubMildMultiSpringFollow({
     enabled: layoutEditMode && !reducedMotion,
@@ -201,18 +214,18 @@ function DraggableWidgetCard({
   const snap = (value: number) => (gridSnapEnabled ? Math.round(value / grid) * grid : value);
 
   const groupDragIds = useMemo(() => {
-    if (selectedWidgetIds.includes(widget.id) && selectedWidgetIds.length > 1) {
+    if (selectedWidgetIds.includes(item.id) && selectedWidgetIds.length > 1) {
       return selectedWidgetIds.filter((id) => visibleWidgetIds.includes(id));
     }
-    return [widget.id];
-  }, [selectedWidgetIds, visibleWidgetIds, widget.id]);
+    return [item.id];
+  }, [item.id, selectedWidgetIds, visibleWidgetIds]);
 
   const startDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
     if (!layoutEditMode) {
       return;
     }
     layoutStartRef.current = { x: layout.x, y: layout.y };
-    onFocus(widget.id);
+    onFocus(item.id);
     setDragPreview({ x: layout.x, y: layout.y });
     dragControls.start(event);
   };
@@ -266,8 +279,8 @@ function DraggableWidgetCard({
     }
     event.stopPropagation();
     event.preventDefault();
-    onSelect(widget.id, false);
-    onFocus(widget.id);
+    onSelect(item.id, false);
+    onFocus(item.id);
     resizeStateRef.current = {
       kind,
       startW: layout.w,
@@ -324,14 +337,14 @@ function DraggableWidgetCard({
     resizeStateRef.current = null;
     const { w, h } = resizeCommitRef.current;
     if (w !== startW || h !== startH) {
-      onResizeWidget(widget.id, { w, h });
+      onResizeWidget(item.id, { w, h });
     }
     setResizePreview(null);
   };
 
   const displayW = resizePreview?.w ?? layout.w;
   const displayH = resizePreview?.h ?? layout.h;
-  const effectiveTone = effectiveWidgetTone(widget.tone, visualPrefs.toneOverride);
+  const effectiveTone = effectiveWidgetTone(item.tone, visualPrefs.toneOverride);
   const cardOpacity = visualPrefs.glassOpacity / 100;
   const cardBgStyle = {
     backgroundColor: `color-mix(in oklab, var(--card) ${Math.round(cardOpacity * 100)}%, transparent)`,
@@ -342,7 +355,7 @@ function DraggableWidgetCard({
       return;
     }
     const additive = event.shiftKey || event.metaKey || event.ctrlKey;
-    onSelect(widget.id, additive);
+    onSelect(item.id, additive);
   };
 
   const pointerFollowProps =
@@ -368,7 +381,7 @@ function DraggableWidgetCard({
           return;
         }
         layoutStartRef.current = { x: layout.x, y: layout.y };
-        onFocus(widget.id);
+        onFocus(item.id);
         setWidgetDragActive(true);
         pointerFollow.reset();
       }}
@@ -414,9 +427,9 @@ function DraggableWidgetCard({
       className="absolute"
       {...hubContextData({
         type: "widget",
-        widgetId: widget.id,
-        widgetLabel: widget.label,
-        widgetTone: widget.tone,
+        widgetId: item.id,
+        widgetLabel: item.label,
+        widgetTone: item.tone,
       })}
     >
       {layoutEditMode && guideLines && (guideLines.vertical.length > 0 || guideLines.horizontal.length > 0) ? (
@@ -477,10 +490,10 @@ function DraggableWidgetCard({
                 </div>
               )}
               <div className="min-w-0 flex-1">
-                <CardTitle className="truncate text-base">{widget.label}</CardTitle>
+                <CardTitle className="truncate text-base">{item.label}</CardTitle>
                 {visualPrefs.showSubtitle ? (
                   <CardDescription className="mt-1 truncate">
-                    {widget.description}
+                    {item.description}
                   </CardDescription>
                 ) : null}
               </div>
@@ -497,7 +510,7 @@ function DraggableWidgetCard({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    aria-label={ds.dragAria(widget.label)}
+                    aria-label={ds.dragAria(item.label)}
                     className="cursor-grab active:cursor-grabbing"
                     onPointerDown={startDrag}
                   >
@@ -508,15 +521,15 @@ function DraggableWidgetCard({
                 <TooltipContent>{ds.dragTooltip}</TooltipContent>
               </Tooltip>
             ) : null}
-            {layoutEditMode ? (
+            {layoutEditMode && item.hideable ? (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon-sm"
-                    onClick={() => onHide(widget.id)}
-                    aria-label={ds.hideAria(widget.label)}
+                    onClick={() => onHide(item.id)}
+                    aria-label={ds.hideAria(item.label)}
                   >
                     <Minus />
                   </Button>
@@ -526,7 +539,7 @@ function DraggableWidgetCard({
             ) : null}
           </div>
         </CardHeader>
-        <CardContent className="relative z-20 pt-5">{widget.content}</CardContent>
+        <CardContent className="relative z-20 pt-5">{item.content}</CardContent>
 
         {layoutEditMode ? (
           <>
@@ -567,6 +580,7 @@ function DraggableWidgetCard({
 
 export default function HubDesktopSurface({
   widgets,
+  containers = [],
   layouts,
   hiddenWidgetIds,
   widgetVisualPrefsById = {},
@@ -584,8 +598,10 @@ export default function HubDesktopSurface({
   onSelectWidget,
   onSetWidgetSelection,
   onClearSelection,
+  variant = "desktop",
 }: {
   widgets: readonly HubDesktopWidget[];
+  containers?: readonly HubDesktopContainer[];
   layouts: Readonly<Record<string, HubDesktopWidgetLayout>>;
   hiddenWidgetIds: readonly string[];
   widgetVisualPrefsById?: Partial<Record<string, HubWidgetVisualPrefs>>;
@@ -603,6 +619,7 @@ export default function HubDesktopSurface({
   onSelectWidget?: (id: string, additive: boolean) => void;
   onSetWidgetSelection?: (ids: readonly string[]) => void;
   onClearSelection?: () => void;
+  variant?: "desktop" | "panel";
 }) {
   const { copy } = useHubLocale();
   const ds = copy.desktopSurface;
@@ -634,16 +651,20 @@ export default function HubDesktopSurface({
       /* no-op when resize not wired */
     });
 
-  const selectWidget = onSelectWidget ?? ((_id: string, _additive: boolean) => undefined);
+  const selectWidget = onSelectWidget ?? (() => undefined);
   const clearSelection = onClearSelection ?? (() => undefined);
 
-  const visibleWidgets = useMemo(
-    () =>
-      widgets
-        .filter((widget) => !hiddenWidgetIds.includes(widget.id))
-        .sort((left, right) => (layouts[left.id]?.z ?? 0) - (layouts[right.id]?.z ?? 0)),
-    [hiddenWidgetIds, layouts, widgets],
-  );
+  const items = useMemo(() => {
+    const ws: HubSurfaceCardItem[] = widgets.map((w) => ({ ...w, kind: "widget", hideable: true }));
+    const cs: HubSurfaceCardItem[] = containers.map((c) => ({ ...c, kind: "container", hideable: false }));
+    return [...ws, ...cs];
+  }, [containers, widgets]);
+
+  const visibleWidgets = useMemo(() => {
+    return items
+      .filter((item) => item.kind === "container" || !hiddenWidgetIds.includes(item.id))
+      .sort((left, right) => (layouts[left.id]?.z ?? 0) - (layouts[right.id]?.z ?? 0));
+  }, [hiddenWidgetIds, items, layouts]);
 
   const visibleWidgetIds = useMemo(() => visibleWidgets.map((w) => w.id), [visibleWidgets]);
 
@@ -674,7 +695,7 @@ export default function HubDesktopSurface({
     }),
   );
 
-  const setWidgetSelectionBatch = onSetWidgetSelection ?? ((_ids: readonly string[]) => undefined);
+  const setWidgetSelectionBatch = onSetWidgetSelection ?? (() => undefined);
   const marqueeEnabled =
     layoutEditMode && Boolean(onClearSelection) && Boolean(onSetWidgetSelection);
 
@@ -694,18 +715,25 @@ export default function HubDesktopSurface({
   return (
     <motion.section
       {...hubEnterMotion(reducedMotion, 12, durationScale)}
-      className="relative flex min-h-full flex-1 overflow-hidden"
+      className={cn(
+        "relative overflow-hidden",
+        variant === "desktop" ? "flex min-h-full flex-1" : "rounded-[1.75rem] border border-border/55 bg-background/30",
+      )}
       {...hubContextData({ type: "shell.surface", area: "desktop" })}
     >
-      {packBg ? (
-        <div className="absolute inset-0 transition-all duration-700" style={{ backgroundImage: packBg }} />
-      ) : (
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,color-mix(in_oklab,var(--primary)_18%,transparent),transparent_30%),radial-gradient(circle_at_bottom_right,color-mix(in_oklab,var(--accent)_12%,transparent),transparent_32%)]" />
-      )}
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,color-mix(in_oklab,var(--border)_26%,transparent)_1px,transparent_1px),linear-gradient(to_bottom,color-mix(in_oklab,var(--border)_18%,transparent)_1px,transparent_1px)] bg-[size:132px_132px] opacity-45" />
+      {variant === "desktop" ? (
+        <>
+          {packBg ? (
+            <div className="absolute inset-0 transition-all duration-700" style={{ backgroundImage: packBg }} />
+          ) : (
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,color-mix(in_oklab,var(--primary)_18%,transparent),transparent_30%),radial-gradient(circle_at_bottom_right,color-mix(in_oklab,var(--accent)_12%,transparent),transparent_32%)]" />
+          )}
+          <div className="absolute inset-0 bg-[linear-gradient(to_right,color-mix(in_oklab,var(--border)_26%,transparent)_1px,transparent_1px),linear-gradient(to_bottom,color-mix(in_oklab,var(--border)_18%,transparent)_1px,transparent_1px)] bg-[size:132px_132px] opacity-45" />
+        </>
+      ) : null}
 
       <div className="relative flex min-h-full flex-1 flex-col">
-        {layoutEditMode ? (
+        {layoutEditMode && variant === "desktop" ? (
           <div className="sticky top-0 z-30 border-b border-primary/35 bg-primary/15 px-4 py-2 text-center text-xs font-medium text-primary shadow-sm backdrop-blur-md md:px-5">
             <span className="mr-2 font-semibold">{ds.layoutEditBanner}</span>
             <span className="text-muted-foreground">{ds.layoutEditHint}</span>
@@ -714,7 +742,7 @@ export default function HubDesktopSurface({
         ) : null}
 
         <div className="flex flex-1 flex-col gap-4 p-4 md:p-5">
-          {hiddenWidgets.length > 0 ? (
+          {variant === "desktop" && hiddenWidgets.length > 0 ? (
             <HubShellObject
               as="div"
               id="hub-spawn-modules"
@@ -740,7 +768,10 @@ export default function HubDesktopSurface({
               {visibleWidgets.map((widget) => {
                 const Icon = widget.icon;
                 const selectedMobile = selectedWidgetIds.includes(widget.id);
-                const vp = { ...DEFAULT_WIDGET_VISUAL_PREFS, ...widgetVisualPrefsById[widget.id] };
+                const vp =
+                  widget.kind === "widget"
+                    ? { ...DEFAULT_WIDGET_VISUAL_PREFS, ...widgetVisualPrefsById[widget.id] }
+                    : { ...DEFAULT_WIDGET_VISUAL_PREFS, showToneBadge: false, showSubtitle: false };
                 const effectiveToneMobile = effectiveWidgetTone(widget.tone, vp.toneOverride);
                 const mobileCardOpacity = vp.glassOpacity / 100;
                 const mobileCardBg = {
@@ -792,7 +823,7 @@ export default function HubDesktopSurface({
                         {vp.showToneBadge ? (
                           <Badge variant={toneVariant(effectiveToneMobile)}>{effectiveToneMobile}</Badge>
                         ) : null}
-                        {layoutEditMode ? (
+                        {layoutEditMode && widget.hideable ? (
                           <Button
                             type="button"
                             variant="ghost"
@@ -835,13 +866,15 @@ export default function HubDesktopSurface({
                 aria-hidden
               />
             ) : null}
-            <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center justify-between px-5 py-4 text-xs uppercase tracking-[0.22em] text-muted-foreground">
-              <span className="inline-flex items-center gap-2">
-                <MonitorCog className="size-3.5" />
-                {ds.personalShell}
-              </span>
-              <span>{ds.rightClickHint}</span>
-            </div>
+            {variant === "desktop" ? (
+              <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center justify-between px-5 py-4 text-xs uppercase tracking-[0.22em] text-muted-foreground">
+                <span className="inline-flex items-center gap-2">
+                  <MonitorCog className="size-3.5" />
+                  {ds.personalShell}
+                </span>
+                <span>{ds.rightClickHint}</span>
+              </div>
+            ) : null}
 
             {marqueeBox ? (
               <div
@@ -871,9 +904,13 @@ export default function HubDesktopSurface({
                 return (
                   <DraggableWidgetCard
                     key={widget.id}
-                    widget={widget}
+                    item={widget}
                     layout={layout}
-                    visualPrefs={{ ...DEFAULT_WIDGET_VISUAL_PREFS, ...widgetVisualPrefsById[widget.id] }}
+                    visualPrefs={
+                      widget.kind === "widget"
+                        ? { ...DEFAULT_WIDGET_VISUAL_PREFS, ...widgetVisualPrefsById[widget.id] }
+                        : { ...DEFAULT_WIDGET_VISUAL_PREFS, showToneBadge: false, showSubtitle: false }
+                    }
                     surfaceRef={surfaceRef}
                     surfaceHeight={surfaceHeight}
                     layoutEditMode={layoutEditMode}

@@ -1,6 +1,7 @@
 import {
   Dices,
   Gauge,
+  NotebookPen,
   Orbit,
   Sparkles,
   UserRound,
@@ -12,7 +13,14 @@ import { Badge } from "@clanker/ui/components/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@clanker/ui/components/card";
 import { apiUrl } from "@/config";
 import HubDesktopSurface, { type HubDesktopWidget } from "@/components/HubDesktopSurface";
+<<<<<<< ours
+<<<<<<< ours
+=======
+=======
+>>>>>>> theirs
+import HubCustomModuleBuilder from "@/components/HubCustomModuleBuilder";
 import { DEFAULT_WIDGET_LAYOUTS } from "@/lib/hub-dashboard-layout-storage";
+>>>>>>> theirs
 import { useHubAudio } from "@/components/HubAudioProvider";
 import { useHubToasts } from "@/components/HubToastProvider";
 import { useHubLocale } from "@/components/locale-provider";
@@ -65,7 +73,7 @@ export default function DashboardPage() {
   } = useHubLayout();
   const toasts = useHubToasts();
   const { play, enabled: audioEnabled, toggleEnabled: toggleAudio } = useHubAudio();
-  const { colorPalette, setColorPalette } = useTheme();
+  const { colorPalette } = useTheme();
   const { prefs } = useHubPrefs();
   const [guildWidget, setGuildWidget] = useState<GuildWidgetData>({
     summary: null,
@@ -102,7 +110,6 @@ export default function DashboardPage() {
     clearWidgetSelection,
     nudgeSelectedWidgets,
     bringSelectedWidgetsToFront,
-    mutateSavedOrDraft,
     revealAllHiddenWidgets: surfaceRevealAll,
     resetWidgetPosition: surfaceResetWidgetPosition,
     resetDesktopLayout: surfaceResetDesktopLayout,
@@ -392,7 +399,16 @@ export default function DashboardPage() {
       ),
     };
 
-    return [welcomeWidget, serverPulseWidget, wheelWidget, presenceWidget, ritualWidget];
+    const customModuleWidget: HubDesktopWidget = {
+      id: "custom-modules",
+      label: "Custom modules",
+      description: "Add modules and edit their size + content.",
+      tone: "useful",
+      icon: NotebookPen,
+      content: <HubCustomModuleBuilder storageKey={`hub.custom.modules.${profile.id}.v1`} />,
+    };
+
+    return [welcomeWidget, serverPulseWidget, wheelWidget, presenceWidget, ritualWidget, customModuleWidget];
   }, [
     audioEnabled,
     chaosLines,
@@ -531,22 +547,6 @@ export default function DashboardPage() {
       message: copy.editMode.layoutDiscardedMessage,
     });
   }, [copy.editMode.layoutDiscardedMessage, copy.editMode.layoutDiscardedTitle, discardLayoutDraft, toasts]);
-
-  const cyclePalette = useCallback(() => {
-    const next =
-      colorPalette === "violett-neutral"
-        ? "green"
-        : colorPalette === "green"
-          ? "terminal-dark-russian"
-          : "violett-neutral";
-    setColorPalette(next);
-    play("panel");
-    toasts.push({
-      kind: "success",
-      title: d.toastPaletteSwitched,
-      message: next,
-    });
-  }, [colorPalette, d.toastPaletteSwitched, play, setColorPalette, toasts]);
 
   const triggerChaosPulse = useCallback(() => {
     const memeFreq = prefs.copyStyle.memeFrequency;

@@ -48,6 +48,7 @@ Uppdatera listan när du börjar eller avslutar något; flytta gärna färdiga p
 ## Övrigt
 
 - [ ] *(t.ex. domän + HTTPS för discord-hub, backup-rutin)*
+- [ ] **Återskapa audit-referenser** (refereras i audit-skill): `references/clanker-repo-map.md` och `references/audit-checklist.md`
 
 ## Länkade detaljbackloggar
 

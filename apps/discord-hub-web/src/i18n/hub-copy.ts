@@ -408,6 +408,7 @@ export type HubCopy = {
     noLeaguePublic: string;
     rankDash: string;
     regionDash: string;
+    separator: string;
     syncedShort: (date: string) => string;
     leagueStatsTitle: string;
     leagueStatsDescFetched: (ts: string, account: string) => string;
@@ -418,10 +419,13 @@ export type HubCopy = {
     regionLabel: string;
     rankedQueues: string;
     noRankedReturned: string;
+    rankedEntryLine: (tier: string, rank: string, lp: number) => string;
+    rankedEntryRecord: (wins: number, losses: number, hotStreakLabel: string) => string;
     recentMatches: string;
     noMatchHistory: string;
     win: string;
     loss: string;
+    matchStatsLine: (kills: number, deaths: number, assists: number, cs: number, level: number) => string;
     steamTitle: string;
     steamDesc: string;
     steamBody: string;
@@ -1208,6 +1212,7 @@ const SV: HubCopy = {
     noLeaguePublic: "Ingen League-koppling publicerad.",
     rankDash: "Rank: —",
     regionDash: "Region: —",
+    separator: "·",
     syncedShort: (d) => `Synkad ${d}`,
     leagueStatsTitle: "League — stats",
     leagueStatsDescFetched: (ts, account) =>
@@ -1221,10 +1226,14 @@ const SV: HubCopy = {
     regionLabel: "Region",
     rankedQueues: "Ranked-köer",
     noRankedReturned: "Ingen ranked-data returnerades för spelaren.",
+    rankedEntryLine: (tier, rank, lp) => `${tier} ${rank} · ${lp} LP`,
+    rankedEntryRecord: (wins, losses, hotStreakLabel) => `${wins}V / ${losses}F${hotStreakLabel}`,
     recentMatches: "Senaste matcher",
     noMatchHistory: "Ingen matchhistorik i denna snapshot.",
     win: "Vinst",
     loss: "Förlust",
+    matchStatsLine: (kills, deaths, assists, cs, level) =>
+      `${kills}/${deaths}/${assists} KDA · ${cs} CS · nivå ${level}`,
     steamTitle: "Steam",
     steamDesc: "Reserverat för nästa integration.",
     steamBody:
@@ -2016,6 +2025,7 @@ const EN: HubCopy = {
     noLeaguePublic: "No League link published.",
     rankDash: "Rank: —",
     regionDash: "Region: —",
+    separator: "·",
     syncedShort: (d) => `Synced ${d}`,
     leagueStatsTitle: "League — stats",
     leagueStatsDescFetched: (ts, account) => `Data fetched ${ts} · account ${account}`,
@@ -2026,10 +2036,14 @@ const EN: HubCopy = {
     regionLabel: "Region",
     rankedQueues: "Ranked queues",
     noRankedReturned: "No ranked data returned for this player.",
+    rankedEntryLine: (tier, rank, lp) => `${tier} ${rank} · ${lp} LP`,
+    rankedEntryRecord: (wins, losses, hotStreakLabel) => `${wins}W / ${losses}L${hotStreakLabel}`,
     recentMatches: "Recent matches",
     noMatchHistory: "No match history in this snapshot.",
     win: "Win",
     loss: "Loss",
+    matchStatsLine: (kills, deaths, assists, cs, level) =>
+      `${kills}/${deaths}/${assists} KDA · ${cs} CS · lvl ${level}`,
     steamTitle: "Steam",
     steamDesc: "Reserved for the next integration.",
     steamBody: "Steam will show here once linking and backend exist — same card style as the hub.",

@@ -11,7 +11,6 @@ import { Button } from "@clanker/ui/components/button";
 import { Input } from "@clanker/ui/components/input";
 import { Badge } from "@clanker/ui/components/badge";
 import { Separator } from "@clanker/ui/components/separator";
-import { Switch } from "@clanker/ui/components/switch";
 import {
   Select,
   SelectContent,
@@ -19,10 +18,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@clanker/ui/components/select";
-import { Slider } from "@clanker/ui/components/slider";
 import { cn } from "@clanker/ui/lib/utils";
 import { useHubLocale } from "@/components/locale-provider";
 import { useHubPrefs } from "@/components/HubPrefsProvider";
+import {
+  HubPrefChoiceCard,
+  HubPrefRow,
+  HubPrefSectionHeading,
+  HubPrefSliderRow,
+  HubPrefToggleRow,
+  HubSegmentControl,
+  type HubSegmentOption,
+} from "@/components/HubPrefsControls";
 import {
   DEFAULT_WIDGET_VISUAL_PREFS,
   DEFAULT_HUB_PREFS,
@@ -50,101 +57,6 @@ export type HubPrefsWidgetEntry = {
 };
 
 type PanelTab = "widget" | "desktop" | "copy";
-
-type SegmentOption<T extends string> = {
-  value: T;
-  label: string;
-};
-
-function SegmentControl<T extends string>({
-  options,
-  value,
-  onChange,
-  className,
-}: {
-  options: SegmentOption<T>[];
-  value: T;
-  onChange: (v: T) => void;
-  className?: string;
-}) {
-  return (
-    <div className={cn("flex rounded-xl border border-border/60 bg-muted/40 p-0.5", className)}>
-      {options.map((opt) => (
-        <button
-          key={opt.value}
-          type="button"
-          className={cn(
-            "flex-1 rounded-[0.6rem] px-2.5 py-1.5 text-xs font-medium transition",
-            value === opt.value
-              ? "bg-background text-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground",
-          )}
-          onClick={() => onChange(opt.value)}
-        >
-          {opt.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function PrefRow({
-  label,
-  hint,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-sm font-medium">{label}</span>
-        {children}
-      </div>
-      {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
-    </div>
-  );
-}
-
-function PrefRowToggle({
-  label,
-  description,
-  checked,
-  onCheckedChange,
-  id,
-}: {
-  label: string;
-  description?: string;
-  checked: boolean;
-  onCheckedChange: (v: boolean) => void;
-  id: string;
-}) {
-  return (
-    <div className="flex items-start justify-between gap-3">
-      <div className="flex-1">
-        <label htmlFor={id} className="text-sm font-medium cursor-pointer">
-          {label}
-        </label>
-        {description ? (
-          <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
-        ) : null}
-      </div>
-      <Switch id={id} checked={checked} onCheckedChange={onCheckedChange} />
-    </div>
-  );
-}
-
-function SectionHeading({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="mb-3 mt-5 first:mt-0">
-      <h3 className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-        {children}
-      </h3>
-    </div>
-  );
-}
 
 function WidgetTab({ widgets }: { widgets: readonly HubPrefsWidgetEntry[] }) {
   const { copy } = useHubLocale();
@@ -174,20 +86,20 @@ function WidgetTab({ widgets }: { widgets: readonly HubPrefsWidgetEntry[] }) {
     });
   };
 
-  const sizeOptions: SegmentOption<HubWidgetSizePreset>[] = [
+  const sizeOptions: HubSegmentOption<HubWidgetSizePreset>[] = [
     { value: "compact", label: p.widget.sizeCompact },
     { value: "cozy", label: p.widget.sizeCozy },
     { value: "expanded", label: p.widget.sizeExpanded },
   ];
 
-  const toneOptions: SegmentOption<HubToneOverride>[] = [
+  const toneOptions: HubSegmentOption<HubToneOverride>[] = [
     { value: "inherit", label: p.widget.toneInherit },
     { value: "useful", label: p.widget.toneUseful },
     { value: "social", label: p.widget.toneSocial },
     { value: "chaos", label: p.widget.toneChaos },
   ];
 
-  const blurOptions: SegmentOption<"0" | "1" | "2" | "3">[] = [
+  const blurOptions: HubSegmentOption<"0" | "1" | "2" | "3">[] = [
     { value: "0", label: p.widget.blurNone },
     { value: "1", label: p.widget.blurLight },
     { value: "2", label: p.widget.blurMedium },
@@ -195,7 +107,7 @@ function WidgetTab({ widgets }: { widgets: readonly HubPrefsWidgetEntry[] }) {
   ];
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col gap-4">
       <div>
         <p className="mb-2 text-xs text-muted-foreground">{p.widget.widgetLabel}</p>
         <Select value={selectedWidgetId ?? ""} onValueChange={setSelectedWidgetId}>
@@ -220,57 +132,51 @@ function WidgetTab({ widgets }: { widgets: readonly HubPrefsWidgetEntry[] }) {
       {!selectedWidget || !wprefs ? (
         <p className="text-center text-sm text-muted-foreground py-6">{p.widget.selectWidgetHint}</p>
       ) : (
-        <div className="space-y-5">
-          <PrefRow label={p.widget.sizePreset}>
-            <SegmentControl
+        <div className="flex flex-col gap-5">
+          <HubPrefRow label={p.widget.sizePreset}>
+            <HubSegmentControl
               options={sizeOptions}
               value={wprefs.sizePreset}
               onChange={(v) => patch({ sizePreset: v })}
             />
-          </PrefRow>
+          </HubPrefRow>
 
-          <PrefRow label={p.widget.toneOverride}>
-            <SegmentControl
+          <HubPrefRow label={p.widget.toneOverride}>
+            <HubSegmentControl
               options={toneOptions}
               value={wprefs.toneOverride}
               onChange={(v) => patch({ toneOverride: v })}
             />
-          </PrefRow>
+          </HubPrefRow>
 
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">{p.widget.glassOpacity}</span>
-              <span className="text-xs tabular-nums text-muted-foreground">{wprefs.glassOpacity}%</span>
-            </div>
-            <Slider
-              min={0}
-              max={100}
-              step={5}
-              value={[wprefs.glassOpacity]}
-              onValueChange={([v]) => patch({ glassOpacity: v })}
-              className="w-full"
-            />
-            <p className="text-xs text-muted-foreground">{p.widget.glassOpacityHint}</p>
-          </div>
+          <HubPrefSliderRow
+            label={p.widget.glassOpacity}
+            hint={p.widget.glassOpacityHint}
+            min={0}
+            max={100}
+            step={5}
+            value={wprefs.glassOpacity}
+            onChange={(v) => patch({ glassOpacity: v })}
+          />
 
-          <PrefRow label={p.widget.blurStrength}>
-            <SegmentControl
+          <HubPrefRow label={p.widget.blurStrength}>
+            <HubSegmentControl
               options={blurOptions}
               value={String(wprefs.blurStrength) as "0" | "1" | "2" | "3"}
               onChange={(v) => patch({ blurStrength: Number(v) as 0 | 1 | 2 | 3 })}
             />
-          </PrefRow>
+          </HubPrefRow>
 
           <Separator />
 
-          <PrefRowToggle
+          <HubPrefToggleRow
             id={`show-subtitle-${selectedWidgetId}`}
             label={p.widget.showSubtitle}
             description={p.widget.showSubtitleDesc}
             checked={wprefs.showSubtitle}
             onCheckedChange={(v) => patch({ showSubtitle: v })}
           />
-          <PrefRowToggle
+          <HubPrefToggleRow
             id={`show-tone-badge-${selectedWidgetId}`}
             label={p.widget.showToneBadge}
             description={p.widget.showToneBadgeDesc}
@@ -305,14 +211,14 @@ function DevInspectCursorPrefs() {
     setHexDraft(ic.customColor);
   }, [ic.customColor]);
 
-  const presetOptions: SegmentOption<HubInspectCursorPreset>[] = [
+  const presetOptions: HubSegmentOption<HubInspectCursorPreset>[] = [
     { value: "crosshair", label: icp.presetCrosshair },
     { value: "dot", label: icp.presetDot },
     { value: "ring", label: icp.presetRing },
     { value: "bracket", label: icp.presetBracket },
   ];
 
-  const colorOptions: SegmentOption<HubInspectCursorColorSource>[] = [
+  const colorOptions: HubSegmentOption<HubInspectCursorColorSource>[] = [
     { value: "primary", label: icp.colorPrimary },
     { value: "accent", label: icp.colorAccent },
     { value: "foreground", label: icp.colorForeground },
@@ -329,25 +235,25 @@ function DevInspectCursorPrefs() {
   };
 
   return (
-    <div className="space-y-4">
-      <SectionHeading>{icp.sectionTitle}</SectionHeading>
+    <div className="flex flex-col gap-4">
+      <HubPrefSectionHeading>{icp.sectionTitle}</HubPrefSectionHeading>
       <p className="text-xs text-muted-foreground">{icp.sectionHint}</p>
 
-      <PrefRow label={icp.presetLabel}>
-        <SegmentControl
+      <HubPrefRow label={icp.presetLabel}>
+        <HubSegmentControl
           options={presetOptions}
           value={ic.preset}
           onChange={(v) => patchPrefs({ inspectCursor: { ...ic, preset: v } })}
         />
-      </PrefRow>
+      </HubPrefRow>
 
-      <PrefRow label={icp.colorLabel}>
-        <SegmentControl
+      <HubPrefRow label={icp.colorLabel}>
+        <HubSegmentControl
           options={colorOptions}
           value={ic.colorSource}
           onChange={(v) => patchPrefs({ inspectCursor: { ...ic, colorSource: v } })}
         />
-      </PrefRow>
+      </HubPrefRow>
 
       {ic.colorSource === "custom" ? (
         <div className="flex flex-col gap-1.5">
@@ -375,21 +281,15 @@ function DevInspectCursorPrefs() {
         </div>
       ) : null}
 
-      <div className="flex flex-col gap-1.5">
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-medium">{icp.sizeLabel}</span>
-          <span className="text-xs tabular-nums text-muted-foreground">{ic.sizePercent}%</span>
-        </div>
-        <Slider
-          min={50}
-          max={200}
-          step={5}
-          value={[ic.sizePercent]}
-          onValueChange={([v]) => patchPrefs({ inspectCursor: { ...ic, sizePercent: v } })}
-          className="w-full"
-        />
-        <p className="text-xs text-muted-foreground">{icp.sizeHint}</p>
-      </div>
+      <HubPrefSliderRow
+        label={icp.sizeLabel}
+        hint={icp.sizeHint}
+        min={50}
+        max={200}
+        step={5}
+        value={ic.sizePercent}
+        onChange={(v) => patchPrefs({ inspectCursor: { ...ic, sizePercent: v } })}
+      />
     </div>
   );
 }
@@ -402,99 +302,93 @@ function DesktopTab() {
   const dock = prefs.dock;
   const motion = prefs.motion;
 
-  const stylePackOptions: SegmentOption<HubDesktopStylePackId>[] = [
+  const stylePackOptions: HubSegmentOption<HubDesktopStylePackId>[] = [
     { value: "default", label: p.stylePackDefault },
     { value: "midnight", label: p.stylePackMidnight },
     { value: "paper", label: p.stylePackPaper },
     { value: "signal", label: p.stylePackSignal },
   ];
 
-  const densityOptions: SegmentOption<HubGridDensity>[] = [
+  const densityOptions: HubSegmentOption<HubGridDensity>[] = [
     { value: "compact", label: p.gridCompact },
     { value: "cozy", label: p.gridCozy },
     { value: "expanded", label: p.gridExpanded },
   ];
 
-  const snapOptions: SegmentOption<HubSnapStrength>[] = [
+  const snapOptions: HubSegmentOption<HubSnapStrength>[] = [
     { value: "relaxed", label: p.snapRelaxed },
     { value: "standard", label: p.snapStandard },
     { value: "firm", label: p.snapFirm },
   ];
 
-  const dockPosOptions: SegmentOption<HubDockPosition>[] = [
+  const dockPosOptions: HubSegmentOption<HubDockPosition>[] = [
     { value: "bottom", label: p.dockBottom },
     { value: "left", label: p.dockLeft },
   ];
 
-  const dockScaleOptions: SegmentOption<HubDockScale>[] = [
+  const dockScaleOptions: HubSegmentOption<HubDockScale>[] = [
     { value: "sm", label: p.dockSm },
     { value: "md", label: p.dockMd },
     { value: "lg", label: p.dockLg },
   ];
 
   return (
-    <div className="space-y-5">
-      <SectionHeading>{copy.hubPrefsPanel.tabs.desktop}</SectionHeading>
+    <div className="flex flex-col gap-5">
+      <HubPrefSectionHeading>{copy.hubPrefsPanel.tabs.desktop}</HubPrefSectionHeading>
 
-      <PrefRow label={p.stylePack}>
-        <SegmentControl
+      <HubPrefRow label={p.stylePack}>
+        <HubSegmentControl
           options={stylePackOptions}
           value={d.stylePackId}
           onChange={(v) => patchPrefs({ desktop: { ...d, stylePackId: v } })}
         />
-      </PrefRow>
+      </HubPrefRow>
 
-      <PrefRow label={p.gridDensity}>
-        <SegmentControl
+      <HubPrefRow label={p.gridDensity}>
+        <HubSegmentControl
           options={densityOptions}
           value={d.gridDensity}
           onChange={(v) => patchPrefs({ desktop: { ...d, gridDensity: v } })}
         />
-      </PrefRow>
+      </HubPrefRow>
 
-      <PrefRow label={p.snapStrength}>
-        <SegmentControl
+      <HubPrefRow label={p.snapStrength}>
+        <HubSegmentControl
           options={snapOptions}
           value={d.snapStrength}
           onChange={(v) => patchPrefs({ desktop: { ...d, snapStrength: v } })}
         />
-      </PrefRow>
+      </HubPrefRow>
 
       <Separator />
 
-      <PrefRow label={p.dockPosition}>
-        <SegmentControl
+      <HubPrefRow label={p.dockPosition}>
+        <HubSegmentControl
           options={dockPosOptions}
           value={dock.position}
           onChange={(v) => patchPrefs({ dock: { ...dock, position: v } })}
         />
-      </PrefRow>
+      </HubPrefRow>
 
-      <PrefRow label={p.dockScale}>
-        <SegmentControl
+      <HubPrefRow label={p.dockScale}>
+        <HubSegmentControl
           options={dockScaleOptions}
           value={dock.scale}
           onChange={(v) => patchPrefs({ dock: { ...dock, scale: v } })}
         />
-      </PrefRow>
+      </HubPrefRow>
 
       <Separator />
 
-      <div className="flex flex-col gap-1.5">
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-medium">{p.animationIntensity}</span>
-          <span className="text-xs tabular-nums text-muted-foreground">{motion.animationIntensity}%</span>
-        </div>
-        <Slider
-          min={0}
-          max={100}
-          step={10}
-          value={[motion.animationIntensity]}
-          onValueChange={([v]) => patchPrefs({ motion: { animationIntensity: v } })}
-          className="w-full"
-        />
-        <p className="text-xs text-muted-foreground">{p.animationIntensityHint}</p>
-      </div>
+      <HubPrefSliderRow
+        label={p.animationIntensity}
+        hint={p.animationIntensityHint}
+        min={0}
+        max={100}
+        step={10}
+        value={motion.animationIntensity}
+        onChange={(v) => patchPrefs({ motion: { animationIntensity: v } })}
+      />
 
       {import.meta.env.DEV ? (
         <>
@@ -506,52 +400,19 @@ function DesktopTab() {
   );
 }
 
-function PersonalityCard({
-  label,
-  description,
-  selected,
-  onClick,
-  accentClass,
-}: {
-  label: string;
-  description: string;
-  selected: boolean;
-  onClick: () => void;
-  accentClass: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "flex flex-col gap-1 rounded-xl border p-3 text-left transition",
-        selected
-          ? "border-primary/60 bg-primary/10 shadow-sm"
-          : "border-border/60 bg-muted/30 hover:bg-muted/60",
-      )}
-    >
-      <span className={cn("text-sm font-semibold", selected ? "text-foreground" : "text-muted-foreground")}>
-        <span className={cn("mr-1.5 inline-block size-2 rounded-full", accentClass)} aria-hidden />
-        {label}
-      </span>
-      <span className="text-xs text-muted-foreground">{description}</span>
-    </button>
-  );
-}
-
 function CopyTab() {
   const { copy } = useHubLocale();
   const p = copy.hubPrefsPanel.copy;
   const { prefs, patchPrefs } = useHubPrefs();
   const cs = prefs.copyStyle;
 
-  const verbosityOptions: SegmentOption<HubToastVerbosity>[] = [
+  const verbosityOptions: HubSegmentOption<HubToastVerbosity>[] = [
     { value: "minimal", label: p.toastMinimal },
     { value: "normal", label: p.toastNormal },
     { value: "verbose", label: p.toastVerbose },
   ];
 
-  const memeOptions: SegmentOption<HubMemeFrequency>[] = [
+  const memeOptions: HubSegmentOption<HubMemeFrequency>[] = [
     { value: "off", label: p.memeOff },
     { value: "low", label: p.memeLow },
     { value: "normal", label: p.memeNormal },
@@ -581,12 +442,12 @@ function CopyTab() {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="flex flex-col gap-5">
       <div>
-        <SectionHeading>{p.personality}</SectionHeading>
+        <HubPrefSectionHeading>{p.personality}</HubPrefSectionHeading>
         <div className="grid grid-cols-1 gap-2">
           {personalities.map((pers) => (
-            <PersonalityCard
+            <HubPrefChoiceCard
               key={pers.value}
               label={pers.label}
               description={pers.description}
@@ -601,8 +462,8 @@ function CopyTab() {
       <Separator />
 
       <div>
-        <SectionHeading>{p.toastVerbosity}</SectionHeading>
-        <SegmentControl
+        <HubPrefSectionHeading>{p.toastVerbosity}</HubPrefSectionHeading>
+        <HubSegmentControl
           options={verbosityOptions}
           value={cs.toastVerbosity}
           onChange={(v) => patchPrefs({ copyStyle: { ...cs, toastVerbosity: v } })}
@@ -613,8 +474,8 @@ function CopyTab() {
       <Separator />
 
       <div>
-        <SectionHeading>{p.memeFrequency}</SectionHeading>
-        <SegmentControl
+        <HubPrefSectionHeading>{p.memeFrequency}</HubPrefSectionHeading>
+        <HubSegmentControl
           options={memeOptions}
           value={cs.memeFrequency}
           onChange={(v) => patchPrefs({ copyStyle: { ...cs, memeFrequency: v } })}

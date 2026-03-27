@@ -40,6 +40,14 @@ import { gridStepForDensity, type HubPrefs } from "@/lib/hub-prefs";
 
 const MIN_WIDGET_W = 240;
 const MIN_WIDGET_H = 140;
+const FALLBACK_LAYOUT: HubDesktopWidgetLayout = {
+  x: 24,
+  y: 70,
+  w: 320,
+  h: 200,
+  z: 1,
+  hidden: false,
+};
 
 type DesktopEditSession = {
   draft: Record<string, HubDesktopWidgetLayout>;
@@ -97,6 +105,25 @@ export type HubSurfaceEngineOptions = {
   layoutEditMode: boolean;
   gridSnapEnabled: boolean;
   prefs: HubPrefs;
+  /**
+   * Defaults för denna yta (id -> layout). Dashboard använder DEFAULT_WIDGET_LAYOUTS.
+   * Routes (t.ex. PublicProfile i Fas 4) kan ange containers här.
+   */
+  defaultLayouts?: Readonly<Record<string, HubDesktopWidgetLayout>>;
+  /**
+   * Persistens-gränssnitt. Kan overridas för att:
+   * - undvika att skriva till dashboard-nyckeln
+   * - spara under en annan localStorage-nyckel
+   * - köra helt in-memory (no-op write)
+   */
+  persistence?: Partial<{
+    readLayout: () => Record<string, HubDesktopWidgetLayout>;
+    writeLayout: (layout: Record<string, HubDesktopWidgetLayout>) => void;
+    readAutosaveEnabled: () => boolean;
+    writeAutosaveEnabled: (enabled: boolean) => void;
+  }>;
+  /** Dashboard syncar layout via remote-settings events. Stäng av för route-specifika ytor. */
+  enableRemoteSync?: boolean;
   onSaveCommitted?: () => void;
   onDiscardDraft?: () => void;
 };
@@ -105,17 +132,40 @@ export function useHubSurfaceEngine({
   layoutEditMode,
   gridSnapEnabled,
   prefs,
+  defaultLayouts,
+  persistence,
+  enableRemoteSync = true,
   onSaveCommitted,
   onDiscardDraft,
 }: HubSurfaceEngineOptions): HubSurfaceEngineResult {
-  const [savedLayout, setSavedLayout] = useState<Record<string, HubDesktopWidgetLayout>>(() =>
-    readDesktopLayoutFromStorage(),
-  );
+  const defaultsRef = useRef(defaultLayouts ?? DEFAULT_WIDGET_LAYOUTS);
+  defaultsRef.current = defaultLayouts ?? DEFAULT_WIDGET_LAYOUTS;
+
+  const persistenceRef = useRef({
+    readLayout: readDesktopLayoutFromStorage,
+    writeLayout: writeDesktopLayoutToStorage,
+    readAutosaveEnabled: readLayoutAutosaveEnabledFromStorage,
+    writeAutosaveEnabled: writeLayoutAutosaveEnabledToStorage,
+    ...(persistence ?? {}),
+  });
+  persistenceRef.current = {
+    readLayout: readDesktopLayoutFromStorage,
+    writeLayout: writeDesktopLayoutToStorage,
+    readAutosaveEnabled: readLayoutAutosaveEnabledFromStorage,
+    writeAutosaveEnabled: writeLayoutAutosaveEnabledToStorage,
+    ...(persistence ?? {}),
+  };
+
+  const [savedLayout, setSavedLayout] = useState<Record<string, HubDesktopWidgetLayout>>(() => {
+    const read = persistenceRef.current.readLayout ?? readDesktopLayoutFromStorage;
+    return read();
+  });
   const [editSession, setEditSession] = useState<DesktopEditSession | null>(null);
   const [selectedWidgetIds, setSelectedWidgetIds] = useState<string[]>([]);
-  const [autosaveLayoutEnabled, setAutosaveLayoutEnabled] = useState(
-    readLayoutAutosaveEnabledFromStorage,
-  );
+  const [autosaveLayoutEnabled, setAutosaveLayoutEnabled] = useState(() => {
+    const read = persistenceRef.current.readAutosaveEnabled ?? readLayoutAutosaveEnabledFromStorage;
+    return read();
+  });
 
   const savedLayoutRef = useRef(savedLayout);
   savedLayoutRef.current = savedLayout;
@@ -131,16 +181,19 @@ export function useHubSurfaceEngine({
 
   // Persista autosave-flaggan
   useEffect(() => {
-    writeLayoutAutosaveEnabledToStorage(autosaveLayoutEnabled);
+    persistenceRef.current.writeAutosaveEnabled?.(autosaveLayoutEnabled);
   }, [autosaveLayoutEnabled]);
 
   // Persista savedLayout
   useEffect(() => {
-    writeDesktopLayoutToStorage(savedLayout);
+    persistenceRef.current.writeLayout?.(savedLayout);
   }, [savedLayout]);
 
   // Lyssna på remote settings apply
   useEffect(() => {
+    if (!enableRemoteSync) {
+      return;
+    }
     const onRemote = (event: Event) => {
       const detail = (event as CustomEvent<HubRemoteApplyDetail>).detail;
       const hasLayout = Boolean(detail?.desktopLayout);
@@ -167,10 +220,13 @@ export function useHubSurfaceEngine({
     };
     window.addEventListener(HUB_SETTINGS_REMOTE_APPLY_EVENT, onRemote);
     return () => window.removeEventListener(HUB_SETTINGS_REMOTE_APPLY_EVENT, onRemote);
-  }, []);
+  }, [enableRemoteSync]);
 
   // Trigga sync vid lokala ändringar
   useEffect(() => {
+    if (!enableRemoteSync) {
+      return;
+    }
     const blob = JSON.stringify({
       layout: JSON.stringify(savedLayout),
       autosave: autosaveLayoutEnabled,
@@ -184,7 +240,7 @@ export function useHubSurfaceEngine({
     }
     layoutSyncSerializedRef.current = blob;
     bumpLocalSettingsRevision();
-  }, [autosaveLayoutEnabled, savedLayout]);
+  }, [autosaveLayoutEnabled, enableRemoteSync, savedLayout]);
 
   // Starta/avsluta edit-session när layoutEditMode ändras
   useEffect(() => {
@@ -238,18 +294,26 @@ export function useHubSurfaceEngine({
 
   // --- Layout mutations ---
 
+  const baseLayoutForId = useCallback(
+    (prev: Record<string, HubDesktopWidgetLayout>, id: string): HubDesktopWidgetLayout => {
+      return prev[id] ?? defaultsRef.current[id] ?? FALLBACK_LAYOUT;
+    },
+    [],
+  );
+
   const moveWidgetImpl = useCallback(
     (id: string, position: Pick<HubDesktopWidgetLayout, "x" | "y">, bumpZ: boolean) => {
       const gridStep = gridStepForDensity(prefs.desktop.gridDensity);
       const apply = (prev: Record<string, HubDesktopWidgetLayout>) => {
         const snap = (v: number) => snapCoord(v, gridSnapEnabled, gridStep, prefs.desktop.snapStrength);
+        const base = baseLayoutForId(prev, id);
         return {
           ...prev,
           [id]: {
-            ...(prev[id] ?? DEFAULT_WIDGET_LAYOUTS[id]!),
+            ...base,
             x: snap(position.x),
             y: snap(position.y),
-            z: bumpZ ? nextDesktopZ(prev) : (prev[id] ?? DEFAULT_WIDGET_LAYOUTS[id]!).z,
+            z: bumpZ ? nextDesktopZ(prev) : base.z,
           },
         };
       };
@@ -259,7 +323,7 @@ export function useHubSurfaceEngine({
         setSavedLayout((prev) => apply(cloneLayoutRecord(prev)));
       }
     },
-    [gridSnapEnabled, mutateDraft, prefs.desktop.gridDensity, prefs.desktop.snapStrength],
+    [baseLayoutForId, gridSnapEnabled, mutateDraft, prefs.desktop.gridDensity, prefs.desktop.snapStrength],
   );
 
   const moveWidget = useCallback(
@@ -281,7 +345,7 @@ export function useHubSurfaceEngine({
         const topZ = nextDesktopZ(next);
         let zAssign = topZ;
         for (const wid of ids) {
-          const cur = next[wid] ?? DEFAULT_WIDGET_LAYOUTS[wid];
+          const cur = next[wid] ?? defaultsRef.current[wid] ?? null;
           if (!cur || cur.hidden) {
             continue;
           }
@@ -308,7 +372,7 @@ export function useHubSurfaceEngine({
       const apply = (prev: Record<string, HubDesktopWidgetLayout>) => ({
         ...prev,
         [id]: {
-          ...(prev[id] ?? DEFAULT_WIDGET_LAYOUTS[id]!),
+          ...baseLayoutForId(prev, id),
           w: Math.max(MIN_WIDGET_W, Math.round(size.w)),
           h: Math.max(MIN_WIDGET_H, Math.round(size.h)),
           z: nextDesktopZ(prev),
@@ -320,13 +384,13 @@ export function useHubSurfaceEngine({
         setSavedLayout((prev) => apply(cloneLayoutRecord(prev)));
       }
     },
-    [mutateDraft],
+    [baseLayoutForId, mutateDraft],
   );
 
   const focusWidget = useCallback(
     (id: string) => {
       const apply = (prev: Record<string, HubDesktopWidgetLayout>) => {
-        const current = prev[id] ?? DEFAULT_WIDGET_LAYOUTS[id];
+        const current = prev[id] ?? defaultsRef.current[id] ?? null;
         if (!current) {
           return prev;
         }
@@ -350,14 +414,14 @@ export function useHubSurfaceEngine({
       mutateSavedOrDraft((prev) => ({
         ...prev,
         [id]: {
-          ...(prev[id] ?? DEFAULT_WIDGET_LAYOUTS[id]!),
+          ...baseLayoutForId(prev, id),
           hidden: false,
           z: nextDesktopZ(prev),
         },
       }));
       onReveal?.(id);
     },
-    [mutateSavedOrDraft],
+    [baseLayoutForId, mutateSavedOrDraft],
   );
 
   const hideWidget = useCallback(
@@ -365,20 +429,20 @@ export function useHubSurfaceEngine({
       mutateSavedOrDraft((prev) => ({
         ...prev,
         [id]: {
-          ...(prev[id] ?? DEFAULT_WIDGET_LAYOUTS[id]!),
+          ...baseLayoutForId(prev, id),
           hidden: true,
         },
       }));
       setSelectedWidgetIds((sel) => sel.filter((w) => w !== id));
       onHide?.(id);
     },
-    [mutateSavedOrDraft],
+    [baseLayoutForId, mutateSavedOrDraft],
   );
 
   const resetWidgetPosition = useCallback(
     (id: string) => {
       mutateSavedOrDraft((prev) => {
-        const defaults = DEFAULT_WIDGET_LAYOUTS[id];
+        const defaults = defaultsRef.current[id];
         if (!defaults) {
           return prev;
         }
@@ -391,7 +455,7 @@ export function useHubSurfaceEngine({
 
   const resetDesktopLayout = useCallback(() => {
     const defaults = Object.fromEntries(
-      Object.entries(DEFAULT_WIDGET_LAYOUTS).map(([wid, layout]) => [wid, { ...layout }]),
+      Object.entries(defaultsRef.current).map(([wid, layout]) => [wid, { ...layout }]),
     ) as Record<string, HubDesktopWidgetLayout>;
     mutateSavedOrDraft(() => defaults);
   }, [mutateSavedOrDraft]);
@@ -405,7 +469,7 @@ export function useHubSurfaceEngine({
         let z = nextDesktopZ(prev);
         const next = { ...prev };
         for (const id of hiddenIds) {
-          const cur = next[id] ?? DEFAULT_WIDGET_LAYOUTS[id];
+          const cur = next[id] ?? defaultsRef.current[id] ?? null;
           if (!cur) {
             continue;
           }
@@ -523,7 +587,7 @@ export function useHubSurfaceEngine({
         const snap = (v: number) => snapCoord(v, gridSnapEnabled, HUB_DESKTOP_LAYOUT_GRID);
         const next = cloneLayoutRecord(prev);
         for (const wid of selectedWidgetIds) {
-          const cur = next[wid] ?? DEFAULT_WIDGET_LAYOUTS[wid];
+          const cur = next[wid] ?? defaultsRef.current[wid] ?? null;
           if (!cur || cur.hidden) {
             continue;
           }
@@ -548,7 +612,7 @@ export function useHubSurfaceEngine({
       const next = cloneLayoutRecord(prev);
       let z = nextDesktopZ(next);
       for (const wid of selectedWidgetIds) {
-        const cur = next[wid] ?? DEFAULT_WIDGET_LAYOUTS[wid];
+        const cur = next[wid] ?? defaultsRef.current[wid] ?? null;
         if (!cur || cur.hidden) {
           continue;
         }

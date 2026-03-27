@@ -11,6 +11,7 @@ const DEFAULT_WIDGET_ORDER = [
   "wheel-launchpad",
   "presence-radar",
   "ritual-console",
+  "custom-modules",
 ] as const;
 
 const DEFAULT_HIDDEN_WIDGETS = ["ritual-console"] as const;
@@ -21,6 +22,7 @@ export const DEFAULT_WIDGET_LAYOUTS: Record<string, HubDesktopWidgetLayout> = {
   "wheel-launchpad": { x: 800, y: 70, w: 336, h: 220, z: 3, hidden: false },
   "presence-radar": { x: 92, y: 324, w: 360, h: 210, z: 4, hidden: false },
   "ritual-console": { x: 484, y: 350, w: 392, h: 200, z: 5, hidden: true },
+  "custom-modules": { x: 900, y: 330, w: 360, h: 290, z: 6, hidden: false },
 };
 
 function safeReadList(key: string, fallback: readonly string[]): string[] {

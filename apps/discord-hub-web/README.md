@@ -23,6 +23,23 @@ För **både** discord-hub och `dev-tools-web` i samma terminal (t.ex. Caddy och
 
 **Caddy / `http://dev.clanker.discord`:** om sidan blir grå, sätt **`VITE_HMR_CLIENT_PORT=80`** i repots rot-`.env` och starta om Vite (`npm run dev` eller `npm run dev:all`). Se [docs/docker.md](../../docs/docker.md#caddy-reverse-proxy).
 
+## Unified Surface (Fas 3–4)
+
+Det här repot håller på att flytta dashboard + route-paneler till en gemensam "surface"-motor (layout/edit-session).
+
+**Fas 3 (container-noder):**
+- `container` är en förstaklassens node-kind i den interna modellen (`HubGridNode`).
+- Containern har egen geometri och kan flyttas/storleksändras/ordnas om på samma sätt som widgets.
+- **v1-begränsning:** barn i en container är statiska sektioner (ingen child-drag/drop/editing ännu).
+
+**Fas 4 (PublicProfile på grid):**
+- `PublicProfile` (`/u/:userId`) renderas via 2–4 containers på samma surface engine som dashboard.
+- Befintliga cards/sektioner återanvänds inuti varje container (v1: statiskt innehåll).
+
+**Väntar till Fas 5 (inte implementerat här):**
+- Fri child-layout/redigering inuti containers.
+- Drag/drop mellan child-sektioner.
+
 ## Miljövariabler
 
 Kopiera `.env.example` till `.env` i denna mapp vid behov. `VITE_API_URL` används när backend ligger på annan bas-URL; annars lämna tom och använd `/api` (Vite proxar till `127.0.0.1:3001` i utveckling). **`VITE_DISCORD_HUB_GUILD_ID`** (guild snowflake) aktiverar bot-/gateway-widgeten på dashboard; API måste ha `DISCORD_BOT_TOKEN` och ev. `DISCORD_HUB_ALLOWED_GUILD_IDS` / `DISCORD_GATEWAY_GUILD_IDS` — se [apps/discord-hub-api/README.md](../discord-hub-api/README.md).

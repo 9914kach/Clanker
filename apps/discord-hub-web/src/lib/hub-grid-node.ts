@@ -40,7 +40,28 @@ export type HubGridGeometry = {
  * `unknown` används för node-typer som framtida klienter introducerar men denna
  * version inte känner igen — bevaras oförändrade i roundtrip (fail-soft).
  */
-export type HubGridNodeKind = "widget" | "unknown";
+export type HubGridNodeKind = "widget" | "container" | "unknown";
+
+/**
+ * En statisk "child"-sektion i en container (Fas 3 v1).
+ * Barn edit:as inte och deltar inte i drag/drop/reorder i denna fas.
+ */
+export type HubGridContainerStaticChild = {
+  /** Stabilt id inom klienten (t.ex. "status", "league", "steam"). */
+  id: string;
+  kind: "staticSection";
+};
+
+/**
+ * Kind-specifik metadata för en container (Fas 3 v1).
+ *
+ * Obs: metadata är fortfarande serialiserbar (Record) men vi erbjuder en tydlig typ
+ * för att undvika "magic strings" i routes som bygger container-innehåll.
+ */
+export type HubGridContainerMetadataV1 = {
+  schema: "hub.container.v1";
+  staticChildren: HubGridContainerStaticChild[];
+};
 
 /**
  * En nod på den gemensamma grid-ytan.
@@ -65,6 +86,47 @@ export type HubGridNode = {
  * En samling noder indexerade på id — internt arbetsformat.
  */
 export type HubGridNodeMap = Record<string, HubGridNode>;
+
+// ---------------------------------------------------------------------------
+// Container helpers (Fas 3)
+// ---------------------------------------------------------------------------
+
+export function createContainerNode(args: {
+  id: string;
+  geometry: HubGridGeometry;
+  staticChildren: readonly HubGridContainerStaticChild[];
+  hidden?: boolean;
+  containerId?: string | null;
+}): HubGridNode {
+  return {
+    id: args.id,
+    kind: "container",
+    geometry: { ...args.geometry },
+    hidden: args.hidden ?? false,
+    containerId: args.containerId ?? null,
+    metadata: {
+      schema: "hub.container.v1",
+      staticChildren: [...args.staticChildren],
+    } satisfies HubGridContainerMetadataV1,
+  };
+}
+
+export function readContainerMetadataV1(node: HubGridNode): HubGridContainerMetadataV1 | null {
+  if (!node || node.kind !== "container") {
+    return null;
+  }
+  const md = node.metadata as Partial<HubGridContainerMetadataV1> | null;
+  if (!md || md.schema !== "hub.container.v1" || !Array.isArray(md.staticChildren)) {
+    return null;
+  }
+  const staticChildren: HubGridContainerStaticChild[] = md.staticChildren.filter(
+    (c): c is HubGridContainerStaticChild =>
+      Boolean(c) &&
+      typeof (c as HubGridContainerStaticChild).id === "string" &&
+      (c as HubGridContainerStaticChild).kind === "staticSection",
+  );
+  return { schema: "hub.container.v1", staticChildren };
+}
 
 // ---------------------------------------------------------------------------
 // Adapter: legacy desktopLayout → nodes
