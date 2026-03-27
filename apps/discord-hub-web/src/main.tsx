@@ -6,6 +6,7 @@ import { HubPrefsProvider } from "@/components/HubPrefsProvider";
 import { HubToastProvider } from "@/components/HubToastProvider";
 import { LocaleProvider } from "@/components/locale-provider";
 import { ThemeProvider } from "@/components/theme-provider";
+import "gridstack/dist/gridstack.min.css";
 import "./index.css";
 import App from "./App.tsx";
 

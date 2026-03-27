@@ -77,6 +77,12 @@ type ToastInput = {
 };
 
 const PALETTES: readonly ColorPalette[] = [
+  "carbon",
+  "slate-ocean",
+  "bubblegum",
+  "citrus-pop",
+  "goblin",
+  "midnight-acid",
   "violett-neutral",
   "green",
   "terminal-dark-russian",

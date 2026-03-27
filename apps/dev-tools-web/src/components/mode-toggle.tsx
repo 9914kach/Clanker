@@ -19,6 +19,42 @@ type Appearance = "dark" | "light" | "system";
 
 /** OKLCH previews — mirrors shadcn-theme.css (menu swatches before selection) */
 const PALETTE_PREVIEW: Record<ColorPalette, readonly string[]> = {
+  carbon: [
+    "oklch(0.43 0.05 250)",
+    "oklch(0.68 0.08 250)",
+    "oklch(0.6 0.07 210)",
+    "oklch(0.7 0.09 280)",
+  ],
+  "slate-ocean": [
+    "oklch(0.5 0.14 235)",
+    "oklch(0.66 0.16 235)",
+    "oklch(0.62 0.12 210)",
+    "oklch(0.74 0.12 255)",
+  ],
+  bubblegum: [
+    "oklch(0.65 0.22 350)",
+    "oklch(0.72 0.24 350)",
+    "oklch(0.7 0.16 320)",
+    "oklch(0.78 0.14 10)",
+  ],
+  "citrus-pop": [
+    "oklch(0.75 0.2 85)",
+    "oklch(0.78 0.2 85)",
+    "oklch(0.7 0.16 55)",
+    "oklch(0.8 0.16 120)",
+  ],
+  goblin: [
+    "oklch(0.55 0.18 135)",
+    "oklch(0.7 0.2 135)",
+    "oklch(0.6 0.12 95)",
+    "oklch(0.76 0.14 165)",
+  ],
+  "midnight-acid": [
+    "oklch(0.65 0.22 310)",
+    "oklch(0.74 0.26 310)",
+    "oklch(0.72 0.18 280)",
+    "oklch(0.82 0.18 250)",
+  ],
   "violett-neutral": [
     "oklch(0.488 0.243 264.376)",
     "oklch(0.809 0.105 251.813)",
@@ -86,6 +122,48 @@ export function ModeToggle() {
           value={colorPalette}
           onValueChange={(value) => setColorPalette(value as ColorPalette)}
         >
+          <DropdownMenuRadioItem value="carbon" className="items-center gap-2">
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span>Carbon</span>
+              <span className="text-muted-foreground text-xs">serious · graphite</span>
+            </div>
+            <PaletteSwatchPreview palette="carbon" />
+          </DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="slate-ocean" className="items-center gap-2">
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span>Slate Ocean</span>
+              <span className="text-muted-foreground text-xs">serious · blue slate</span>
+            </div>
+            <PaletteSwatchPreview palette="slate-ocean" />
+          </DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="bubblegum" className="items-center gap-2">
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span>Bubblegum</span>
+              <span className="text-muted-foreground text-xs">playful · pink</span>
+            </div>
+            <PaletteSwatchPreview palette="bubblegum" />
+          </DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="citrus-pop" className="items-center gap-2">
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span>Citrus Pop</span>
+              <span className="text-muted-foreground text-xs">playful · citrus</span>
+            </div>
+            <PaletteSwatchPreview palette="citrus-pop" />
+          </DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="goblin" className="items-center gap-2">
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span>Goblin</span>
+              <span className="text-muted-foreground text-xs">troll · swamp</span>
+            </div>
+            <PaletteSwatchPreview palette="goblin" />
+          </DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="midnight-acid" className="items-center gap-2">
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span>Midnight Acid</span>
+              <span className="text-muted-foreground text-xs">troll · neon</span>
+            </div>
+            <PaletteSwatchPreview palette="midnight-acid" />
+          </DropdownMenuRadioItem>
           <DropdownMenuRadioItem
             value="violett-neutral"
             className="items-center gap-2"

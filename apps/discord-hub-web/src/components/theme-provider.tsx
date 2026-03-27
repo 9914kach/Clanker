@@ -7,7 +7,13 @@ import {
 } from "react";
 
 export type ColorPalette =
+  | "bubblegum"
+  | "carbon"
+  | "citrus-pop"
+  | "goblin"
   | "green"
+  | "midnight-acid"
+  | "slate-ocean"
   | "terminal-dark-russian"
   | "violett-neutral";
 
@@ -51,7 +57,13 @@ export function ThemeProvider({
       paletteStorageKey(storageKey),
     ) as ColorPalette | null;
     if (
+      stored === "bubblegum" ||
+      stored === "carbon" ||
+      stored === "citrus-pop" ||
+      stored === "goblin" ||
       stored === "green" ||
+      stored === "midnight-acid" ||
+      stored === "slate-ocean" ||
       stored === "terminal-dark-russian" ||
       stored === "violett-neutral"
     ) {

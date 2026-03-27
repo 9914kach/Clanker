@@ -10,6 +10,8 @@ import { hubContextData, type HubContextTarget } from "@/lib/hub-shell-context";
 import type { HubNavBookmark } from "@/lib/hub-nav-bookmarks";
 import { isBookmarkNavId, isExternalNavPath } from "@/lib/hub-nav-bookmarks";
 import { resolveNavBookmarkIcon } from "@/lib/hub-nav-bookmark-icons";
+import type { HubPrimaryNavOverride } from "@/lib/hub-primary-nav-overrides";
+import type { HubPrimaryNavItemId } from "@/lib/hub-shell-layout-order";
 import { useHubMildMultiSpringFollow } from "@/lib/hub-spring-follow-pointer";
 
 type HubPlay = (kind: "dock" | "panel" | "confirm" | "chaos") => void;
@@ -201,9 +203,8 @@ export function HubShellReorderablePrimaryNav({
   copy,
   navButtonClassName,
   profilePath,
-  profileId,
-  pinnedIds,
   navBookmarks,
+  primaryNavOverrides,
   onContextMenu,
 }: {
   order: readonly string[];
@@ -213,9 +214,8 @@ export function HubShellReorderablePrimaryNav({
   copy: HubCopy;
   navButtonClassName: (isActive: boolean) => string;
   profilePath: string | null;
-  profileId: string | null;
-  pinnedIds: readonly string[];
   navBookmarks: Readonly<Record<string, HubNavBookmark>>;
+  primaryNavOverrides: Readonly<Partial<Record<HubPrimaryNavItemId, HubPrimaryNavOverride>>>;
   /** Parent layout context menu handler — forwarded to Reorder.Items so drag doesn't swallow right-clicks. */
   onContextMenu?: (e: ReactMouseEvent<HTMLElement>) => void;
 }) {
@@ -226,16 +226,19 @@ export function HubShellReorderablePrimaryNav({
 
   const labelForId = (id: string): string => {
     if (id === "desktop") {
-      return ch.navDesktop;
+      return primaryNavOverrides.desktop?.label ?? ch.navDesktop;
     }
     if (id === "profile") {
-      return profilePath ? ch.myProfile : ch.myProfileOffline;
+      return (
+        primaryNavOverrides.profile?.label ??
+        (profilePath ? ch.myProfile : ch.myProfileOffline)
+      );
     }
     if (id === "settings") {
-      return ch.settings;
+      return primaryNavOverrides.settings?.label ?? ch.settings;
     }
     if (id === "wheel") {
-      return ch.wheel;
+      return primaryNavOverrides.wheel?.label ?? ch.wheel;
     }
     if (isBookmarkNavId(id)) {
       return navBookmarks[id]?.label ?? id;
@@ -246,40 +249,47 @@ export function HubShellReorderablePrimaryNav({
   /** Context for layout-edit reorder row (grip is not under the anchor). */
   const layoutRowContextForId = (id: string): HubContextTarget | null => {
     if (id === "desktop") {
+      const override = primaryNavOverrides.desktop;
       return {
-        type: "tool",
-        toolId: "desktop",
-        label: ch.toolDesktop,
-        path: "/dashboard",
-        pinned: true,
+        type: "navPrimary",
+        navId: "desktop",
+        label: override?.label ?? ch.toolDesktop,
+        path: override?.path ?? "/dashboard",
+        iconKey: override?.iconKey ?? null,
       };
     }
     if (id === "profile") {
-      if (!profilePath) {
+      const override = primaryNavOverrides.profile;
+      const path = override?.path ?? profilePath ?? "";
+      if (!path) {
         return null;
       }
       return {
-        type: "profile",
-        profileId,
-        profilePath,
-        label: ch.myProfile,
-        isOwnProfile: true,
+        type: "navPrimary",
+        navId: "profile",
+        label: override?.label ?? ch.myProfile,
+        path,
+        iconKey: override?.iconKey ?? null,
       };
     }
     if (id === "settings") {
+      const override = primaryNavOverrides.settings;
       return {
-        type: "panel",
-        panelId: "settings",
-        panelLabel: ch.panelSettings.label,
+        type: "navPrimary",
+        navId: "settings",
+        label: override?.label ?? ch.settings,
+        path: override?.path ?? "/profile/settings",
+        iconKey: override?.iconKey ?? null,
       };
     }
     if (id === "wheel") {
+      const override = primaryNavOverrides.wheel;
       return {
-        type: "tool",
-        toolId: "spin-the-wheel",
-        label: ch.panelWheel.label,
-        path: "/tools/spin-the-wheel",
-        pinned: pinnedIds.includes("spin-the-wheel"),
+        type: "navPrimary",
+        navId: "wheel",
+        label: override?.label ?? ch.wheel,
+        path: override?.path ?? "/tools/spin-the-wheel",
+        iconKey: override?.iconKey ?? null,
       };
     }
     if (isBookmarkNavId(id)) {
@@ -301,10 +311,14 @@ export function HubShellReorderablePrimaryNav({
     const anchorDraggable = layoutEditMode ? false : undefined;
 
     if (id === "desktop") {
+      const override = primaryNavOverrides.desktop;
+      const label = override?.label ?? ch.navDesktop;
+      const path = override?.path ?? "/dashboard";
+      const Icon = override?.iconKey ? resolveNavBookmarkIcon(override.iconKey) : LayoutPanelTop;
       return (
         <NavLink
-          to="/dashboard"
-          end
+          to={path}
+          end={path === "/dashboard"}
           draggable={anchorDraggable}
           tabIndex={layoutEditMode ? -1 : undefined}
           onClick={(e) => {
@@ -312,23 +326,27 @@ export function HubShellReorderablePrimaryNav({
           }}
           className={({ isActive }) => navButtonClassName(isActive)}
           {...hubContextData({
-            type: "tool",
-            toolId: "desktop",
-            label: ch.toolDesktop,
-            path: "/dashboard",
-            pinned: true,
+            type: "navPrimary",
+            navId: "desktop",
+            label,
+            path,
+            iconKey: override?.iconKey ?? null,
           })}
         >
-          <LayoutPanelTop className="size-3.5 shrink-0" />
-          {ch.navDesktop}
+          <Icon className="size-3.5 shrink-0" />
+          {label}
         </NavLink>
       );
     }
     if (id === "profile") {
-      if (profilePath) {
+      const override = primaryNavOverrides.profile;
+      const path = override?.path ?? profilePath ?? null;
+      if (path) {
+        const label = override?.label ?? ch.myProfile;
+        const Icon = override?.iconKey ? resolveNavBookmarkIcon(override.iconKey) : null;
         return (
           <NavLink
-            to={profilePath}
+            to={path}
             draggable={anchorDraggable}
             tabIndex={layoutEditMode ? -1 : undefined}
             onClick={(e) => {
@@ -336,27 +354,32 @@ export function HubShellReorderablePrimaryNav({
             }}
             className={({ isActive }) => navButtonClassName(isActive)}
             {...hubContextData({
-              type: "profile",
-              profileId,
-              profilePath,
-              label: ch.myProfile,
-              isOwnProfile: true,
+              type: "navPrimary",
+              navId: "profile",
+              label,
+              path,
+              iconKey: override?.iconKey ?? null,
             })}
           >
-            {ch.myProfile}
+            {Icon ? <Icon className="size-3.5 shrink-0" /> : null}
+            {label}
           </NavLink>
         );
       }
       return (
         <span className={cn(navButtonClassName(false), layoutEditMode && "select-none")}>
-          {ch.myProfileOffline}
+          {override?.label ?? ch.myProfileOffline}
         </span>
       );
     }
     if (id === "settings") {
+      const override = primaryNavOverrides.settings;
+      const label = override?.label ?? ch.settings;
+      const path = override?.path ?? "/profile/settings";
+      const Icon = override?.iconKey ? resolveNavBookmarkIcon(override.iconKey) : null;
       return (
         <NavLink
-          to="/profile/settings"
+          to={path}
           draggable={anchorDraggable}
           tabIndex={layoutEditMode ? -1 : undefined}
           onClick={(e) => {
@@ -364,19 +387,26 @@ export function HubShellReorderablePrimaryNav({
           }}
           className={({ isActive }) => navButtonClassName(isActive)}
           {...hubContextData({
-            type: "panel",
-            panelId: "settings",
-            panelLabel: ch.panelSettings.label,
+            type: "navPrimary",
+            navId: "settings",
+            label,
+            path,
+            iconKey: override?.iconKey ?? null,
           })}
         >
-          {ch.settings}
+          {Icon ? <Icon className="size-3.5 shrink-0" /> : null}
+          {label}
         </NavLink>
       );
     }
     if (id === "wheel") {
+      const override = primaryNavOverrides.wheel;
+      const label = override?.label ?? ch.wheel;
+      const path = override?.path ?? "/tools/spin-the-wheel";
+      const Icon = override?.iconKey ? resolveNavBookmarkIcon(override.iconKey) : Workflow;
       return (
         <NavLink
-          to="/tools/spin-the-wheel"
+          to={path}
           draggable={anchorDraggable}
           tabIndex={layoutEditMode ? -1 : undefined}
           onClick={(e) => {
@@ -384,15 +414,15 @@ export function HubShellReorderablePrimaryNav({
           }}
           className={({ isActive }) => navButtonClassName(isActive)}
           {...hubContextData({
-            type: "tool",
-            toolId: "spin-the-wheel",
-            label: ch.panelWheel.label,
-            path: "/tools/spin-the-wheel",
-            pinned: pinnedIds.includes("spin-the-wheel"),
+            type: "navPrimary",
+            navId: "wheel",
+            label,
+            path,
+            iconKey: override?.iconKey ?? null,
           })}
         >
-          <Workflow className="size-3.5 shrink-0" />
-          {ch.wheel}
+          <Icon className="size-3.5 shrink-0" />
+          {label}
         </NavLink>
       );
     }

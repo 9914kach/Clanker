@@ -13,14 +13,7 @@ import { Badge } from "@clanker/ui/components/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@clanker/ui/components/card";
 import { apiUrl } from "@/config";
 import HubDesktopSurface, { type HubDesktopWidget } from "@/components/HubDesktopSurface";
-<<<<<<< ours
-<<<<<<< ours
-=======
-=======
->>>>>>> theirs
 import HubCustomModuleBuilder from "@/components/HubCustomModuleBuilder";
-import { DEFAULT_WIDGET_LAYOUTS } from "@/lib/hub-dashboard-layout-storage";
->>>>>>> theirs
 import { useHubAudio } from "@/components/HubAudioProvider";
 import { useHubToasts } from "@/components/HubToastProvider";
 import { useHubLocale } from "@/components/locale-provider";
@@ -29,6 +22,7 @@ import { useHubLayout } from "@/hooks/use-hub-layout";
 import { useHubSurfaceEngine } from "@/hooks/use-hub-surface-engine";
 import { pickHubChaosLine, rollHubChaos } from "@/lib/hub-chaos";
 import { useHubPrefs } from "@/components/HubPrefsProvider";
+import { gridStepForDensity } from "@/lib/hub-prefs";
 
 const HUB_GUILD_ID = import.meta.env.VITE_DISCORD_HUB_GUILD_ID?.trim() ?? "";
 
@@ -70,6 +64,7 @@ export default function DashboardPage() {
     setDesktopShellState,
     layoutEditMode,
     gridSnapEnabled,
+    gridVisible,
   } = useHubLayout();
   const toasts = useHubToasts();
   const { play, enabled: audioEnabled, toggleEnabled: toggleAudio } = useHubAudio();
@@ -81,10 +76,12 @@ export default function DashboardPage() {
     summaryError: null,
     liveError: null,
   });
+  const seedPreview = useMemo(() => `hub-${new Date().toISOString().slice(0, 10)}`, []);
 
   const surface = useHubSurfaceEngine({
     layoutEditMode,
     gridSnapEnabled,
+    gridStep: gridStepForDensity(prefs.desktop.gridDensity),
     prefs,
   });
 
@@ -229,11 +226,9 @@ export default function DashboardPage() {
               {audioEnabled ? d.welcomeAudioOnline : d.welcomeAudioMuted}
             </Badge>
           </div>
-          <div className="flex flex-col gap-1">
-            <p className="text-foreground">
-              {d.welcomeBack(displayName)}
-            </p>
-            <p>{d.welcomeBlurb}</p>
+          <div className="rounded-xl border border-border/60 bg-background/60 p-3">
+            <p className="text-foreground">{d.welcomeBack(displayName)}</p>
+            <p className="mt-1 text-muted-foreground">{d.welcomeBlurb}</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button asChild size="sm">
@@ -258,28 +253,32 @@ export default function DashboardPage() {
           {guildWidget.summaryError ? <p className="text-destructive">{guildWidget.summaryError}</p> : null}
           {guildWidget.liveError ? <p className="text-destructive">{guildWidget.liveError}</p> : null}
           {guildWidget.summary ? (
-            <div className="flex flex-col gap-1">
-              <p className="font-medium text-foreground">{guildWidget.summary.guild.name}</p>
-              <p>
+            <div className="flex flex-col gap-3 rounded-xl border border-border/60 bg-background/60 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <p className="font-medium text-foreground">{guildWidget.summary.guild.name}</p>
+                <Badge variant="outline">{d.channels(guildWidget.summary.channel_count)}</Badge>
+              </div>
+              <div className="rounded-lg border border-border/60 bg-background/70 p-2 text-xs text-muted-foreground">
                 {d.membersOnline(
                   String(guildWidget.summary.guild.approximate_member_count ?? "—"),
                   String(guildWidget.summary.guild.approximate_presence_count ?? "—"),
                 )}
-              </p>
-              <p>{d.channels(guildWidget.summary.channel_count)}</p>
+              </div>
             </div>
           ) : (
-            <p>{d.serverLoadingSummary}</p>
+            <div className="rounded-xl border border-dashed border-border/60 bg-background/60 p-3">
+              <p>{d.serverLoadingSummary}</p>
+            </div>
           )}
           {guildWidget.live ? (
-            <div className="flex flex-col gap-1 rounded-xl border border-border/60 bg-background/70 p-3">
-              <p>
-                {d.gateway}{" "}
-                <span className={guildWidget.live.gateway_connected ? "text-foreground" : "text-destructive"}>
+            <div className="flex flex-col gap-2 rounded-xl border border-border/60 bg-background/70 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{d.gateway}</p>
+                <Badge variant={guildWidget.live.gateway_connected ? "outline" : "destructive"}>
                   {guildWidget.live.gateway_connected ? d.gatewayConnected : d.gatewayDisconnected}
-                </span>
-              </p>
-              <p>{d.voiceNow(guildWidget.live.voice_users.length)}</p>
+                </Badge>
+              </div>
+              <p className="text-sm text-foreground">{d.voiceNow(guildWidget.live.voice_users.length)}</p>
               {guildWidget.live.gateway_degraded_reason ? (
                 <p className="text-xs text-warning">{guildWidget.live.gateway_degraded_reason}</p>
               ) : null}
@@ -300,6 +299,10 @@ export default function DashboardPage() {
       content: (
         <div className="flex flex-col gap-4 text-sm text-muted-foreground">
           <p>{d.wheelBlurb}</p>
+          <div className="rounded-xl border border-border/60 bg-background/60 p-3">
+            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Seed</p>
+            <p className="mt-2 font-mono text-sm text-foreground">{seedPreview}</p>
+          </div>
           <div className="flex flex-wrap gap-2">
             <Button asChild size="sm">
               <Link to="/tools/spin-the-wheel">{d.openWheel}</Link>
@@ -309,7 +312,7 @@ export default function DashboardPage() {
               size="sm"
               variant="outline"
               onClick={() => {
-                void navigator.clipboard.writeText(`hub-${new Date().toISOString().slice(0, 10)}`);
+                void navigator.clipboard.writeText(seedPreview);
                 toasts.push({
                   kind: "info",
                   title: copy.actions.toasts.seedCopied,
@@ -332,14 +335,16 @@ export default function DashboardPage() {
       icon: Orbit,
       content: (
         <div className="flex flex-col gap-3 text-sm text-muted-foreground">
-          <p className="text-foreground">{d.presenceLine1}</p>
-          <p>
-            {d.presenceLine2}
-            <Link to={publicProfilePath} className="text-foreground underline-offset-4 hover:underline">
-              {d.presenceLine2Link}
-            </Link>
-            .
-          </p>
+          <div className="rounded-xl border border-border/60 bg-background/60 p-3">
+            <p className="text-foreground">{d.presenceLine1}</p>
+            <p className="mt-2">
+              {d.presenceLine2}
+              <Link to={publicProfilePath} className="text-foreground underline-offset-4 hover:underline">
+                {d.presenceLine2Link}
+              </Link>
+              .
+            </p>
+          </div>
           <div className="rounded-xl border border-border/60 bg-background/70 p-3">
             <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{d.liveLineLabel}</p>
             <p className="mt-2 text-sm text-foreground">
@@ -424,6 +429,7 @@ export default function DashboardPage() {
     play,
     profile,
     publicProfilePath,
+    seedPreview,
     toasts,
     toggleAudio,
   ]);
@@ -692,17 +698,17 @@ export default function DashboardPage() {
       stylePackId={prefs.desktop.stylePackId}
       animationIntensity={prefs.motion.animationIntensity}
       onMoveWidget={moveWidget}
-      onMoveWidgetsByDelta={moveWidgetsByDelta}
       onResizeWidget={resizeWidget}
       onFocusWidget={focusWidget}
       onOpenWidget={revealWidget}
       onHideWidget={hideWidget}
       layoutEditMode={layoutEditMode}
+      gridStep={gridStepForDensity(prefs.desktop.gridDensity)}
       gridSnapEnabled={gridSnapEnabled}
+      gridCompaction={prefs.desktop.gridCompaction}
+      showGrid={gridVisible}
       selectedWidgetIds={selectedWidgetIds}
       onSelectWidget={toggleWidgetInSelection}
-      onSetWidgetSelection={setWidgetSelection}
-      onClearSelection={clearWidgetSelection}
     />
   );
 }

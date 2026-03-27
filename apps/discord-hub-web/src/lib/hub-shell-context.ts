@@ -31,6 +31,13 @@ export type HubContextTarget =
       pinned: boolean;
     }
   | {
+      type: "navPrimary";
+      navId: string;
+      label: string;
+      path: string;
+      iconKey?: string | null;
+    }
+  | {
       type: "navBookmark";
       bookmarkId: string;
       label: string;
@@ -62,6 +69,7 @@ export type HubContextMenuItem = {
   tone?: "default" | "danger" | "chaos";
   checked?: boolean;
   disabled?: boolean;
+  children?: readonly HubContextMenuItem[];
   onSelect: () => void;
 };
 

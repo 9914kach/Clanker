@@ -1,0 +1,26 @@
+{
+  "taskId": "nightly-architecture-pass",
+  "goal": "Iterate page architecture, refactor and break out modules, and enforce coding standards.",
+  "schedule": {
+    "rrule": "RRULE:FREQ=WEEKLY;BYHOUR=9;BYMINUTE=0;BYDAY=SU,MO,TU,WE,TH,FR,SA"
+  },
+  "iterations": 3,
+  "agent": {
+    "command": "echo \"Set NIGHT_AGENT_CMD (secret) or update agent.command. Prompt at {PROMPT_FILE}\"",
+    "promptFile": "automation/prompts/nightly-architecture.md",
+    "timeoutSeconds": 3600
+  },
+  "dod": {
+    "timeoutSeconds": 1800,
+    "checks": [
+      {
+        "name": "Typecheck",
+        "command": "npm run typecheck"
+      },
+      {
+        "name": "Lint",
+        "command": "npm run lint"
+      }
+    ]
+  }
+}

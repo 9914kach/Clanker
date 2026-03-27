@@ -7,7 +7,7 @@ export type HubDesktopWidgetLayout = {
   hidden: boolean;
 };
 
-export const HUB_DESKTOP_LAYOUT_GRID = 16;
+export const HUB_DESKTOP_LAYOUT_GRID = 160;
 
 export type HubSnapStrength = "relaxed" | "standard" | "firm";
 
@@ -16,7 +16,7 @@ export function effectiveSnapStep(baseGrid: number, snapStrength: HubSnapStrengt
     return baseGrid * 2;
   }
   if (snapStrength === "firm") {
-    return Math.max(8, Math.round(baseGrid / 2));
+    return Math.max(64, Math.round(baseGrid / 2));
   }
   return baseGrid;
 }

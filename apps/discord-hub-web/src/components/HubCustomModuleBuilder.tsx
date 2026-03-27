@@ -2,7 +2,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@clanker/ui/components/badge";
 import { Button } from "@clanker/ui/components/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@clanker/ui/components/card";
+import { Card, CardContent, CardHeader } from "@clanker/ui/components/card";
 import { Input } from "@clanker/ui/components/input";
 import { Textarea } from "@clanker/ui/components/textarea";
 import { cn } from "@clanker/ui/lib/utils";
@@ -17,8 +17,19 @@ export type HubCustomModuleItem = {
   size: HubCustomModuleSize;
 };
 
+function createModuleId(): string {
+  try {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      return crypto.randomUUID();
+    }
+  } catch {
+    /* ignore */
+  }
+  return `module-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 const DEFAULT_ITEM: HubCustomModuleItem = {
-  id: crypto.randomUUID(),
+  id: createModuleId(),
   title: "New note",
   content: "",
   size: "cozy",
@@ -77,28 +88,24 @@ export function HubCustomModuleCardEditor({
 
   return (
     <Card className="border-border/60 bg-background/70">
-      <CardHeader className="pb-2">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <CardTitle className="text-sm">{item.title || "Untitled"}</CardTitle>
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className="text-[0.65rem] uppercase">{item.size}</Badge>
-            <Button type="button" variant="ghost" size="icon-sm" onClick={onRemove} aria-label="Remove module">
-              <Trash2 />
-            </Button>
-          </div>
+      <CardHeader className="pb-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <Input
+            value={item.title}
+            onChange={(e) => onChange({ ...item, title: e.target.value })}
+            placeholder="Module title"
+            className="h-9 flex-1 rounded-xl bg-background/80"
+          />
+          <HubCustomModuleSizePicker
+            value={item.size}
+            onChange={(size) => onChange({ ...item, size })}
+          />
+          <Button type="button" variant="ghost" size="icon-sm" onClick={onRemove} aria-label="Remove module">
+            <Trash2 />
+          </Button>
         </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
-        <Input
-          value={item.title}
-          onChange={(e) => onChange({ ...item, title: e.target.value })}
-          placeholder="Module title"
-          className="rounded-xl"
-        />
-        <HubCustomModuleSizePicker
-          value={item.size}
-          onChange={(size) => onChange({ ...item, size })}
-        />
         <Textarea
           rows={textareaRows}
           value={item.content}
@@ -132,10 +139,27 @@ export default function HubCustomModuleBuilder({
   const moduleCountLabel = useMemo(() => `${items.length}/${maxItems}`, [items.length, maxItems]);
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-2">
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border/60 bg-background/60 p-3">
         <p className="text-xs text-muted-foreground">Add modules and customize their size + content.</p>
-        <Badge variant="secondary">{moduleCountLabel}</Badge>
+        <div className="flex items-center gap-2">
+          <Badge variant="secondary">{moduleCountLabel}</Badge>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={addDisabled}
+            onClick={() => {
+              setItems((prev) => [
+                ...prev,
+                { ...DEFAULT_ITEM, id: createModuleId(), title: `New note ${prev.length + 1}` },
+              ]);
+            }}
+          >
+            <Plus data-icon="inline-start" />
+            Add module
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-col gap-3">
@@ -147,28 +171,12 @@ export default function HubCustomModuleBuilder({
             onRemove={() => {
               setItems((prev) => {
                 const remaining = prev.filter((entry) => entry.id !== item.id);
-                return remaining.length > 0 ? remaining : [{ ...DEFAULT_ITEM, id: crypto.randomUUID() }];
+                return remaining.length > 0 ? remaining : [{ ...DEFAULT_ITEM, id: createModuleId() }];
               });
             }}
           />
         ))}
       </div>
-
-      <Button
-        type="button"
-        size="sm"
-        variant="outline"
-        disabled={addDisabled}
-        onClick={() => {
-          setItems((prev) => [
-            ...prev,
-            { ...DEFAULT_ITEM, id: crypto.randomUUID(), title: `New note ${prev.length + 1}` },
-          ]);
-        }}
-      >
-        <Plus data-icon="inline-start" />
-        Add module
-      </Button>
     </div>
   );
 }

@@ -15,6 +15,7 @@ import { LayoutGrid } from "lucide-react";
 import LeagueRankText from "@/components/LeagueRankText";
 import HubDesktopSurface, { type HubDesktopContainer } from "@/components/HubDesktopSurface";
 import { useHubPrefs } from "@/components/HubPrefsProvider";
+import { gridStepForDensity } from "@/lib/hub-prefs";
 import { useHubLocale } from "@/components/locale-provider";
 import { apiUrl } from "@/config";
 import { useHubLayout } from "@/hooks/use-hub-layout";
@@ -153,7 +154,7 @@ function leagueIntroLine(
 export default function PublicProfilePage() {
   const { copy, locale } = useHubLocale();
   const p = copy.publicProfile;
-  const { me, layoutEditMode, gridSnapEnabled } = useHubLayout();
+  const { me, layoutEditMode, gridSnapEnabled, gridVisible } = useHubLayout();
   const { prefs } = useHubPrefs();
   const { userId = "" } = useParams();
   const [state, setState] = useState<ProfileState>({ status: "loading" });
@@ -161,6 +162,7 @@ export default function PublicProfilePage() {
   const surface = useHubSurfaceEngine({
     layoutEditMode,
     gridSnapEnabled,
+    gridStep: gridStepForDensity(prefs.desktop.gridDensity),
     prefs,
     defaultLayouts: PUBLIC_PROFILE_CONTAINER_DEFAULT_LAYOUTS,
     enableRemoteSync: false,
@@ -561,17 +563,17 @@ export default function PublicProfilePage() {
         layouts={surface.activeLayout}
         hiddenWidgetIds={[]}
         onMoveWidget={surface.moveWidget}
-        onMoveWidgetsByDelta={surface.moveWidgetsByDelta}
         onResizeWidget={surface.resizeWidget}
         onFocusWidget={surface.focusWidget}
         onOpenWidget={() => undefined}
         onHideWidget={() => undefined}
         layoutEditMode={layoutEditMode}
+        gridStep={gridStepForDensity(prefs.desktop.gridDensity)}
         gridSnapEnabled={gridSnapEnabled}
+        gridCompaction={prefs.desktop.gridCompaction}
+        showGrid={gridVisible}
         selectedWidgetIds={surface.selectedWidgetIds}
         onSelectWidget={surface.toggleWidgetInSelection}
-        onSetWidgetSelection={surface.setWidgetSelection}
-        onClearSelection={surface.clearWidgetSelection}
       />
     </div>
   );

@@ -30,34 +30,101 @@ import {
   type HubRemoteApplyDetail,
 } from "@/lib/hub-settings-sync";
 import {
-  cloneLayoutRecord,
-  HUB_DESKTOP_LAYOUT_GRID,
-  layoutRecordsEqual,
+  effectiveSnapStep,
   snapCoord,
   type HubDesktopWidgetLayout,
 } from "@/lib/hub-desktop-layout";
-import { gridStepForDensity, type HubPrefs } from "@/lib/hub-prefs";
+import {
+  desktopLayoutToNodes,
+  nodesToDesktopLayout,
+  normalizeNodeMap,
+  geometriesFromDesktopLayout,
+  type HubGridGeometry,
+  type HubGridNode,
+  type HubGridNodeMap,
+} from "@/lib/hub-grid-node";
+import type { HubPrefs } from "@/lib/hub-prefs";
 
-const MIN_WIDGET_W = 240;
-const MIN_WIDGET_H = 140;
+const MIN_WIDGET_W = 120;
+const MIN_WIDGET_H = 100;
 const FALLBACK_LAYOUT: HubDesktopWidgetLayout = {
-  x: 24,
-  y: 70,
+  x: 0,
+  y: 0,
   w: 320,
-  h: 200,
+  h: 240,
   z: 1,
   hidden: false,
 };
 
 type DesktopEditSession = {
-  draft: Record<string, HubDesktopWidgetLayout>;
-  baseline: Record<string, HubDesktopWidgetLayout>;
-  past: Record<string, HubDesktopWidgetLayout>[];
-  future: Record<string, HubDesktopWidgetLayout>[];
+  draft: HubGridNodeMap;
+  baseline: HubGridNodeMap;
+  past: HubGridNodeMap[];
+  future: HubGridNodeMap[];
 };
 
-function nextDesktopZ(layouts: Readonly<Record<string, HubDesktopWidgetLayout>>): number {
-  return Math.max(0, ...Object.values(layouts).map((l) => l.z)) + 1;
+function cloneNodeMap(nodes: Readonly<HubGridNodeMap>): HubGridNodeMap {
+  const next: HubGridNodeMap = {};
+  for (const [id, node] of Object.entries(nodes)) {
+    if (!node) {
+      continue;
+    }
+    next[id] = {
+      ...node,
+      geometry: node.geometry ? { ...node.geometry } : null,
+      metadata: { ...(node.metadata ?? {}) },
+    };
+  }
+  return next;
+}
+
+function nodeMapsEqual(a: Readonly<HubGridNodeMap>, b: Readonly<HubGridNodeMap>): boolean {
+  const keysA = Object.keys(a).sort();
+  const keysB = Object.keys(b).sort();
+  if (keysA.length !== keysB.length) {
+    return false;
+  }
+  for (let i = 0; i < keysA.length; i++) {
+    if (keysA[i] !== keysB[i]) {
+      return false;
+    }
+  }
+  for (const id of keysA) {
+    const na = a[id];
+    const nb = b[id];
+    if (!na || !nb) {
+      return false;
+    }
+    if (na.kind !== nb.kind || na.hidden !== nb.hidden || na.containerId !== nb.containerId) {
+      return false;
+    }
+    const ga = na.geometry;
+    const gb = nb.geometry;
+    if (!ga || !gb) {
+      if (ga !== gb) {
+        return false;
+      }
+      continue;
+    }
+    if (ga.x !== gb.x || ga.y !== gb.y || ga.w !== gb.w || ga.h !== gb.h || ga.z !== gb.z) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function fallbackGeometry(): HubGridGeometry {
+  return {
+    x: FALLBACK_LAYOUT.x,
+    y: FALLBACK_LAYOUT.y,
+    w: FALLBACK_LAYOUT.w,
+    h: FALLBACK_LAYOUT.h,
+    z: FALLBACK_LAYOUT.z,
+  };
+}
+
+function nextDesktopZ(nodes: Readonly<HubGridNodeMap>): number {
+  return Math.max(0, ...Object.values(nodes).map((n) => n.geometry?.z ?? 0)) + 1;
 }
 
 export type HubSurfaceEngineResult = {
@@ -72,9 +139,13 @@ export type HubSurfaceEngineResult = {
   canUndoLayout: boolean;
   canRedoLayout: boolean;
 
-  moveWidget: (id: string, position: Pick<HubDesktopWidgetLayout, "x" | "y">) => void;
-  moveWidgetsByDelta: (ids: readonly string[], dx: number, dy: number) => void;
-  resizeWidget: (id: string, size: { w: number; h: number }) => void;
+  moveWidget: (
+    id: string,
+    position: Pick<HubDesktopWidgetLayout, "x" | "y">,
+    options?: { snap?: boolean; bumpZ?: boolean },
+  ) => void;
+  moveWidgetsByDelta: (ids: readonly string[], dx: number, dy: number, options?: { snap?: boolean }) => void;
+  resizeWidget: (id: string, size: { w: number; h: number }, options?: { snap?: boolean }) => void;
   focusWidget: (id: string) => void;
   revealWidget: (id: string, onReveal?: (id: string) => void) => void;
   hideWidget: (id: string, onHide?: (id: string) => void) => void;
@@ -95,15 +166,16 @@ export type HubSurfaceEngineResult = {
   nudgeSelectedWidgets: (dx: number, dy: number) => void;
   bringSelectedWidgetsToFront: () => void;
 
-  /** Muterar draft om vi är i edit-läge, annars savedLayout. */
+  /** Muterar draft om vi är i edit-läge, annars saved layout (deriverad från nodes). */
   mutateSavedOrDraft: (
-    updater: (prev: Record<string, HubDesktopWidgetLayout>) => Record<string, HubDesktopWidgetLayout>,
+    updater: (prev: HubGridNodeMap) => HubGridNodeMap,
   ) => void;
 };
 
 export type HubSurfaceEngineOptions = {
   layoutEditMode: boolean;
   gridSnapEnabled: boolean;
+  gridStep: number;
   prefs: HubPrefs;
   /**
    * Defaults för denna yta (id -> layout). Dashboard använder DEFAULT_WIDGET_LAYOUTS.
@@ -131,6 +203,7 @@ export type HubSurfaceEngineOptions = {
 export function useHubSurfaceEngine({
   layoutEditMode,
   gridSnapEnabled,
+  gridStep,
   prefs,
   defaultLayouts,
   persistence,
@@ -140,6 +213,8 @@ export function useHubSurfaceEngine({
 }: HubSurfaceEngineOptions): HubSurfaceEngineResult {
   const defaultsRef = useRef(defaultLayouts ?? DEFAULT_WIDGET_LAYOUTS);
   defaultsRef.current = defaultLayouts ?? DEFAULT_WIDGET_LAYOUTS;
+  const defaultGeometriesRef = useRef(geometriesFromDesktopLayout(defaultsRef.current));
+  defaultGeometriesRef.current = geometriesFromDesktopLayout(defaultsRef.current);
 
   const persistenceRef = useRef({
     readLayout: readDesktopLayoutFromStorage,
@@ -156,9 +231,11 @@ export function useHubSurfaceEngine({
     ...(persistence ?? {}),
   };
 
-  const [savedLayout, setSavedLayout] = useState<Record<string, HubDesktopWidgetLayout>>(() => {
+  const [savedNodes, setSavedNodes] = useState<HubGridNodeMap>(() => {
     const read = persistenceRef.current.readLayout ?? readDesktopLayoutFromStorage;
-    return read();
+    const layout = read();
+    const nodes = desktopLayoutToNodes(layout);
+    return normalizeNodeMap(nodes, defaultGeometriesRef.current);
   });
   const [editSession, setEditSession] = useState<DesktopEditSession | null>(null);
   const [selectedWidgetIds, setSelectedWidgetIds] = useState<string[]>([]);
@@ -167,8 +244,8 @@ export function useHubSurfaceEngine({
     return read();
   });
 
-  const savedLayoutRef = useRef(savedLayout);
-  savedLayoutRef.current = savedLayout;
+  const savedNodesRef = useRef(savedNodes);
+  savedNodesRef.current = savedNodes;
   const autosaveLayoutEnabledRef = useRef(autosaveLayoutEnabled);
   autosaveLayoutEnabledRef.current = autosaveLayoutEnabled;
   const layoutSyncSerializedRef = useRef<string | null>(null);
@@ -177,17 +254,19 @@ export function useHubSurfaceEngine({
   const layoutEditModeRef = useRef(layoutEditMode);
   layoutEditModeRef.current = layoutEditMode;
 
-  const activeLayout = layoutEditMode && editSession ? editSession.draft : savedLayout;
+  const activeNodes = layoutEditMode && editSession ? editSession.draft : savedNodes;
+  const activeLayout = nodesToDesktopLayout(activeNodes);
+  const savedLayout = nodesToDesktopLayout(savedNodes);
 
   // Persista autosave-flaggan
   useEffect(() => {
     persistenceRef.current.writeAutosaveEnabled?.(autosaveLayoutEnabled);
   }, [autosaveLayoutEnabled]);
 
-  // Persista savedLayout
+  // Persista saved layout
   useEffect(() => {
-    persistenceRef.current.writeLayout?.(savedLayout);
-  }, [savedLayout]);
+    persistenceRef.current.writeLayout?.(nodesToDesktopLayout(savedNodes));
+  }, [savedNodes]);
 
   // Lyssna på remote settings apply
   useEffect(() => {
@@ -201,18 +280,18 @@ export function useHubSurfaceEngine({
       if (!hasLayout && !hasAutosaveFlag) {
         return;
       }
-      const nextLayout = hasLayout
-        ? cloneLayoutRecord(detail.desktopLayout!)
-        : savedLayoutRef.current;
+      const nextNodes = hasLayout
+        ? normalizeNodeMap(desktopLayoutToNodes(detail.desktopLayout!), defaultGeometriesRef.current)
+        : savedNodesRef.current;
       const nextAutosave = hasAutosaveFlag
         ? detail.layoutAutosaveEnabled!
         : autosaveLayoutEnabledRef.current;
       layoutSyncSerializedRef.current = JSON.stringify({
-        layout: JSON.stringify(nextLayout),
+        layout: JSON.stringify(nodesToDesktopLayout(nextNodes)),
         autosave: nextAutosave,
       });
       if (hasLayout) {
-        setSavedLayout(nextLayout);
+        setSavedNodes(nextNodes);
       }
       if (hasAutosaveFlag) {
         setAutosaveLayoutEnabled(nextAutosave);
@@ -228,7 +307,7 @@ export function useHubSurfaceEngine({
       return;
     }
     const blob = JSON.stringify({
-      layout: JSON.stringify(savedLayout),
+      layout: JSON.stringify(nodesToDesktopLayout(savedNodes)),
       autosave: autosaveLayoutEnabled,
     });
     if (layoutSyncSerializedRef.current === null) {
@@ -240,12 +319,12 @@ export function useHubSurfaceEngine({
     }
     layoutSyncSerializedRef.current = blob;
     bumpLocalSettingsRevision();
-  }, [autosaveLayoutEnabled, enableRemoteSync, savedLayout]);
+  }, [autosaveLayoutEnabled, enableRemoteSync, savedNodes]);
 
   // Starta/avsluta edit-session när layoutEditMode ändras
   useEffect(() => {
     if (layoutEditMode) {
-      const base = cloneLayoutRecord(savedLayoutRef.current);
+      const base = cloneNodeMap(savedNodesRef.current);
       setEditSession({ draft: base, baseline: base, past: [], future: [] });
       setSelectedWidgetIds([]);
     } else {
@@ -255,13 +334,13 @@ export function useHubSurfaceEngine({
   }, [layoutEditMode]);
 
   const mutateDraft = useCallback(
-    (updater: (prev: Record<string, HubDesktopWidgetLayout>) => Record<string, HubDesktopWidgetLayout>) => {
+    (updater: (prev: HubGridNodeMap) => HubGridNodeMap) => {
       setEditSession((session) => {
         if (!session) {
           return session;
         }
-        const snapshot = cloneLayoutRecord(session.draft);
-        const nextDraft = updater(cloneLayoutRecord(session.draft));
+        const snapshot = cloneNodeMap(session.draft);
+        const nextDraft = updater(cloneNodeMap(session.draft));
         const nextSession: DesktopEditSession = {
           ...session,
           draft: nextDraft,
@@ -271,7 +350,7 @@ export function useHubSurfaceEngine({
         if (autosaveLayoutEnabledRef.current) {
           queueMicrotask(() => {
             if (layoutEditModeRef.current) {
-              setSavedLayout(cloneLayoutRecord(nextDraft));
+              setSavedNodes(cloneNodeMap(nextDraft));
             }
           });
         }
@@ -282,11 +361,11 @@ export function useHubSurfaceEngine({
   );
 
   const mutateSavedOrDraft = useCallback(
-    (updater: (prev: Record<string, HubDesktopWidgetLayout>) => Record<string, HubDesktopWidgetLayout>) => {
+    (updater: (prev: HubGridNodeMap) => HubGridNodeMap) => {
       if (layoutEditModeRef.current && editSessionRef.current) {
         mutateDraft(updater);
       } else {
-        setSavedLayout((prev) => updater(cloneLayoutRecord(prev)));
+        setSavedNodes((prev) => updater(cloneNodeMap(prev)));
       }
     },
     [mutateDraft],
@@ -294,66 +373,112 @@ export function useHubSurfaceEngine({
 
   // --- Layout mutations ---
 
-  const baseLayoutForId = useCallback(
-    (prev: Record<string, HubDesktopWidgetLayout>, id: string): HubDesktopWidgetLayout => {
-      return prev[id] ?? defaultsRef.current[id] ?? FALLBACK_LAYOUT;
+  const baseNodeForId = useCallback(
+    (prev: HubGridNodeMap, id: string): HubGridNode => {
+      const existing = prev[id];
+      if (existing) {
+        if (existing.geometry) {
+          return existing;
+        }
+        const geo = defaultGeometriesRef.current[id] ?? fallbackGeometry();
+        return { ...existing, geometry: { ...geo } } as HubGridNode;
+      }
+      const geo = defaultGeometriesRef.current[id] ?? fallbackGeometry();
+      const created: HubGridNode = {
+        id,
+        kind: "widget",
+        geometry: { ...geo },
+        hidden: false,
+        containerId: null,
+        metadata: {},
+      };
+      return created;
     },
     [],
   );
 
   const moveWidgetImpl = useCallback(
-    (id: string, position: Pick<HubDesktopWidgetLayout, "x" | "y">, bumpZ: boolean) => {
-      const gridStep = gridStepForDensity(prefs.desktop.gridDensity);
-      const apply = (prev: Record<string, HubDesktopWidgetLayout>) => {
-        const snap = (v: number) => snapCoord(v, gridSnapEnabled, gridStep, prefs.desktop.snapStrength);
-        const base = baseLayoutForId(prev, id);
-        return {
-          ...prev,
-          [id]: {
-            ...base,
-            x: snap(position.x),
-            y: snap(position.y),
-            z: bumpZ ? nextDesktopZ(prev) : base.z,
+    (
+      id: string,
+      position: Pick<HubDesktopWidgetLayout, "x" | "y">,
+      bumpZ: boolean,
+      snap = true,
+    ) => {
+      const apply = (prev: HubGridNodeMap) => {
+        const shouldSnap = snap && gridSnapEnabled;
+        const snapFn = (v: number) =>
+          shouldSnap ? snapCoord(v, true, gridStep, prefs.desktop.snapStrength) : Math.round(v);
+        const next = cloneNodeMap(prev);
+        const base = baseNodeForId(next, id);
+        const geo = base.geometry ?? fallbackGeometry();
+        next[id] = {
+          ...base,
+          geometry: {
+            ...geo,
+            x: snapFn(position.x),
+            y: snapFn(position.y),
+            z: bumpZ ? nextDesktopZ(next) : geo.z,
           },
         };
+        return next;
       };
       if (layoutEditModeRef.current && editSessionRef.current) {
         mutateDraft(apply);
       } else {
-        setSavedLayout((prev) => apply(cloneLayoutRecord(prev)));
+        setSavedNodes((prev) => apply(cloneNodeMap(prev)));
       }
     },
-    [baseLayoutForId, gridSnapEnabled, mutateDraft, prefs.desktop.gridDensity, prefs.desktop.snapStrength],
+    [baseNodeForId, gridSnapEnabled, gridStep, mutateDraft, prefs.desktop.snapStrength],
   );
 
   const moveWidget = useCallback(
-    (id: string, position: Pick<HubDesktopWidgetLayout, "x" | "y">) => {
-      moveWidgetImpl(id, position, true);
+    (
+      id: string,
+      position: Pick<HubDesktopWidgetLayout, "x" | "y">,
+      options?: { snap?: boolean; bumpZ?: boolean },
+    ) => {
+      moveWidgetImpl(id, position, options?.bumpZ !== false, options?.snap !== false);
     },
     [moveWidgetImpl],
   );
 
   const moveWidgetsByDelta = useCallback(
-    (ids: readonly string[], dx: number, dy: number) => {
+    (ids: readonly string[], dx: number, dy: number, options?: { snap?: boolean }) => {
       if (ids.length === 0) {
         return;
       }
-      const gridStep = gridStepForDensity(prefs.desktop.gridDensity);
-      const snap = (v: number) => snapCoord(v, gridSnapEnabled, gridStep, prefs.desktop.snapStrength);
-      const apply = (prev: Record<string, HubDesktopWidgetLayout>) => {
-        const next = cloneLayoutRecord(prev);
+      const shouldSnap = options?.snap !== false && gridSnapEnabled;
+      const snap = (v: number) => snapCoord(v, true, gridStep, prefs.desktop.snapStrength);
+      const apply = (prev: HubGridNodeMap) => {
+        const next = cloneNodeMap(prev);
+        const anchorId = ids.find((wid) => {
+          const cur = next[wid];
+          return Boolean(cur && cur.geometry && !cur.hidden);
+        });
+        if (!anchorId) {
+          return next;
+        }
+        const anchor = next[anchorId] ?? baseNodeForId(next, anchorId);
+        if (!anchor || !anchor.geometry) {
+          return next;
+        }
+        const resolvedDx = shouldSnap ? snap(anchor.geometry.x + dx) - anchor.geometry.x : dx;
+        const resolvedDy = shouldSnap ? snap(anchor.geometry.y + dy) - anchor.geometry.y : dy;
         const topZ = nextDesktopZ(next);
         let zAssign = topZ;
         for (const wid of ids) {
-          const cur = next[wid] ?? defaultsRef.current[wid] ?? null;
-          if (!cur || cur.hidden) {
+          const cur = next[wid] ?? baseNodeForId(next, wid);
+          if (!cur || !cur.geometry || cur.hidden) {
             continue;
           }
           next[wid] = {
             ...cur,
-            x: snap(cur.x + dx),
-            y: snap(cur.y + dy),
-            z: zAssign++,
+            geometry: {
+              ...cur.geometry,
+              x: cur.geometry.x + resolvedDx,
+              y: cur.geometry.y + resolvedDy,
+              z: zAssign++,
+            },
           };
         }
         return next;
@@ -361,103 +486,138 @@ export function useHubSurfaceEngine({
       if (layoutEditModeRef.current && editSessionRef.current) {
         mutateDraft(apply);
       } else {
-        setSavedLayout((prev) => apply(cloneLayoutRecord(prev)));
+        setSavedNodes((prev) => apply(cloneNodeMap(prev)));
       }
     },
-    [gridSnapEnabled, mutateDraft, prefs.desktop.gridDensity, prefs.desktop.snapStrength],
+    [baseNodeForId, gridSnapEnabled, gridStep, mutateDraft, prefs.desktop.snapStrength],
   );
 
   const resizeWidget = useCallback(
-    (id: string, size: { w: number; h: number }) => {
-      const apply = (prev: Record<string, HubDesktopWidgetLayout>) => ({
-        ...prev,
-        [id]: {
-          ...baseLayoutForId(prev, id),
-          w: Math.max(MIN_WIDGET_W, Math.round(size.w)),
-          h: Math.max(MIN_WIDGET_H, Math.round(size.h)),
-          z: nextDesktopZ(prev),
-        },
-      });
-      if (layoutEditModeRef.current && editSessionRef.current) {
-        mutateDraft(apply);
-      } else {
-        setSavedLayout((prev) => apply(cloneLayoutRecord(prev)));
-      }
-    },
-    [baseLayoutForId, mutateDraft],
-  );
-
-  const focusWidget = useCallback(
-    (id: string) => {
-      const apply = (prev: Record<string, HubDesktopWidgetLayout>) => {
-        const current = prev[id] ?? defaultsRef.current[id] ?? null;
-        if (!current) {
-          return prev;
-        }
-        const top = nextDesktopZ(prev);
-        if (current.z === top - 1) {
-          return prev;
-        }
-        return { ...prev, [id]: { ...current, z: top } };
+    (id: string, size: { w: number; h: number }, options?: { snap?: boolean }) => {
+      const shouldSnap = options?.snap !== false;
+      const apply = (prev: HubGridNodeMap) => {
+        const base = baseNodeForId(prev, id);
+        const geo = base.geometry ?? fallbackGeometry();
+        const w =
+          shouldSnap && gridSnapEnabled
+            ? snapCoord(size.w, true, gridStep, prefs.desktop.snapStrength)
+            : Math.round(size.w);
+        const h =
+          shouldSnap && gridSnapEnabled
+            ? snapCoord(size.h, true, gridStep, prefs.desktop.snapStrength)
+            : Math.round(size.h);
+        return {
+          ...prev,
+          [id]: {
+            ...base,
+            geometry: {
+              ...geo,
+              w: Math.max(MIN_WIDGET_W, Math.round(w)),
+              h: Math.max(MIN_WIDGET_H, Math.round(h)),
+              z: nextDesktopZ(prev),
+            },
+          },
+        };
       };
       if (layoutEditModeRef.current && editSessionRef.current) {
         mutateDraft(apply);
       } else {
-        setSavedLayout((prev) => apply(cloneLayoutRecord(prev)));
+        setSavedNodes((prev) => apply(cloneNodeMap(prev)));
       }
     },
-    [mutateDraft],
+    [baseNodeForId, gridSnapEnabled, gridStep, mutateDraft, prefs.desktop.snapStrength],
+  );
+
+  const focusWidget = useCallback(
+    (id: string) => {
+      const apply = (prev: HubGridNodeMap) => {
+        const current = prev[id] ?? baseNodeForId(prev, id);
+        if (!current || !current.geometry) {
+          return prev;
+        }
+        const top = nextDesktopZ(prev);
+        if (current.geometry.z === top - 1) {
+          return prev;
+        }
+        return {
+          ...prev,
+          [id]: {
+            ...current,
+            geometry: { ...current.geometry, z: top },
+          },
+        };
+      };
+      if (layoutEditModeRef.current && editSessionRef.current) {
+        mutateDraft(apply);
+      } else {
+        setSavedNodes((prev) => apply(cloneNodeMap(prev)));
+      }
+    },
+    [baseNodeForId, mutateDraft],
   );
 
   const revealWidget = useCallback(
     (id: string, onReveal?: (id: string) => void) => {
-      mutateSavedOrDraft((prev) => ({
-        ...prev,
-        [id]: {
-          ...baseLayoutForId(prev, id),
-          hidden: false,
-          z: nextDesktopZ(prev),
-        },
-      }));
+      mutateSavedOrDraft((prev) => {
+        const base = baseNodeForId(prev, id);
+        const geo = base.geometry ?? fallbackGeometry();
+        return {
+          ...prev,
+          [id]: {
+            ...base,
+            hidden: false,
+            geometry: { ...geo, z: nextDesktopZ(prev) },
+          },
+        };
+      });
       onReveal?.(id);
     },
-    [baseLayoutForId, mutateSavedOrDraft],
+    [baseNodeForId, mutateSavedOrDraft],
   );
 
   const hideWidget = useCallback(
     (id: string, onHide?: (id: string) => void) => {
-      mutateSavedOrDraft((prev) => ({
-        ...prev,
-        [id]: {
-          ...baseLayoutForId(prev, id),
-          hidden: true,
-        },
-      }));
+      mutateSavedOrDraft((prev) => {
+        const base = baseNodeForId(prev, id);
+        return {
+          ...prev,
+          [id]: {
+            ...base,
+            hidden: true,
+          },
+        };
+      });
       setSelectedWidgetIds((sel) => sel.filter((w) => w !== id));
       onHide?.(id);
     },
-    [baseLayoutForId, mutateSavedOrDraft],
+    [baseNodeForId, mutateSavedOrDraft],
   );
 
   const resetWidgetPosition = useCallback(
     (id: string) => {
       mutateSavedOrDraft((prev) => {
-        const defaults = defaultsRef.current[id];
+        const defaults = defaultGeometriesRef.current[id];
         if (!defaults) {
           return prev;
         }
-        const current = prev[id] ?? defaults;
-        return { ...prev, [id]: { ...defaults, hidden: current.hidden } };
+        const current = baseNodeForId(prev, id);
+        return {
+          ...prev,
+          [id]: {
+            ...current,
+            geometry: { ...defaults },
+            hidden: current.hidden,
+          },
+        };
       });
     },
-    [mutateSavedOrDraft],
+    [baseNodeForId, mutateSavedOrDraft],
   );
 
   const resetDesktopLayout = useCallback(() => {
-    const defaults = Object.fromEntries(
-      Object.entries(defaultsRef.current).map(([wid, layout]) => [wid, { ...layout }]),
-    ) as Record<string, HubDesktopWidgetLayout>;
-    mutateSavedOrDraft(() => defaults);
+    const defaults = desktopLayoutToNodes(defaultsRef.current);
+    const normalized = normalizeNodeMap(defaults, defaultGeometriesRef.current);
+    mutateSavedOrDraft(() => normalized);
   }, [mutateSavedOrDraft]);
 
   const revealAllHiddenWidgets = useCallback(
@@ -467,18 +627,22 @@ export function useHubSurfaceEngine({
       }
       mutateSavedOrDraft((prev) => {
         let z = nextDesktopZ(prev);
-        const next = { ...prev };
+        const next = cloneNodeMap(prev);
         for (const id of hiddenIds) {
-          const cur = next[id] ?? defaultsRef.current[id] ?? null;
-          if (!cur) {
+          const cur = next[id] ?? baseNodeForId(next, id);
+          if (!cur || !cur.geometry) {
             continue;
           }
-          next[id] = { ...cur, hidden: false, z: z++ };
+          next[id] = {
+            ...cur,
+            hidden: false,
+            geometry: { ...cur.geometry, z: z++ },
+          };
         }
         return next;
       });
     },
-    [mutateSavedOrDraft],
+    [baseNodeForId, mutateSavedOrDraft],
   );
 
   // --- Session control ---
@@ -489,8 +653,8 @@ export function useHubSurfaceEngine({
       onSaveCommitted?.();
       return;
     }
-    const committed = cloneLayoutRecord(s.draft);
-    setSavedLayout(committed);
+    const committed = cloneNodeMap(s.draft);
+    setSavedNodes(committed);
     setEditSession({ draft: committed, baseline: committed, past: [], future: [] });
     onSaveCommitted?.();
   }, [onSaveCommitted]);
@@ -500,9 +664,9 @@ export function useHubSurfaceEngine({
       if (!s) {
         return s;
       }
-      const reverted = cloneLayoutRecord(s.baseline);
+      const reverted = cloneNodeMap(s.baseline);
       if (autosaveLayoutEnabledRef.current) {
-        queueMicrotask(() => setSavedLayout(cloneLayoutRecord(reverted)));
+        queueMicrotask(() => setSavedNodes(cloneNodeMap(reverted)));
       }
       return { ...s, draft: reverted, past: [], future: [] };
     });
@@ -514,11 +678,11 @@ export function useHubSurfaceEngine({
       if (!s || s.past.length === 0) {
         return s;
       }
-      const prevDraft = cloneLayoutRecord(s.past[s.past.length - 1]!);
+      const prevDraft = cloneNodeMap(s.past[s.past.length - 1]!);
       const newPast = s.past.slice(0, -1);
-      const newFuture = [cloneLayoutRecord(s.draft), ...s.future];
+      const newFuture = [cloneNodeMap(s.draft), ...s.future];
       if (autosaveLayoutEnabledRef.current) {
-        queueMicrotask(() => setSavedLayout(cloneLayoutRecord(prevDraft)));
+        queueMicrotask(() => setSavedNodes(cloneNodeMap(prevDraft)));
       }
       return { ...s, draft: prevDraft, past: newPast, future: newFuture };
     });
@@ -530,10 +694,10 @@ export function useHubSurfaceEngine({
         return s;
       }
       const [nextDraft, ...restFuture] = s.future;
-      const newPast = [...s.past, cloneLayoutRecord(s.draft)];
-      const draft = cloneLayoutRecord(nextDraft!);
+      const newPast = [...s.past, cloneNodeMap(s.draft)];
+      const draft = cloneNodeMap(nextDraft!);
       if (autosaveLayoutEnabledRef.current) {
-        queueMicrotask(() => setSavedLayout(cloneLayoutRecord(draft)));
+        queueMicrotask(() => setSavedNodes(cloneNodeMap(draft)));
       }
       return { ...s, draft, past: newPast, future: restFuture };
     });
@@ -543,7 +707,7 @@ export function useHubSurfaceEngine({
     setAutosaveLayoutEnabled((prev) => {
       const next = !prev;
       if (next && editSessionRef.current) {
-        queueMicrotask(() => setSavedLayout(cloneLayoutRecord(editSessionRef.current!.draft)));
+        queueMicrotask(() => setSavedNodes(cloneNodeMap(editSessionRef.current!.draft)));
       }
       return next;
     });
@@ -580,55 +744,63 @@ export function useHubSurfaceEngine({
       if (selectedWidgetIds.length === 0) {
         return;
       }
-      const step = gridSnapEnabled ? HUB_DESKTOP_LAYOUT_GRID : 1;
+      const step = gridSnapEnabled ? effectiveSnapStep(gridStep, prefs.desktop.snapStrength) : 1;
       const ndx = dx * step;
       const ndy = dy * step;
-      const apply = (prev: Record<string, HubDesktopWidgetLayout>) => {
-        const snap = (v: number) => snapCoord(v, gridSnapEnabled, HUB_DESKTOP_LAYOUT_GRID);
-        const next = cloneLayoutRecord(prev);
+      const apply = (prev: HubGridNodeMap) => {
+        const snap = (v: number) =>
+          gridSnapEnabled ? snapCoord(v, true, gridStep, prefs.desktop.snapStrength) : Math.round(v);
+        const next = cloneNodeMap(prev);
         for (const wid of selectedWidgetIds) {
-          const cur = next[wid] ?? defaultsRef.current[wid] ?? null;
-          if (!cur || cur.hidden) {
+          const cur = next[wid] ?? baseNodeForId(next, wid);
+          if (!cur || !cur.geometry || cur.hidden) {
             continue;
           }
-          next[wid] = { ...cur, x: snap(cur.x + ndx), y: snap(cur.y + ndy) };
+          next[wid] = {
+            ...cur,
+            geometry: {
+              ...cur.geometry,
+              x: snap(cur.geometry.x + ndx),
+              y: snap(cur.geometry.y + ndy),
+            },
+          };
         }
         return next;
       };
       if (layoutEditModeRef.current && editSessionRef.current) {
         mutateDraft(apply);
       } else {
-        setSavedLayout((prev) => apply(cloneLayoutRecord(prev)));
+        setSavedNodes((prev) => apply(cloneNodeMap(prev)));
       }
     },
-    [gridSnapEnabled, mutateDraft, selectedWidgetIds],
+    [baseNodeForId, gridSnapEnabled, gridStep, mutateDraft, prefs.desktop.snapStrength, selectedWidgetIds],
   );
 
   const bringSelectedWidgetsToFront = useCallback(() => {
     if (selectedWidgetIds.length === 0) {
       return;
     }
-    const apply = (prev: Record<string, HubDesktopWidgetLayout>) => {
-      const next = cloneLayoutRecord(prev);
+    const apply = (prev: HubGridNodeMap) => {
+      const next = cloneNodeMap(prev);
       let z = nextDesktopZ(next);
       for (const wid of selectedWidgetIds) {
-        const cur = next[wid] ?? defaultsRef.current[wid] ?? null;
-        if (!cur || cur.hidden) {
+        const cur = next[wid] ?? baseNodeForId(next, wid);
+        if (!cur || !cur.geometry || cur.hidden) {
           continue;
         }
-        next[wid] = { ...cur, z: z++ };
+        next[wid] = { ...cur, geometry: { ...cur.geometry, z: z++ } };
       }
       return next;
     };
     if (layoutEditModeRef.current && editSessionRef.current) {
       mutateDraft(apply);
     } else {
-      setSavedLayout((prev) => apply(cloneLayoutRecord(prev)));
+      setSavedNodes((prev) => apply(cloneNodeMap(prev)));
     }
-  }, [mutateDraft, selectedWidgetIds]);
+  }, [baseNodeForId, mutateDraft, selectedWidgetIds]);
 
   const isLayoutDirty =
-    Boolean(editSession) && !layoutRecordsEqual(editSession!.draft, editSession!.baseline);
+    Boolean(editSession) && !nodeMapsEqual(editSession!.draft, editSession!.baseline);
   const canUndoLayout = (editSession?.past.length ?? 0) > 0;
   const canRedoLayout = (editSession?.future.length ?? 0) > 0;
 

@@ -2,7 +2,9 @@ import type { HubActionApi } from "@/config/hub-actions";
 import type { HubDesktopShellState } from "@/hooks/use-hub-layout";
 import type { HubCopy } from "@/i18n/hub-copy";
 import type { HubContextMenuItem, HubContextMenuSection, HubContextTarget } from "@/lib/hub-shell-context";
+import { classifyTarget, getCapabilities, isEditable } from "@/lib/hub-shell-classification";
 import { isExternalNavPath } from "@/lib/hub-nav-bookmarks";
+import type { HubPrimaryNavItemId } from "@/lib/hub-shell-layout-order";
 
 function openNavBookmarkDestination(path: string, actions: HubActionApi): void {
   const t = path.trim();
@@ -90,6 +92,7 @@ export function buildHubShellMenu(params: {
   onNavBookmarkAdd?: () => void;
   onNavBookmarkEdit?: (bookmarkId: string) => void;
   onNavBookmarkDelete?: (bookmarkId: string) => void;
+  onPrimaryNavEdit?: (navId: HubPrimaryNavItemId) => void;
 }): HubContextMenuSection[] {
   const {
     copy,
@@ -106,10 +109,14 @@ export function buildHubShellMenu(params: {
     onNavBookmarkAdd,
     onNavBookmarkEdit,
     onNavBookmarkDelete,
+    onPrimaryNavEdit,
   } = params;
   const m = copy.shellMenu;
   const em = copy.editMode;
   const c = copy.common;
+  const pn = copy.primaryNav;
+  const policyRoute = isDashboardRoute ? "/dashboard" : "/route";
+  const policyMode = layoutEditMode ? "layout" : "normal";
 
   const desktopOnly =
     (fn: () => void) =>
@@ -139,9 +146,17 @@ export function buildHubShellMenu(params: {
             : null,
           desktopShell
             ? {
-                id: "edit-add-module",
+                id: "edit-add-widget",
                 label: m.addModule,
-                onSelect: desktopOnly(desktopShell.openAddModuleFlow),
+                onSelect: () => undefined,
+                children:
+                  hiddenWidgets.length > 0
+                    ? hiddenWidgets.map((widget) => ({
+                        id: `edit-add-widget-${widget.id}`,
+                        label: widget.label,
+                        onSelect: desktopOnly(() => desktopShell.revealWidget(widget.id)),
+                      }))
+                    : undefined,
               }
             : null,
           hiddenWidgets.length > 0 && desktopShell
@@ -151,11 +166,6 @@ export function buildHubShellMenu(params: {
                 onSelect: desktopOnly(() => desktopShell.revealAllHiddenWidgets()),
               }
             : null,
-          ...hiddenWidgets.map((widget) => ({
-            id: `edit-spawn-${widget.id}`,
-            label: `${m.spawnWidget}: ${widget.label}`,
-            onSelect: desktopOnly(() => desktopShell?.revealWidget(widget.id)),
-          })),
         ]),
         section("edit-desktop-arrange", m.shell, [
           desktopShell
@@ -246,6 +256,18 @@ export function buildHubShellMenu(params: {
     return [
       layoutModeSection(m, layoutEditMode, toggleLayoutEditMode),
       section("desktop-primary", target.area === "desktop" ? m.desktop : m.neutralenOs, [
+        desktopShell && hiddenWidgets.length > 0
+          ? {
+              id: "desktop-add-widget",
+              label: m.addModule,
+              onSelect: () => undefined,
+              children: hiddenWidgets.map((widget) => ({
+                id: `desktop-add-widget-${widget.id}`,
+                label: widget.label,
+                onSelect: desktopOnly(() => desktopShell.revealWidget(widget.id)),
+              })),
+            }
+          : null,
         actions.openCommandPalette
           ? {
               id: "desktop-command",
@@ -266,15 +288,6 @@ export function buildHubShellMenu(params: {
           onSelect: desktopShell?.toggleAudio ?? actions.toggleAudio,
         },
       ]),
-      section(
-        "desktop-widgets",
-        hiddenWidgets.length > 0 ? m.spawnWidget : undefined,
-        hiddenWidgets.map((widget) => ({
-          id: `spawn-${widget.id}`,
-          label: widget.label,
-          onSelect: () => desktopShell?.revealWidget(widget.id),
-        })),
-      ),
       section("desktop-system", m.system, [
         desktopShell
           ? {
@@ -482,6 +495,8 @@ export function buildHubShellMenu(params: {
   }
 
   if (target.type === "widget") {
+    const widgetClassification = classifyTarget(target, policyRoute);
+    const widgetCaps = getCapabilities(widgetClassification, policyMode, policyRoute);
     if (layoutEditMode && desktopShell) {
       return [
         section("widget-edit", m.layoutEditing, [
@@ -495,11 +510,13 @@ export function buildHubShellMenu(params: {
             label: m.resetWidgetPosition,
             onSelect: () => desktopShell.resetWidgetPosition(target.widgetId),
           },
-          {
-            id: "widget-hide",
-            label: m.hideWidget,
-            onSelect: () => desktopShell.hideWidget(target.widgetId),
-          },
+          widgetCaps.hideable
+            ? {
+                id: "widget-hide",
+                label: m.hideWidget,
+                onSelect: () => desktopShell.hideWidget(target.widgetId),
+              }
+            : null,
         ]),
         section("widget-usage", m.shellUsageWhileEditing, [
           actions.openCommandPalette
@@ -515,7 +532,7 @@ export function buildHubShellMenu(params: {
 
     return [
       section("widget-main", target.widgetLabel, [
-        desktopShell
+        desktopShell && widgetCaps.hideable
           ? {
               id: "widget-hide",
               label: m.hideWidget,
@@ -647,6 +664,75 @@ export function buildHubShellMenu(params: {
               label: copy.navBookmarks.deleteBookmark,
               tone: "danger",
               onSelect: () => onNavBookmarkDelete(target.bookmarkId),
+            }
+          : null,
+      ]),
+    ].filter((menu): menu is HubContextMenuSection => Boolean(menu));
+  }
+
+  if (target.type === "navPrimary") {
+    const path = target.path.trim();
+    const open = () => actions.openPath(path);
+    const openTab = () => window.open(path, "_blank", "noopener,noreferrer");
+    const copyPath = () => {
+      const clip = toAbsoluteUrl(path);
+      actions.copyText(clip, c.copied, clip);
+    };
+
+    if (layoutEditMode) {
+      return [
+        editExitSection(m, toggleLayoutEditMode),
+        section("nav-primary-edit", m.layoutEditing, [
+          onPrimaryNavEdit
+            ? {
+                id: "nav-primary-edit",
+                label: pn.editLabel,
+                onSelect: () => onPrimaryNavEdit(target.navId as HubPrimaryNavItemId),
+              }
+            : null,
+        ]),
+        section("nav-primary-use", m.shellUsageWhileEditing, [
+          {
+            id: "nav-primary-open",
+            label: m.openModule,
+            onSelect: open,
+          },
+          {
+            id: "nav-primary-tab",
+            label: m.openInNewTab,
+            onSelect: openTab,
+          },
+          {
+            id: "nav-primary-copy",
+            label: m.copyModulePath,
+            onSelect: copyPath,
+          },
+        ]),
+      ].filter((menu): menu is HubContextMenuSection => Boolean(menu));
+    }
+
+    return [
+      section("nav-primary-main", target.label, [
+        {
+          id: "nav-primary-open",
+          label: m.openModule,
+          onSelect: open,
+        },
+        {
+          id: "nav-primary-tab",
+          label: m.openInNewTab,
+          onSelect: openTab,
+        },
+        {
+          id: "nav-primary-copy",
+          label: m.copyModulePath,
+          onSelect: copyPath,
+        },
+        onPrimaryNavEdit
+          ? {
+              id: "nav-primary-edit",
+              label: pn.editLabel,
+              onSelect: () => onPrimaryNavEdit(target.navId as HubPrimaryNavItemId),
             }
           : null,
       ]),
@@ -806,6 +892,7 @@ export function buildHubShellMenu(params: {
             onSelect: () => onInfoToast(label, null),
           }
         : null;
+    const shellObjectEditableInLayout = isEditable(target, policyRoute, policyMode);
 
     const routePanelItems: Array<HubContextMenuItem | null> =
       target.kind === "routePanel"
@@ -830,7 +917,7 @@ export function buildHubShellMenu(params: {
           ]
         : [];
 
-    if (layoutEditMode) {
+    if (layoutEditMode && shellObjectEditableInLayout) {
       return [
         editExitSection(m, toggleLayoutEditMode),
         // navGroup: bara "Lägg till bokmärke" här — redigera/ta bort för enskilda bokmärken sker via target navBookmark på själva fliken.

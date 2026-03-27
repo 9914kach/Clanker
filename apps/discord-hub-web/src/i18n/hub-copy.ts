@@ -73,6 +73,8 @@ export type HubCopy = {
     layoutRestoreAll: string;
     gridSnapEnable: string;
     gridSnapDisable: string;
+    gridShowEnable: string;
+    gridShowDisable: string;
     saveLayout: string;
     saveLayoutDetail: string;
     done: string;
@@ -249,6 +251,22 @@ export type HubCopy = {
     toastUpdated: string;
     toastRemoved: string;
     validationBoth: string;
+  };
+  /** PrimÃ¤rnav: toppmeny-knappar (Skrivbord, Profil, InstÃ¤llningar, Hjul). */
+  primaryNav: {
+    editLabel: string;
+    dialogEditTitle: string;
+    dialogDescription: string;
+    labelField: string;
+    pathField: string;
+    pathHint: string;
+    iconField: string;
+    iconNames: Record<HubNavBookmarkIconKey, string>;
+    save: string;
+    cancel: string;
+    validationBoth: string;
+    validationInternal: string;
+    toastUpdated: string;
   };
   toastChaosTitles: readonly string[];
   leagueFormat: {
@@ -612,6 +630,9 @@ export type HubCopy = {
       gridCompact: string;
       gridCozy: string;
       gridExpanded: string;
+      gridCompaction: string;
+      gridCompactionNone: string;
+      gridCompactionPack: string;
       snapStrength: string;
       snapRelaxed: string;
       snapStandard: string;
@@ -742,6 +763,8 @@ const SV: HubCopy = {
     layoutRestoreAll: "Visa alla sovande moduler",
     gridSnapEnable: "Rutnätsfäste på",
     gridSnapDisable: "Rutnätsfäste av",
+    gridShowEnable: "Visa rutnät",
+    gridShowDisable: "Dölj rutnät",
     saveLayout: "Spara layout",
     saveLayoutDetail: "Bekräfta att layouten är sparad lokalt",
     done: "Klar",
@@ -1018,6 +1041,34 @@ const SV: HubCopy = {
     toastUpdated: "Bokmärke uppdaterat",
     toastRemoved: "Bokmärke borttaget",
     validationBoth: "Fyll i både namn och mål.",
+  },
+  primaryNav: {
+    editLabel: "Redigera...",
+    dialogEditTitle: "Redigera menyknapp",
+    dialogDescription: "Ändra namn, ikon och intern länk för toppmenyn.",
+    labelField: "Visningsnamn",
+    pathField: "Intern sökväg",
+    pathHint: "t.ex. /dashboard",
+    iconField: "Ikon",
+    iconNames: {
+      Bookmark: "Bokmärke",
+      Home: "Hem",
+      Settings: "Inställningar",
+      Workflow: "Flöde",
+      Star: "Stjärna",
+      LayoutDashboard: "Panel",
+      User: "Profil",
+      Search: "Sök",
+      Link2: "Länk",
+      Bell: "Klocka",
+      Heart: "Hjärta",
+      Zap: "Energi",
+    },
+    save: "Spara",
+    cancel: "Avbryt",
+    validationBoth: "Fyll i både namn och sökväg.",
+    validationInternal: "Sökvägen måste vara intern (börja med /).",
+    toastUpdated: "Menyknapp uppdaterad",
   },
   toastChaosTitles: [
     "Systemet viskar:",
@@ -1429,6 +1480,9 @@ const SV: HubCopy = {
       gridCompact: "Kompakt",
       gridCozy: "Normal",
       gridExpanded: "Luftigt",
+      gridCompaction: "Packning",
+      gridCompactionNone: "Ingen packning",
+      gridCompactionPack: "Auto-packa",
       snapStrength: "Snap-styrka",
       snapRelaxed: "Avslappnad",
       snapStandard: "Standard",
@@ -1560,6 +1614,8 @@ const EN: HubCopy = {
     layoutRestoreAll: "Wake all sleeping modules",
     gridSnapEnable: "Grid snap on",
     gridSnapDisable: "Grid snap off",
+    gridShowEnable: "Show grid",
+    gridShowDisable: "Hide grid",
     saveLayout: "Save layout",
     saveLayoutDetail: "Confirm layout is stored locally",
     done: "Done",
@@ -1836,6 +1892,34 @@ const EN: HubCopy = {
     toastUpdated: "Bookmark updated",
     toastRemoved: "Bookmark removed",
     validationBoth: "Enter both a name and a destination.",
+  },
+  primaryNav: {
+    editLabel: "Edit...",
+    dialogEditTitle: "Edit menu button",
+    dialogDescription: "Change label, icon, and internal link for the top menu button.",
+    labelField: "Label",
+    pathField: "Internal path",
+    pathHint: "e.g. /dashboard",
+    iconField: "Icon",
+    iconNames: {
+      Bookmark: "Bookmark",
+      Home: "Home",
+      Settings: "Settings",
+      Workflow: "Workflow",
+      Star: "Star",
+      LayoutDashboard: "Dashboard",
+      User: "User",
+      Search: "Search",
+      Link2: "Link",
+      Bell: "Bell",
+      Heart: "Heart",
+      Zap: "Zap",
+    },
+    save: "Save",
+    cancel: "Cancel",
+    validationBoth: "Enter both a label and a destination.",
+    validationInternal: "Path must be internal (start with /).",
+    toastUpdated: "Menu button updated",
   },
   toastChaosTitles: [
     "System whispers:",
@@ -2235,6 +2319,9 @@ const EN: HubCopy = {
       gridCompact: "Compact",
       gridCozy: "Cozy",
       gridExpanded: "Airy",
+      gridCompaction: "Compaction",
+      gridCompactionNone: "No packing",
+      gridCompactionPack: "Auto-pack",
       snapStrength: "Snap strength",
       snapRelaxed: "Relaxed",
       snapStandard: "Standard",

@@ -11,15 +11,15 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/" element={<HomePage />} />
         <Route element={<HubLayout />}>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/" element={<HomePage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/profile/settings" element={<ProfileSettingsPage />} />
           <Route path="/tools/spin-the-wheel" element={<SpinTheWheelPage />} />
           <Route path="/u/:userId" element={<PublicProfilePage />} />
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Route>
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </BrowserRouter>
   );

@@ -38,6 +38,7 @@ import {
   type HubToneOverride,
   type HubDesktopStylePackId,
   type HubGridDensity,
+  type HubGridCompaction,
   type HubSnapStrength,
   type HubDockPosition,
   type HubDockScale,
@@ -314,6 +315,10 @@ function DesktopTab() {
     { value: "cozy", label: p.gridCozy },
     { value: "expanded", label: p.gridExpanded },
   ];
+  const compactionOptions: HubSegmentOption<HubGridCompaction>[] = [
+    { value: "none", label: p.gridCompactionNone },
+    { value: "pack", label: p.gridCompactionPack },
+  ];
 
   const snapOptions: HubSegmentOption<HubSnapStrength>[] = [
     { value: "relaxed", label: p.snapRelaxed },
@@ -349,6 +354,14 @@ function DesktopTab() {
           options={densityOptions}
           value={d.gridDensity}
           onChange={(v) => patchPrefs({ desktop: { ...d, gridDensity: v } })}
+        />
+      </HubPrefRow>
+
+      <HubPrefRow label={p.gridCompaction}>
+        <HubSegmentControl
+          options={compactionOptions}
+          value={d.gridCompaction}
+          onChange={(v) => patchPrefs({ desktop: { ...d, gridCompaction: v } })}
         />
       </HubPrefRow>
 

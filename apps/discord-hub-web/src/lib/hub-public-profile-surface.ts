@@ -1,4 +1,5 @@
 import type { HubDesktopWidgetLayout } from "@/lib/hub-desktop-layout";
+import { HUB_DESKTOP_LAYOUT_GRID } from "@/lib/hub-desktop-layout";
 import { createContainerNode, type HubGridContainerStaticChild, type HubGridNodeMap } from "@/lib/hub-grid-node";
 
 export type PublicProfileContainerId =
@@ -10,9 +11,30 @@ export const PUBLIC_PROFILE_CONTAINER_DEFAULT_LAYOUTS: Record<
   PublicProfileContainerId,
   HubDesktopWidgetLayout
 > = {
-  "public-profile.overview": { x: 24, y: 24, w: 560, h: 380, z: 1, hidden: false },
-  "public-profile.league": { x: 608, y: 24, w: 560, h: 620, z: 2, hidden: false },
-  "public-profile.steam": { x: 24, y: 428, w: 560, h: 260, z: 3, hidden: false },
+  "public-profile.overview": {
+    x: 0,
+    y: 0,
+    w: 3 * HUB_DESKTOP_LAYOUT_GRID,
+    h: 3 * HUB_DESKTOP_LAYOUT_GRID,
+    z: 1,
+    hidden: false,
+  },
+  "public-profile.league": {
+    x: 3 * HUB_DESKTOP_LAYOUT_GRID,
+    y: 0,
+    w: 3 * HUB_DESKTOP_LAYOUT_GRID,
+    h: 4 * HUB_DESKTOP_LAYOUT_GRID,
+    z: 2,
+    hidden: false,
+  },
+  "public-profile.steam": {
+    x: 0,
+    y: 3 * HUB_DESKTOP_LAYOUT_GRID,
+    w: 3 * HUB_DESKTOP_LAYOUT_GRID,
+    h: 2 * HUB_DESKTOP_LAYOUT_GRID,
+    z: 3,
+    hidden: false,
+  },
 };
 
 const overviewChildren: HubGridContainerStaticChild[] = [
@@ -66,4 +88,3 @@ export const PUBLIC_PROFILE_CONTAINER_ORDER: readonly PublicProfileContainerId[]
   "public-profile.league",
   "public-profile.steam",
 ];
-

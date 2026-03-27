@@ -1,13 +1,11 @@
-import {
-  HUB_DESKTOP_LAYOUT_GRID,
-  type HubSnapStrength,
-} from "@/lib/hub-desktop-layout";
+import { type HubSnapStrength } from "@/lib/hub-desktop-layout";
 
 export const HUB_PREFS_STORAGE_KEY = "hub.prefs.v1";
 
 export type HubWidgetSizePreset = "compact" | "cozy" | "expanded";
 export type HubToneOverride = "inherit" | "useful" | "social" | "chaos";
 export type HubGridDensity = "compact" | "cozy" | "expanded";
+export type HubGridCompaction = "none" | "pack";
 export type HubDesktopStylePackId = "default" | "midnight" | "paper" | "signal";
 export type HubDockPosition = "bottom" | "left";
 export type HubDockScale = "sm" | "md" | "lg";
@@ -33,6 +31,7 @@ export type HubWidgetVisualPrefs = {
 export type HubDesktopPrefsSlice = {
   stylePackId: HubDesktopStylePackId;
   gridDensity: HubGridDensity;
+  gridCompaction: HubGridCompaction;
   snapStrength: HubSnapStrength;
 };
 
@@ -92,6 +91,7 @@ export const DEFAULT_HUB_PREFS: HubPrefs = {
   desktop: {
     stylePackId: "default",
     gridDensity: "cozy",
+    gridCompaction: "none",
     snapStrength: "standard",
   },
   dock: {
@@ -132,12 +132,12 @@ export function cloneHubPrefs(prefs: HubPrefs): HubPrefs {
 
 export function gridStepForDensity(density: HubGridDensity): number {
   if (density === "compact") {
-    return 8;
+    return 192;
   }
   if (density === "expanded") {
-    return 24;
+    return 128;
   }
-  return HUB_DESKTOP_LAYOUT_GRID;
+  return 160;
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -239,6 +239,9 @@ export function mergeHubPrefs(base: HubPrefs, patch: unknown): HubPrefs {
     }
     if (d.gridDensity === "compact" || d.gridDensity === "cozy" || d.gridDensity === "expanded") {
       next.desktop.gridDensity = d.gridDensity;
+    }
+    if (d.gridCompaction === "none" || d.gridCompaction === "pack") {
+      next.desktop.gridCompaction = d.gridCompaction;
     }
     if (d.snapStrength === "relaxed" || d.snapStrength === "standard" || d.snapStrength === "firm") {
       next.desktop.snapStrength = d.snapStrength;

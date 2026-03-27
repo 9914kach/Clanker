@@ -30,6 +30,10 @@ export type HubLayoutContextValue = {
   gridSnapEnabled: boolean;
   setGridSnapEnabled: (value: boolean) => void;
   toggleGridSnap: () => void;
+  /** Show the grid overlay while editing. */
+  gridVisible: boolean;
+  setGridVisible: (value: boolean) => void;
+  toggleGridVisible: () => void;
 };
 
 export type HubDesktopShellWidget = {
@@ -71,9 +75,13 @@ export type HubDesktopShellState = {
   clearWidgetSelection: () => void;
   nudgeSelectedWidgets: (dx: number, dy: number) => void;
   bringSelectedWidgetsToFront: () => void;
-  moveWidget: (id: string, position: { x: number; y: number }) => void;
-  moveWidgetsByDelta: (ids: readonly string[], dx: number, dy: number) => void;
-  resizeWidget: (id: string, size: { w: number; h: number }) => void;
+  moveWidget: (
+    id: string,
+    position: { x: number; y: number },
+    options?: { snap?: boolean; bumpZ?: boolean },
+  ) => void;
+  moveWidgetsByDelta: (ids: readonly string[], dx: number, dy: number, options?: { snap?: boolean }) => void;
+  resizeWidget: (id: string, size: { w: number; h: number }, options?: { snap?: boolean }) => void;
   /** @deprecated Use saveLayoutCommitted; kept for context menu parity. */
   acknowledgeLayoutSaved: () => void;
 };

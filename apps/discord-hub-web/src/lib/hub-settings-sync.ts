@@ -268,6 +268,12 @@ function hasAnyLocalHubData(): boolean {
     if (localStorage.getItem("hub.prefs.v1")) {
       return true;
     }
+    if (localStorage.getItem("hub.dashboard.layout.v4")) {
+      return true;
+    }
+    if (localStorage.getItem("hub.dashboard.layout.v3")) {
+      return true;
+    }
     if (localStorage.getItem("hub.dashboard.layout.v2")) {
       return true;
     }

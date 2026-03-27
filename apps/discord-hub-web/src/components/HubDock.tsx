@@ -5,6 +5,7 @@ import {
   Cloud,
   Keyboard,
   LayoutTemplate,
+  Grid2X2,
   Magnet,
   MoreHorizontal,
   Plus,
@@ -42,7 +43,9 @@ export default function HubDock({
   isDashboardRoute,
   desktopShell,
   gridSnapEnabled,
+  gridVisible,
   onToggleGridSnap,
+  onToggleGridVisible,
   onCancelLayoutEdit,
   onDoneLayoutEdit,
   onSaveLayoutCommitted,
@@ -68,7 +71,9 @@ export default function HubDock({
   isDashboardRoute: boolean;
   desktopShell: HubDesktopShellState | null;
   gridSnapEnabled: boolean;
+  gridVisible: boolean;
   onToggleGridSnap: () => void;
+  onToggleGridVisible: () => void;
   onCancelLayoutEdit: () => void;
   onDoneLayoutEdit: () => void;
   onSaveLayoutCommitted: () => void;
@@ -97,13 +102,13 @@ export default function HubDock({
   const shellClassName =
     dockPosition === "left"
       ? "pointer-events-none fixed inset-y-0 left-3 z-40 flex flex-col items-center justify-center py-4"
-      : "pointer-events-none fixed inset-x-0 bottom-3 z-40 flex justify-center px-4";
+      : "pointer-events-none fixed inset-x-0 bottom-[calc(0.75rem+var(--hub-shell-bottom-bar))] z-40 flex justify-center px-4";
 
   /** Layout-edit toolbar: bottom bar anchored to start (taskbar-style), not horizontally centered. */
   const shellClassNameLayoutEdit =
     dockPosition === "left"
       ? "pointer-events-none fixed inset-y-0 left-3 z-40 flex flex-col items-center justify-center py-4"
-      : "pointer-events-none fixed inset-x-0 bottom-3 z-40 flex justify-start ps-4 pe-4 md:ps-6";
+      : "pointer-events-none fixed inset-x-0 bottom-[calc(0.75rem+var(--hub-shell-bottom-bar))] z-40 flex justify-start ps-4 pe-4 md:ps-6";
 
   const hiddenCount = desktopShell?.hiddenWidgetIds.length ?? 0;
   const isDirty = desktopShell?.isLayoutDirty ?? false;
@@ -223,6 +228,24 @@ export default function HubDock({
               </Button>
             </TooltipTrigger>
             <TooltipContent>{gridSnapEnabled ? em.gridSnapDisable : em.gridSnapEnable}</TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant={gridVisible ? "secondary" : "outline"}
+                size="icon-sm"
+                className="rounded-xl"
+                onClick={() => {
+                  onToggleGridVisible();
+                }}
+                aria-pressed={gridVisible}
+              >
+                <Grid2X2 className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{gridVisible ? em.gridShowDisable : em.gridShowEnable}</TooltipContent>
           </Tooltip>
 
           <Tooltip>
