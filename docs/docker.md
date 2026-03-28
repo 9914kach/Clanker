@@ -431,6 +431,14 @@ docker compose up -d clanker-pihole
 
 *(Om du redan har andra tjänster igång påverkas de inte om du bara anger en tjänst — Compose startar/uppdaterar det du ber om.)*
 
+**Raspberry Pi — bara Pi-hole + discord-bot på disk:** vanlig `.gitignore` under `apps/*` **tar inte bort** redan **sparade** filer vid `git pull`; den styr bara ospårade filer. För att **inte** checka ut webbappar/API/packages på Pi:n, använd **sparse checkout**:
+
+- Befintlig clone: [`scripts/git-sparse-checkout-pi-bot-pihole.sh`](../scripts/git-sparse-checkout-pi-bot-pihole.sh) (kör med `-y` efter att du sparat ocommittat arbete). Då finns i arbetskatalogen bara `docker-compose.yml`, `.env.example`, `bots/discord-bot/` och själva skriptet.
+- Discord-bot: `cd bots/discord-bot && npm install && npm run build && npm run start` (monoreporotens `npm install` behövs inte; workspaces under `apps/` finns inte i sparse-trädet).
+- Ny sparse clone (exempel): `git clone --filter=blob:none --sparse <url> Clanker && cd Clanker && git sparse-checkout set docker-compose.yml .env.example .gitignore bots/discord-bot/ scripts/git-sparse-checkout-pi-bot-pihole.sh`
+
+Ångra: `git sparse-checkout disable` (återställer full arbetskatalog från nästa `git checkout` / `git pull`).
+
 ### `docker compose down`
 
 Stoppar och **tar bort** containrar som skapats av detta projekt. **Volymen** `clanker-pgdata` tas inte bort i standardfallet (databasdata finns kvar).
