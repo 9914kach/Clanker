@@ -8,8 +8,8 @@ CLANKER_VITE_LOG="${ROOT}/.clanker/vite-dev.log"
 clanker_load_dotenv() {
   if [[ -f "${ROOT}/.env" ]]; then
     set -a
-    # shellcheck disable=SC1090
-    source "${ROOT}/.env"
+    # shellcheck disable=SC2046
+    eval "$(grep -v '^\s*#' "${ROOT}/.env" | grep -v '^\s*$' | tr -d '\r' | sed 's/[[:space:]]*$//')"
     set +a
   fi
 }

@@ -440,7 +440,7 @@ code {
   -webkit-user-select: none;
 }
 
-.hub-os-select-root :where(input, textarea, select, [contenteditable="true"], code, pre),
+.hub-os-select-root :where(input, textarea, select, [contenteditable="true"], code, pre, p, span, li, h1, h2, h3, h4, h5, h6, a, td, th, label, blockquote),
 .hub-os-select-root .hub-topbar-select-text {
   user-select: text;
   -webkit-user-select: text;
@@ -715,4 +715,14 @@ code {
   left: 4px !important;
   top: 4px !important;
   cursor: nw-resize;
+}
+
+/* Adaptive widget content — hidden blurb text at small sizes */
+.hub-blurb {
+  display: none;
+}
+@container widget (min-width: 320px) {
+  .hub-blurb {
+    display: block;
+  }
 }

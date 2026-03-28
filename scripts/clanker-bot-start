@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# Startar discord-boten (och clanker-db) i Docker.
+# För röst/musik på PC: `npm run bot:dev` (Node-script, samma steg + tsx; undviker bash CRLF på Windows).
+# Kör DB-migrationer via discord-hub-api innan boten startar.
+# Användning: scripts/clanker-bot-start [--logs] [--host-network] [extra docker compose-flaggor...]
+#   --logs          Följ botens loggar efter start (Ctrl+C stoppar loggföljning, inte containern).
+#   --host-network  Starta discord-bot-host (network_mode: host) för Discord-röst på Linux/Pi — stoppa discord-bot först.
+set -euo pipefail
+
+SCRIPT_SOURCE="${BASH_SOURCE[0]:-$0}"
+SCRIPT_REAL="$(readlink -f "$SCRIPT_SOURCE")"
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_REAL")" && pwd)"
+
+# shellcheck source=clanker-root.sh
+source "$SCRIPT_DIR/clanker-root.sh"
+clanker_init_repo_root "$SCRIPT_SOURCE"
+
+# shellcheck source=clanker-vite-lib.sh
+source "$SCRIPT_DIR/clanker-vite-lib.sh"
+
+if [[ ! -f .env ]]; then
+  echo "clanker-bot-start: varning: .env saknas i $ROOT (skapa från .env.example)." >&2
+fi
+
+clanker_load_dotenv
+
+# Plocka ut --logs / --host-network om de finns.
+FOLLOW_LOGS=0
+HOST_NETWORK=0
+EXTRA_ARGS=()
+for arg in "$@"; do
+  if [[ "$arg" == "--logs" ]]; then
+    FOLLOW_LOGS=1
+  elif [[ "$arg" == "--host-network" ]]; then
+    HOST_NETWORK=1
+  else
+    EXTRA_ARGS+=("$arg")
+  fi
+done
+
+# Starta clanker-db (db-profil) om den inte redan körs.
+echo "clanker-bot-start: startar clanker-db..."
+docker compose --profile db up -d clanker-db
+
+# Vänta tills Postgres svarar (max 30 s).
+echo "clanker-bot-start: väntar på PostgreSQL..."
+for i in $(seq 1 30); do
+  if docker compose exec -T clanker-db pg_isready -q 2>/dev/null; then
+    echo "clanker-bot-start: PostgreSQL redo (${i}s)."
+    break
+  fi
+  if [[ "$i" -eq 30 ]]; then
+    echo "clanker-bot-start: fel: PostgreSQL svarade inte inom 30 s." >&2
+    exit 1
+  fi
+  sleep 1
+done
+
+# Kör migrationer via discord-hub-api (npm workspace, kör direkt med ts-node/tsx).
+echo "clanker-bot-start: kör DB-migrationer..."
+npm run migrate -w discord-hub-api 2>&1 | sed 's/^/  [migrate] /'
+echo "clanker-bot-start: migrationer klara."
+
+# Bygg och starta discord-boten (bridge eller host-nät).
+BOT_SVC=discord-bot
+COMPOSE_PROFILES=(--profile discord)
+if [[ "$HOST_NETWORK" -eq 1 ]]; then
+  BOT_SVC=discord-bot-host
+  COMPOSE_PROFILES=(--profile discord-host)
+  echo "clanker-bot-start: host-network — stoppar discord-bot om den körs (samma token)..."
+  docker compose --profile discord stop discord-bot 2>/dev/null || true
+fi
+
+echo "clanker-bot-start: bygger och startar ${BOT_SVC}..."
+docker compose "${COMPOSE_PROFILES[@]}" up -d --build "${BOT_SVC}" "${EXTRA_ARGS[@]}"
+
+if [[ "$HOST_NETWORK" -eq 0 && "$BOT_SVC" == "discord-bot" ]]; then
+  _uname_s="$(uname -s 2>/dev/null || true)"
+  case "$_uname_s" in
+    MINGW* | MSYS* | CYGWIN*)
+      echo "" >&2
+      echo "clanker-bot-start: OBS (Windows/Git Bash): Discord-röst/musik i Docker (bridge) fungerar oftast inte." >&2
+      echo "clanker-bot-start: För /play i röstkanal: \`docker compose stop discord-bot\` sedan \`npm run bot:dev\` (samma DB-steg + bot på värden)." >&2
+      ;;
+  esac
+fi
+
+echo ""
+echo "clanker-bot-start: ${BOT_SVC} körs nu."
+echo "  Loggar:  docker compose logs -f ${BOT_SVC}"
+echo "  Stoppa:  docker compose stop ${BOT_SVC}"
+
+if [[ "$FOLLOW_LOGS" -eq 1 ]]; then
+  echo ""
+  echo "=== ${BOT_SVC} loggar (Ctrl+C avslutar loggföljning — containern fortsätter köra) ==="
+  docker compose logs -f "${BOT_SVC}"
+fi

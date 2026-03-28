@@ -1,0 +1,2 @@
+# Bash ska alltid checkas ut med LF — annars "set: pipefail: invalid option" på Windows/Git Bash.
+scripts/clanker-* text eol=lf

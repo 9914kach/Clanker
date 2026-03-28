@@ -87,7 +87,7 @@ export default function HubLoreQuoteWidget() {
 
   return (
     <div className="flex flex-col gap-3 text-sm text-muted-foreground">
-      <p>{d.loreQuoteBlurb}</p>
+      <p className="hub-blurb">{d.loreQuoteBlurb}</p>
 
       <div className="relative overflow-hidden rounded-xl border border-border/60 bg-background/60 p-3">
         <div

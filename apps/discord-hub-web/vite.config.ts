@@ -13,7 +13,10 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, repoRoot, "");
   const hmrClientPort = env.VITE_HMR_CLIENT_PORT;
   const directPort = Number(env.VITE_DIRECT_PORT) > 0 ? Number(env.VITE_DIRECT_PORT) : 5175;
-  const apiPort = Number(env.PORT) > 0 ? Number(env.PORT) : 3001;
+  // Prefer explicit dev proxy target so root `PORT` (e.g. other services) does not break /api.
+  const apiPortRaw =
+    env.DISCORD_HUB_API_DEV_PORT?.trim() || env.PORT?.trim() || "";
+  const apiPort = Number(apiPortRaw) > 0 ? Number(apiPortRaw) : 3001;
   const useDirectMode = mode === "direct";
   const useCaddyProxy = mode === "caddy";
   const serverBehindCaddyProxy =

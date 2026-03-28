@@ -1130,6 +1130,11 @@ export default function HubLayout() {
         return;
       }
 
+      if (!forceTarget && (window.getSelection()?.toString().trim() ?? "").length > 0) {
+        closeShellContextMenu();
+        return;
+      }
+
       event.preventDefault();
       play("panel");
       const hit = forceTarget ?? contextMenuHitElement(event);

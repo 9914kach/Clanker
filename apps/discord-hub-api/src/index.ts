@@ -971,6 +971,172 @@ function createApp(env: AppEnv) {
     return c.json(rt.getGuildLive(guildId));
   });
 
+  app.get("/api/bot/guild/:id/voice-states", async (c) => {
+    const token = getCookie(c, COOKIE_NAME);
+    if (!token) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    const session = await verifySession(env.sessionSecret, token);
+    if (!session) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    const guildId = c.req.param("id");
+    if (!DISCORD_SNOWFLAKE_RE.test(guildId)) {
+      return c.json({ error: "Invalid guild id", code: "invalid_guild_id" }, 400);
+    }
+    const access = await assertBotGuildAccess(env, session.sub, guildId);
+    if (!access.ok) {
+      return c.json(access.body, access.status);
+    }
+    const pool = getPool();
+    if (!pool) {
+      return c.json({ error: "Database not available" }, 503);
+    }
+    type VoiceStateRow = {
+      user_id: string;
+      channel_id: string;
+      channel_name: string | null;
+      username: string;
+      global_name: string | null;
+      avatar: string | null;
+      is_muted: boolean;
+      is_deafened: boolean;
+      is_streaming: boolean;
+      is_video: boolean;
+      joined_at: string;
+      updated_at: string;
+    };
+    const result = await pool.query<VoiceStateRow>(
+      `SELECT user_id, channel_id, channel_name, username, global_name,
+              avatar, is_muted, is_deafened, is_streaming, is_video,
+              joined_at, updated_at
+       FROM bot.guild_voice_states
+       WHERE guild_id = $1
+       ORDER BY channel_id, joined_at`,
+      [guildId],
+    );
+    type Channel = { channel_id: string; channel_name: string | null; members: VoiceStateRow[] };
+    const channelMap = new Map<string, Channel>();
+    for (const row of result.rows) {
+      let ch = channelMap.get(row.channel_id);
+      if (!ch) {
+        ch = { channel_id: row.channel_id, channel_name: row.channel_name, members: [] };
+        channelMap.set(row.channel_id, ch);
+      }
+      ch.members.push(row);
+    }
+    return c.json({
+      guild_id: guildId,
+      channels: [...channelMap.values()],
+      total_users: result.rowCount ?? 0,
+    });
+  });
+
+  // --- Music endpoints ---
+
+  async function requireMusicBotUrl(c: Context): Promise<string | null> {
+    if (!env.musicBotHttpUrl) {
+      c.json({ error: "Music bot not configured" }, 503);
+      return null;
+    }
+    return env.musicBotHttpUrl;
+  }
+
+  app.get("/api/bot/guild/:id/music", async (c) => {
+    const token = getCookie(c, COOKIE_NAME);
+    if (!token) return c.json({ error: "Unauthorized" }, 401);
+    const session = await verifySession(env.sessionSecret, token);
+    if (!session) return c.json({ error: "Unauthorized" }, 401);
+    const guildId = c.req.param("id");
+    if (!DISCORD_SNOWFLAKE_RE.test(guildId)) {
+      return c.json({ error: "Invalid guild id", code: "invalid_guild_id" }, 400);
+    }
+    const access = await assertBotGuildAccess(env, session.sub, guildId);
+    if (!access.ok) return c.json(access.body, access.status);
+    const pool = getPool();
+    if (!pool) return c.json({ error: "Database not available" }, 503);
+
+    const [nowRes, queueRes] = await Promise.all([
+      pool.query(
+        `SELECT guild_id, track_url, title, artist, thumbnail, duration_sec, source,
+                requested_by, channel_id, is_paused, started_at, updated_at
+         FROM bot.music_now_playing WHERE guild_id = $1`,
+        [guildId],
+      ),
+      pool.query(
+        `SELECT id, track_url, title, artist, thumbnail, duration_sec, source,
+                requested_by, added_at
+         FROM bot.music_queue WHERE guild_id = $1 ORDER BY added_at`,
+        [guildId],
+      ),
+    ]);
+
+    return c.json({
+      now_playing: nowRes.rows[0] ?? null,
+      queue: queueRes.rows,
+      total_in_queue: queueRes.rowCount ?? 0,
+    });
+  });
+
+  async function proxyMusicCommand(
+    c: Context,
+    botUrl: string,
+    path: string,
+    body: Record<string, unknown>,
+  ) {
+    try {
+      const res = await fetch(`${botUrl}${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json();
+      return c.json(json, res.ok ? 200 : (res.status as 400 | 422 | 503));
+    } catch {
+      return c.json({ error: "Music bot unreachable" }, 503);
+    }
+  }
+
+  app.post("/api/bot/guild/:id/music/play", async (c) => {
+    const token = getCookie(c, COOKIE_NAME);
+    if (!token) return c.json({ error: "Unauthorized" }, 401);
+    const session = await verifySession(env.sessionSecret, token);
+    if (!session) return c.json({ error: "Unauthorized" }, 401);
+    const guildId = c.req.param("id");
+    if (!DISCORD_SNOWFLAKE_RE.test(guildId)) {
+      return c.json({ error: "Invalid guild id", code: "invalid_guild_id" }, 400);
+    }
+    const access = await assertBotGuildAccess(env, session.sub, guildId);
+    if (!access.ok) return c.json(access.body, access.status);
+    const botUrl = await requireMusicBotUrl(c);
+    if (!botUrl) return;
+    const body = await c.req.json<{ query: string; channelId?: string }>();
+    return proxyMusicCommand(c, botUrl, "/play", {
+      guildId,
+      channelId: body.channelId ?? "",
+      userId: session.sub,
+      query: body.query,
+    });
+  });
+
+  for (const action of ["skip", "pause", "resume", "stop"] as const) {
+    app.post(`/api/bot/guild/:id/music/${action}`, async (c) => {
+      const token = getCookie(c, COOKIE_NAME);
+      if (!token) return c.json({ error: "Unauthorized" }, 401);
+      const session = await verifySession(env.sessionSecret, token);
+      if (!session) return c.json({ error: "Unauthorized" }, 401);
+      const guildId = c.req.param("id");
+      if (!DISCORD_SNOWFLAKE_RE.test(guildId)) {
+        return c.json({ error: "Invalid guild id", code: "invalid_guild_id" }, 400);
+      }
+      const access = await assertBotGuildAccess(env, session.sub, guildId);
+      if (!access.ok) return c.json(access.body, access.status);
+      const botUrl = await requireMusicBotUrl(c);
+      if (!botUrl) return;
+      return proxyMusicCommand(c, botUrl, `/${action}`, { guildId });
+    });
+  }
+
   return app;
 }
 
@@ -1010,13 +1176,13 @@ async function shutdownAndExit(code: number): Promise<void> {
 async function main(): Promise<void> {
   const env = loadEnv();
   initDb(env);
-  if (env.databaseUrl) {
+  if (env.dbConfig) {
     try {
       await verifyDbConnection();
       console.log("discord-hub-api: Postgres connection OK");
     } catch (e) {
       console.error(
-        "discord-hub-api: DATABASE_URL is set but Postgres is not reachable. Check network, firewall, and credentials.",
+        "discord-hub-api: DB config is set but Postgres is not reachable. Check network, firewall, and credentials.",
       );
       throw e;
     }

@@ -4,14 +4,20 @@ import type { AppEnv } from "./env.js";
 let pool: pg.Pool | null = null;
 
 export function initDb(env: AppEnv): pg.Pool | null {
-  if (!env.databaseUrl) {
+  if (!env.dbConfig) {
     return null;
   }
-  pool = new pg.Pool({
-    connectionString: env.databaseUrl,
-    max: 10,
-    connectionTimeoutMillis: 10_000,
-  });
+  const cfg =
+    env.dbConfig.kind === "url"
+      ? { connectionString: env.dbConfig.url }
+      : {
+          host: env.dbConfig.host,
+          port: env.dbConfig.port,
+          user: env.dbConfig.user,
+          password: env.dbConfig.password,
+          database: env.dbConfig.database,
+        };
+  pool = new pg.Pool({ ...cfg, max: 10, connectionTimeoutMillis: 10_000 });
   return pool;
 }
 

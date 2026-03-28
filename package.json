@@ -7,9 +7,15 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "npm run dev -w discord-hub-web",
+    "dev": "npm run dev:discord-stack:pi",
+    "dev:web": "npm run dev -w discord-hub-web",
     "dev:discord-api": "npm run dev -w discord-hub-api",
     "dev:discord-bot": "npm run dev -w discord-bot",
+    "bot:start": "bash scripts/clanker-bot-start",
+    "bot:start:logs": "bash scripts/clanker-bot-start --logs",
+    "bot:dev": "node scripts/clanker-bot-dev.mjs",
+    "bot:logs": "docker compose logs -f discord-bot",
+    "bot:stop": "docker compose stop discord-bot",
     "dev:discord-stack": "npm run dev:discord-stack:pi",
     "dev:discord-stack:clean": "node scripts/kill-dev-ports.mjs",
     "dev:discord-stack:local": "npm run dev:discord-stack:clean && concurrently -n api,web -c blue,green \"npm run dev:discord-api\" \"npm run dev -w discord-hub-web -- --mode direct\"",

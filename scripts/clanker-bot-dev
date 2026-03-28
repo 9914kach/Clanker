@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Startar discord-boten med npm (tsx watch), inte Docker — lämpligt på PC för Discord-röst (UDP).
+# Samma DB-steg som bot:start: clanker-db + migrationer.
+# Stoppar discord-bot / discord-bot-host i Docker om de körs (annars EADDRINUSE på 3012 och dubbel token).
+#
+# Användning: bash scripts/clanker-bot-dev  —  på Windows används `npm run bot:dev` (Node .mjs, undviker CRLF i bash).
+set -euo pipefail
+
+SCRIPT_SOURCE="${BASH_SOURCE[0]:-$0}"
+SCRIPT_REAL="$(readlink -f "$SCRIPT_SOURCE")"
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_REAL")" && pwd)"
+
+# shellcheck source=clanker-root.sh
+source "$SCRIPT_DIR/clanker-root.sh"
+clanker_init_repo_root "$SCRIPT_SOURCE"
+
+# shellcheck source=clanker-vite-lib.sh
+source "$SCRIPT_DIR/clanker-vite-lib.sh"
+
+if [[ ! -f .env ]]; then
+  echo "clanker-bot-dev: varning: .env saknas i $ROOT (skapa från .env.example)." >&2
+fi
+
+clanker_load_dotenv
+
+echo "clanker-bot-dev: stoppar Docker-bot om den körs (port/token)..."
+docker compose --profile discord stop discord-bot 2>/dev/null || true
+docker compose --profile discord-host stop discord-bot-host 2>/dev/null || true
+
+echo "clanker-bot-dev: startar clanker-db..."
+docker compose --profile db up -d clanker-db
+
+echo "clanker-bot-dev: väntar på PostgreSQL..."
+for i in $(seq 1 30); do
+  if docker compose exec -T clanker-db pg_isready -q 2>/dev/null; then
+    echo "clanker-bot-dev: PostgreSQL redo (${i}s)."
+    break
+  fi
+  if [[ "$i" -eq 30 ]]; then
+    echo "clanker-bot-dev: fel: PostgreSQL svarade inte inom 30 s." >&2
+    exit 1
+  fi
+  sleep 1
+done
+
+echo "clanker-bot-dev: kör DB-migrationer..."
+npm run migrate -w discord-hub-api 2>&1 | sed 's/^/  [migrate] /'
+echo "clanker-bot-dev: migrationer klara."
+
+echo ""
+echo "clanker-bot-dev: startar discord-bot (npm / tsx watch). Ctrl+C stoppar boten."
+echo "  Tips: DATABASE_URL ska peka på 127.0.0.1 (inte clanker-db) när du kör utan Docker-nät."
+echo ""
+
+npm run dev -w discord-bot

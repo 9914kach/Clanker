@@ -34,7 +34,7 @@ export async function upsertProfileFromSession(
   }
   await pool.query(
     `
-    INSERT INTO profiles (user_id, username, global_name, avatar, banner, accent_color, visibility)
+    INSERT INTO profile.profiles (user_id, username, global_name, avatar, banner, accent_color, visibility)
     VALUES ($1,$2,$3,$4,$5,$6,$7)
     ON CONFLICT (user_id) DO UPDATE SET
       username = EXCLUDED.username,
@@ -42,7 +42,7 @@ export async function upsertProfileFromSession(
       avatar = EXCLUDED.avatar,
       banner = EXCLUDED.banner,
       accent_color = EXCLUDED.accent_color,
-      visibility = COALESCE(profiles.visibility, EXCLUDED.visibility)
+      visibility = COALESCE(profile.profiles.visibility, EXCLUDED.visibility)
     `,
     [
       session.sub,
@@ -65,7 +65,7 @@ export async function getProfileById(
   }
   const r = await pool.query<ProfileRow>(
     `SELECT user_id, username, global_name, avatar, banner, accent_color, visibility
-     FROM profiles WHERE user_id = $1`,
+     FROM profile.profiles WHERE user_id = $1`,
     [userId],
   );
   return r.rows[0] ?? null;
@@ -81,7 +81,7 @@ export async function upsertLeagueConnection(
   }
   await pool.query(
     `
-    INSERT INTO league_connections
+    INSERT INTO profile.league_connections
       (user_id, riot_id, tag_line, region, auto_sync, rank_preference, status_message, linked_at, last_sync_requested_at)
     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
     ON CONFLICT (user_id) DO UPDATE SET
@@ -124,7 +124,7 @@ export async function getLeagueConnection(
     `SELECT user_id, riot_id, tag_line, region, auto_sync, rank_preference, status_message,
             linked_at::timestamptz as linked_at,
             last_sync_requested_at::timestamptz as last_sync_requested_at
-       FROM league_connections WHERE user_id = $1`,
+       FROM profile.league_connections WHERE user_id = $1`,
     [userId],
   );
   // linked_at formatting: we ensure ISO string by using to_char; alternative is cast and let pg return ISO
@@ -144,7 +144,7 @@ export async function deleteLeagueConnection(userId: string): Promise<void> {
   if (!pool) {
     return;
   }
-  await pool.query(`DELETE FROM league_connections WHERE user_id = $1`, [
+  await pool.query(`DELETE FROM profile.league_connections WHERE user_id = $1`, [
     userId,
   ]);
 }
@@ -159,7 +159,7 @@ export async function upsertLeagueSnapshot(
   }
   await pool.query(
     `
-    INSERT INTO league_snapshots (user_id, payload, fetched_at)
+    INSERT INTO profile.league_snapshots (user_id, payload, fetched_at)
     VALUES ($1, $2::jsonb, $3)
     ON CONFLICT (user_id) DO UPDATE SET
       payload = EXCLUDED.payload,
@@ -177,7 +177,7 @@ export async function getLeagueSnapshot(
     return null;
   }
   const r = await pool.query<{ payload: any }>(
-    `SELECT payload FROM league_snapshots WHERE user_id = $1`,
+    `SELECT payload FROM profile.league_snapshots WHERE user_id = $1`,
     [userId],
   );
   const row = r.rows[0];
@@ -190,7 +190,7 @@ export async function deleteLeagueSnapshot(userId: string): Promise<void> {
   if (!pool) {
     return;
   }
-  await pool.query(`DELETE FROM league_snapshots WHERE user_id = $1`, [
+  await pool.query(`DELETE FROM profile.league_snapshots WHERE user_id = $1`, [
     userId,
   ]);
 }
@@ -227,7 +227,7 @@ export async function listWheelGroups(
   >(
     `
     SELECT id, name, participants, created_at::timestamptz as created_at, updated_at::timestamptz as updated_at
-      FROM wheel_groups
+      FROM hub.wheel_groups
      WHERE owner_user_id = $1
      ORDER BY updated_at DESC
      LIMIT 50
@@ -252,7 +252,7 @@ export async function getWheelGroup(
   >(
     `
     SELECT id, name, participants, created_at::timestamptz as created_at, updated_at::timestamptz as updated_at
-      FROM wheel_groups
+      FROM hub.wheel_groups
      WHERE owner_user_id = $1 AND id = $2
      LIMIT 1
     `,
@@ -277,7 +277,7 @@ export async function createWheelGroup(params: {
   if (!pool) return;
   await pool.query(
     `
-    INSERT INTO wheel_groups (id, owner_user_id, name, participants)
+    INSERT INTO hub.wheel_groups (id, owner_user_id, name, participants)
     VALUES ($1, $2, $3, $4::jsonb)
     `,
     [params.id, params.ownerUserId, params.name, JSON.stringify(params.participants)],
@@ -294,7 +294,7 @@ export async function updateWheelGroup(params: {
   if (!pool) return false;
   const r = await pool.query(
     `
-    UPDATE wheel_groups
+    UPDATE hub.wheel_groups
        SET name = $3,
            participants = $4::jsonb
      WHERE owner_user_id = $1 AND id = $2
@@ -311,7 +311,7 @@ export async function deleteWheelGroup(
   const pool = getPool();
   if (!pool) return false;
   const r = await pool.query(
-    `DELETE FROM wheel_groups WHERE owner_user_id = $1 AND id = $2`,
+    `DELETE FROM hub.wheel_groups WHERE owner_user_id = $1 AND id = $2`,
     [ownerUserId, id],
   );
   return (r.rowCount ?? 0) > 0;
@@ -332,7 +332,7 @@ export async function createWheelSession(params: {
   if (!pool) return;
   await pool.query(
     `
-    INSERT INTO wheel_sessions
+    INSERT INTO hub.wheel_sessions
       (id, owner_user_id, group_id, seed, team_count, team_mode, participants, winner, teams)
     VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9::jsonb)
     `,
@@ -389,7 +389,7 @@ export async function listRecentWheelSessions(
     `
     SELECT id, group_id, seed, team_count, team_mode, participants, winner, teams,
            created_at::timestamptz as created_at
-      FROM wheel_sessions
+      FROM hub.wheel_sessions
      WHERE owner_user_id = $1
      ORDER BY created_at DESC
      LIMIT $2
@@ -418,7 +418,7 @@ export async function getHubUserSettings(
   const r = await pool.query<{ payload: unknown; updated_at: Date }>(
     `
     SELECT payload, updated_at
-      FROM hub_user_settings
+      FROM hub.user_settings
      WHERE user_id = $1
     `,
     [userId],
@@ -444,7 +444,7 @@ export async function upsertHubUserSettings(
   }
   const r = await pool.query<{ updated_at: Date }>(
     `
-    INSERT INTO hub_user_settings (user_id, payload, updated_at)
+    INSERT INTO hub.user_settings (user_id, payload, updated_at)
     VALUES ($1, $2::jsonb, now())
     ON CONFLICT (user_id) DO UPDATE SET
       payload = EXCLUDED.payload,

@@ -125,7 +125,7 @@ function DesktopWidgetCard({
 
   return (
     <div
-      className="group h-full"
+      className="group h-full [container-type:inline-size] [container-name:widget]"
       onPointerDown={handleWidgetPointerDown}
       {...hubContextData({
         type: "widget",
@@ -200,7 +200,7 @@ function DesktopWidgetCard({
             ) : null}
           </div>
         </CardHeader>
-        <CardContent className="relative z-20 pt-5">{item.content}</CardContent>
+        <CardContent className="relative z-20 pt-5 overflow-hidden [container-type:inline-size] [container-name:widget]">{item.content}</CardContent>
       </Card>
     </div>
   );
@@ -552,7 +552,7 @@ export default function HubDesktopSurface({
                         ) : null}
                       </div>
                     </CardHeader>
-                    <CardContent>{widget.content}</CardContent>
+                    <CardContent className="overflow-hidden [container-type:inline-size] [container-name:widget]">{widget.content}</CardContent>
                   </Card>
                 );
               })}

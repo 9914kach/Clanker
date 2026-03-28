@@ -144,7 +144,7 @@ export default function HubMoodClockWidget() {
 
   return (
     <div className="flex flex-col gap-3 text-sm text-muted-foreground">
-      <p>{d.moodClockBlurb}</p>
+      <p className="hub-blurb">{d.moodClockBlurb}</p>
 
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/60 bg-background/60 p-3">
         <div className="min-w-0">

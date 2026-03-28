@@ -3,7 +3,9 @@ import {
   Dices,
   Flame,
   Gauge,
+  MicOff,
   MicVocal,
+  MonitorPlay,
   NotebookPen,
   Orbit,
   Quote,
@@ -32,6 +34,7 @@ import { toBcp47, type HubLocale } from "@/i18n/hub-copy";
 import { pickHubChaosLine, rollHubChaos } from "@/lib/hub-chaos";
 import { useHubPrefs } from "@/components/HubPrefsProvider";
 import { gridStepForDensity } from "@/lib/hub-prefs";
+import { HUB_WIDGET_TIERS } from "@/lib/hub-widget-tiers";
 
 const HUB_GUILD_ID = import.meta.env.VITE_DISCORD_HUB_GUILD_ID?.trim() ?? "";
 
@@ -55,9 +58,69 @@ type GuildLiveResponse = {
   voice_users: { user_id: string; channel_id: string | null }[];
 };
 
+type VoiceStateMember = {
+  user_id: string;
+  channel_id: string;
+  channel_name: string | null;
+  username: string;
+  global_name: string | null;
+  avatar: string | null;
+  is_muted: boolean;
+  is_deafened: boolean;
+  is_streaming: boolean;
+  is_video: boolean;
+  joined_at: string;
+};
+
+type VoiceStateChannel = {
+  channel_id: string;
+  channel_name: string | null;
+  members: VoiceStateMember[];
+};
+
+type VoiceStatesResponse = {
+  guild_id: string;
+  channels: VoiceStateChannel[];
+  total_users: number;
+};
+
+type MusicNowPlaying = {
+  guild_id: string;
+  track_url: string;
+  title: string;
+  artist: string | null;
+  thumbnail: string | null;
+  duration_sec: number | null;
+  source: "youtube" | "soundcloud" | "spotify";
+  requested_by: string;
+  channel_id: string;
+  is_paused: boolean;
+  started_at: string;
+};
+
+type MusicQueueItem = {
+  id: number;
+  track_url: string;
+  title: string;
+  artist: string | null;
+  thumbnail: string | null;
+  duration_sec: number | null;
+  source: "youtube" | "soundcloud" | "spotify";
+  requested_by: string;
+  added_at: string;
+};
+
+type MusicState = {
+  now_playing: MusicNowPlaying | null;
+  queue: MusicQueueItem[];
+  total_in_queue: number;
+};
+
 type GuildWidgetData = {
   summary: GuildSummaryResponse | null;
   live: GuildLiveResponse | null;
+  voiceStates: VoiceStatesResponse | null;
+  music: MusicState | null;
   summaryError: string | null;
   liveError: string | null;
 };
@@ -116,6 +179,8 @@ export default function DashboardPage() {
   const [guildWidget, setGuildWidget] = useState<GuildWidgetData>({
     summary: null,
     live: null,
+    voiceStates: null,
+    music: null,
     summaryError: null,
     liveError: null,
   });
@@ -263,13 +328,45 @@ export default function DashboardPage() {
       }
     };
 
-    void Promise.all([fetchSummary(), fetchLive()]);
+    const fetchVoiceStates = async () => {
+      try {
+        const res = await fetch(
+          apiUrl(`/api/bot/guild/${encodeURIComponent(HUB_GUILD_ID)}/voice-states`),
+          { credentials: "include", signal: ac.signal },
+        );
+        if (!res.ok) return;
+        const voiceStates = (await res.json()) as VoiceStatesResponse;
+        setGuildWidget((prev) => ({ ...prev, voiceStates }));
+      } catch (error) {
+        if ((error as Error).name === "AbortError") return;
+      }
+    };
+
+    const fetchMusic = async () => {
+      try {
+        const res = await fetch(
+          apiUrl(`/api/bot/guild/${encodeURIComponent(HUB_GUILD_ID)}/music`),
+          { credentials: "include", signal: ac.signal },
+        );
+        if (!res.ok) return;
+        const music = (await res.json()) as MusicState;
+        setGuildWidget((prev) => ({ ...prev, music }));
+      } catch (error) {
+        if ((error as Error).name === "AbortError") return;
+      }
+    };
+
+    void Promise.all([fetchSummary(), fetchLive(), fetchVoiceStates(), fetchMusic()]);
     const summaryTimer = window.setInterval(() => void fetchSummary(), 15_000);
     const liveTimer = window.setInterval(() => void fetchLive(), 4_000);
+    const voiceStatesTimer = window.setInterval(() => void fetchVoiceStates(), 5_000);
+    const musicTimer = window.setInterval(() => void fetchMusic(), 3_000);
     return () => {
       ac.abort();
       window.clearInterval(summaryTimer);
       window.clearInterval(liveTimer);
+      window.clearInterval(voiceStatesTimer);
+      window.clearInterval(musicTimer);
     };
   }, [copy, me.status]);
 
@@ -542,7 +639,7 @@ export default function DashboardPage() {
       description: d.widgetVoiceOrbit.description,
       tone: "social",
       icon: MicVocal,
-      content: <HubVoiceOrbitWidget guild={guildWidget.summary?.guild ?? null} live={guildWidget.live} />,
+      content: <HubVoiceOrbitWidget guild={guildWidget.summary?.guild ?? null} live={guildWidget.live} voiceStates={guildWidget.voiceStates} />,
     };
 
     const radioWidget: HubDesktopWidget = {
@@ -552,6 +649,15 @@ export default function DashboardPage() {
       tone: "social",
       icon: Radio,
       content: <HubNeutralenRadioWidget />,
+    };
+
+    const musicPlayerWidget: HubDesktopWidget = {
+      id: "music-player",
+      label: "Musikspelaren",
+      description: "Styr uppspelning och kön direkt från dashboarden.",
+      tone: "social",
+      icon: Radio,
+      content: <HubMusicWidget music={guildWidget.music} guildId={HUB_GUILD_ID} />,
     };
 
     const customModuleWidget: HubDesktopWidget = {
@@ -571,6 +677,7 @@ export default function DashboardPage() {
       loreQuoteWidget,
       wheelWidget,
       voiceOrbitWidget,
+      musicPlayerWidget,
       radioWidget,
       presenceWidget,
       ritualWidget,
@@ -1275,88 +1382,110 @@ function HubNeutralenRadioWidget() {
   );
 }
 
+function discordAvatarUrl(userId: string, avatarHash: string): string {
+  return `https://cdn.discordapp.com/avatars/${userId}/${avatarHash}.png?size=64`;
+}
+
+function VoiceMemberAvatar({ member }: { member: VoiceStateMember }) {
+  const initial = (member.global_name ?? member.username).charAt(0).toUpperCase();
+  return (
+    <div className="relative shrink-0" title={member.global_name ?? member.username}>
+      {member.avatar ? (
+        <img
+          src={discordAvatarUrl(member.user_id, member.avatar)}
+          alt={member.global_name ?? member.username}
+          className="size-6 rounded-full object-cover"
+        />
+      ) : (
+        <div className="flex size-6 items-center justify-center rounded-full bg-muted text-[10px] font-medium text-muted-foreground">
+          {initial}
+        </div>
+      )}
+      {member.is_muted && (
+        <div className="absolute -bottom-0.5 -right-0.5 flex size-3 items-center justify-center rounded-full bg-background ring-1 ring-border">
+          <MicOff className="size-2 text-destructive" />
+        </div>
+      )}
+      {member.is_streaming && !member.is_muted && (
+        <div className="absolute -bottom-0.5 -right-0.5 flex size-3 items-center justify-center rounded-full bg-background ring-1 ring-border">
+          <MonitorPlay className="size-2 text-primary" />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function HubVoiceOrbitWidget({
   guild,
   live,
+  voiceStates,
 }: {
   guild: GuildSummaryResponse["guild"] | null;
   live: GuildLiveResponse | null;
+  voiceStates: VoiceStatesResponse | null;
 }) {
   const { copy } = useHubLocale();
   const d = copy.dashboard;
-  const { play } = useHubAudio();
-  const toasts = useHubToasts();
 
-  const voiceCount = live?.voice_users.length ?? 0;
-  const uniqueChannels = useMemo(() => {
-    if (!live?.voice_users) return 0;
-    const channels = new Set<string>();
-    for (const entry of live.voice_users) {
-      if (entry.channel_id) channels.add(entry.channel_id);
-    }
-    return channels.size;
-  }, [live?.voice_users]);
-
-  const orbitCount = Math.max(3, Math.min(10, voiceCount || 3));
-  const dots = useMemo(() => Array.from({ length: orbitCount }, (_, i) => i), [orbitCount]);
+  const totalUsers = voiceStates?.total_users ?? live?.voice_users.length ?? 0;
+  const channelCount = voiceStates?.channels.length ?? 0;
 
   return (
-    <div className="flex flex-col gap-3 text-sm text-muted-foreground">
-      <p>{d.voiceOrbitBlurb}</p>
-
-      <div className="rounded-xl border border-border/60 bg-background/60 p-3">
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="truncate text-sm font-medium text-foreground">{guild?.name ?? d.voiceOrbitUnknownGuild}</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {live ? d.voiceOrbitSoulsLine(voiceCount, uniqueChannels) : d.voiceOrbitNoSignal}
-            </p>
-          </div>
-          <Badge variant={live?.gateway_connected ? "outline" : "destructive"} className="shrink-0">
-            {live?.gateway_connected ? d.voiceOrbitGatewayOk : d.voiceOrbitGatewayNope}
-          </Badge>
+    <div className={`flex flex-col text-sm text-muted-foreground ${HUB_WIDGET_TIERS.adaptiveGap}`}>
+      {/* Always visible: gateway badge row */}
+      <div className="flex items-center justify-between gap-2">
+        <div className={`min-w-0 ${HUB_WIDGET_TIERS.hiddenAtMicro}`}>
+          <p className="truncate text-sm font-medium text-foreground">{guild?.name ?? d.voiceOrbitUnknownGuild}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {voiceStates
+              ? d.voiceOrbitSoulsLine(totalUsers, channelCount)
+              : live
+                ? d.voiceOrbitSoulsLine(totalUsers, 0)
+                : d.voiceOrbitNoSignal}
+          </p>
         </div>
-
-        <div className="mt-3 flex items-center justify-center">
-          <div className="hub-voice-orbit relative size-36 rounded-full border border-border/60 bg-background/50">
-            <div className="absolute left-1/2 top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/55 shadow-[0_0_0_4px_color-mix(in_oklab,var(--primary)_12%,transparent)]" />
-            {dots.map((index) => (
-              <div
-                key={index}
-                className="hub-voice-orbit-dot absolute left-1/2 top-1/2 size-2 rounded-full bg-foreground/70"
-                style={{
-                  ["--hub-orbit-radius" as never]: `${22 + index * 3}px`,
-                  ["--hub-orbit-duration" as never]: `${6.5 + index * 0.85}s`,
-                  ["--hub-orbit-delay" as never]: `${index * -0.6}s`,
-                  opacity: 0.55 + (index % 3) * 0.12,
-                }}
-              />
-            ))}
-          </div>
-        </div>
-
-        {live?.gateway_degraded_reason ? (
-          <p className="mt-3 text-xs text-warning">{live.gateway_degraded_reason}</p>
-        ) : null}
+        <Badge variant={live?.gateway_connected ? "outline" : "destructive"} className="shrink-0">
+          {live?.gateway_connected ? d.voiceOrbitGatewayOk : d.voiceOrbitGatewayNope}
+        </Badge>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          onClick={() => {
-            play("panel");
-            toasts.push({
-              kind: "success",
-              title: d.voiceOrbitToastTitle,
-              message: d.voiceOrbitToastMessage,
-            });
-          }}
-        >
-          {d.voiceOrbitAction}
-        </Button>
+      {/* Base+: channel content */}
+      <div className={HUB_WIDGET_TIERS.hiddenAtMicro}>
+        {voiceStates && voiceStates.channels.length > 0 ? (
+          <>
+            {/* Wide+: full channel list */}
+            <div className={`flex flex-col gap-1.5 ${HUB_WIDGET_TIERS.blurbVisible}`}>
+              {voiceStates.channels.map((channel) => (
+                <div key={channel.channel_id} className="rounded-lg border border-border/60 bg-background/60 px-2.5 py-2">
+                  <p className="mb-1.5 truncate text-[11px] font-medium text-foreground/60">
+                    🔊 {channel.channel_name ?? channel.channel_id}
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {channel.members.map((member) => (
+                      <VoiceMemberAvatar key={member.user_id} member={member} />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {/* Base only: compact summary pill — hidden at Wide+ */}
+            <div className="@[320px]:hidden rounded-lg border border-border/60 bg-background/60 px-2.5 py-2">
+              <p className="text-center text-xs text-muted-foreground">
+                {channelCount} ch · {totalUsers} {totalUsers === 1 ? "user" : "users"}
+              </p>
+            </div>
+          </>
+        ) : (
+          <div className="rounded-lg border border-border/60 bg-background/60 px-2.5 py-2">
+            <p className="text-center text-xs text-muted-foreground">{d.voiceOrbitNoSignal}</p>
+          </div>
+        )}
       </div>
+
+      {/* Full+: degraded gateway reason */}
+      {live?.gateway_degraded_reason ? (
+        <p className={`text-xs text-warning ${HUB_WIDGET_TIERS.fullVisible}`}>{live.gateway_degraded_reason}</p>
+      ) : null}
     </div>
   );
 }
@@ -1385,6 +1514,139 @@ function formatRelativeAge(locale: HubLocale, ageMs: number): string {
     return rtf.format(-minutes, "minute");
   }
   return rtf.format(-hours, "hour");
+}
+
+function SourceIcon({ source }: { source: MusicNowPlaying["source"] }) {
+  const labels: Record<MusicNowPlaying["source"], string> = {
+    youtube: "YT",
+    soundcloud: "SC",
+    spotify: "SP",
+  };
+  return (
+    <span className="shrink-0 rounded px-1 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-muted text-muted-foreground">
+      {labels[source]}
+    </span>
+  );
+}
+
+function MusicProgress({ track, nowMs }: { track: MusicNowPlaying; nowMs: number }) {
+  if (!track.duration_sec || track.is_paused) return null;
+  const elapsed = Math.min((nowMs - new Date(track.started_at).getTime()) / 1000, track.duration_sec);
+  const pct = Math.round((elapsed / track.duration_sec) * 100);
+  const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+  return (
+    <div className="mt-2 space-y-1">
+      <div className="h-1 w-full overflow-hidden rounded-full bg-muted">
+        <div className="h-full rounded-full bg-primary/70 transition-all duration-1000" style={{ width: `${pct}%` }} />
+      </div>
+      <div className="flex justify-between text-[10px] text-muted-foreground">
+        <span>{fmt(elapsed)}</span>
+        <span>{fmt(track.duration_sec)}</span>
+      </div>
+    </div>
+  );
+}
+
+function HubMusicWidget({ music, guildId }: { music: MusicState | null; guildId: string }) {
+  const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    const t = window.setInterval(() => setNowMs(Date.now()), 1_000);
+    return () => window.clearInterval(t);
+  }, []);
+
+  const cmd = useCallback(
+    async (action: string, body?: Record<string, unknown>) => {
+      setLoading(true);
+      try {
+        await fetch(apiUrl(`/api/bot/guild/${encodeURIComponent(guildId)}/music/${action}`), {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body ?? {}),
+        });
+      } finally {
+        setLoading(false);
+      }
+    },
+    [guildId],
+  );
+
+  const handlePlay = async () => {
+    if (!query.trim()) return;
+    await cmd("play", { query: query.trim() });
+    setQuery("");
+  };
+
+  const np = music?.now_playing ?? null;
+
+  return (
+    <div className="flex flex-col gap-3 text-sm">
+      {/* Now playing */}
+      {np ? (
+        <div className="flex gap-3 rounded-xl border border-border/60 bg-background/60 p-3">
+          {np.thumbnail && (
+            <img src={np.thumbnail} alt="" className="size-14 shrink-0 rounded-lg object-cover" />
+          )}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start gap-1.5">
+              <SourceIcon source={np.source} />
+              <p className="truncate text-sm font-medium text-foreground leading-tight">{np.title}</p>
+            </div>
+            {np.artist && <p className="mt-0.5 truncate text-xs text-muted-foreground">{np.artist}</p>}
+            <MusicProgress track={np} nowMs={nowMs} />
+          </div>
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground">📭 Inget spelas just nu.</p>
+      )}
+
+      {/* Controls */}
+      <div className="flex gap-1.5">
+        <Button
+          size="sm" variant="outline" disabled={!np || loading}
+          onClick={() => void cmd(np?.is_paused ? "resume" : "pause")}
+        >
+          {np?.is_paused ? "▶️" : "⏸"}
+        </Button>
+        <Button size="sm" variant="outline" disabled={!np || loading} onClick={() => void cmd("skip")}>⏭</Button>
+        <Button size="sm" variant="outline" disabled={!np || loading} onClick={() => void cmd("stop")}>⏹</Button>
+      </div>
+
+      {/* Add to queue */}
+      <div className="flex gap-1.5">
+        <input
+          className="min-w-0 flex-1 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs outline-none focus:ring-1 focus:ring-ring"
+          placeholder="YouTube, Spotify, SoundCloud eller sökterm…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") void handlePlay(); }}
+        />
+        <Button size="sm" disabled={!query.trim() || loading} onClick={() => void handlePlay()}>
+          ▶ Spela
+        </Button>
+      </div>
+
+      {/* Queue */}
+      {music && music.queue.length > 0 && (
+        <div className="flex flex-col gap-1">
+          <p className="text-xs font-medium text-muted-foreground">Kö ({music.total_in_queue})</p>
+          {music.queue.slice(0, 5).map((item, i) => (
+            <div key={item.id} className="flex items-center gap-2 rounded-lg bg-muted/40 px-2 py-1.5">
+              <span className="shrink-0 text-xs text-muted-foreground">{i + 1}.</span>
+              <SourceIcon source={item.source} />
+              <span className="truncate text-xs text-foreground">{item.title}</span>
+            </div>
+          ))}
+          {music.total_in_queue > 5 && (
+            <p className="text-center text-xs text-muted-foreground">+{music.total_in_queue - 5} till</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function HubGatewayHeartbeat({ live }: { live: GuildLiveResponse }) {

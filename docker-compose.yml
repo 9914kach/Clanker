@@ -1,4 +1,47 @@
 services:
+  # Discord-bot (musikbot, voice-tracker, slash-kommandon). Start: docker compose --profile discord up -d discord-bot
+  # Voice uses UDP to Discord; Docker Desktop / bridge NAT often prevents a stable voice session.
+  # On a Pi/Linux host, `network_mode: host` can help (then adjust DATABASE_URL to reach Postgres).
+  discord-bot:
+    profiles: ["discord"]
+    build:
+      context: .
+      dockerfile: bots/discord-bot/Dockerfile
+    container_name: discord-bot
+    environment:
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
+      DISCORD_APPLICATION_ID: ${DISCORD_CLIENT_ID}
+      DISCORD_GUILD_ID: ${VITE_DISCORD_HUB_GUILD_ID}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-clanker}:${POSTGRES_PASSWORD}@clanker-db:5432/${POSTGRES_DB:-clanker_discord}
+      SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID}
+      SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET}
+      MUSIC_BOT_HTTP_PORT: "3012"
+    ports:
+      - "127.0.0.1:3012:3012"
+    restart: unless-stopped
+
+  # Samma bot som discord-bot men med network_mode: host s att Discord-röst (UDP) fungerar på Linux/Pi.
+  # Stoppa den bridgeade boten först (samma token): docker compose stop discord-bot
+  # Start: docker compose --profile db --profile discord-host up -d --build discord-bot-host
+  # Docker Desktop (Windows/macOS): host network i praktiken ej som på Linux — kör boten med npm på värden i stället.
+  # DATABASE_URL: Postgres måste nås från värdens nät (127.0.0.1 om clanker-db exponerar 5432 mot localhost).
+  discord-bot-host:
+    profiles: ["discord-host"]
+    build:
+      context: .
+      dockerfile: bots/discord-bot/Dockerfile
+    container_name: discord-bot-host
+    network_mode: host
+    environment:
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
+      DISCORD_APPLICATION_ID: ${DISCORD_CLIENT_ID}
+      DISCORD_GUILD_ID: ${VITE_DISCORD_HUB_GUILD_ID}
+      DATABASE_URL: ${DISCORD_BOT_HOST_DATABASE_URL:-postgresql://${POSTGRES_USER:-clanker}:${POSTGRES_PASSWORD}@127.0.0.1:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-clanker_discord}}
+      SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID}
+      SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET}
+      MUSIC_BOT_HTTP_PORT: "3012"
+    restart: unless-stopped
+
   # Discord-hub (Vite/React). Start: docker compose --profile discord up -d discord-hub-web
   discord-hub-web:
     profiles: ["discord"]

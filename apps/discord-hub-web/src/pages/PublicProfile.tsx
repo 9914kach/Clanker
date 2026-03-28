@@ -1,25 +1,19 @@
-﻿import { faGamepad, faShieldHalved, faUserGear } from "@fortawesome/free-solid-svg-icons";
+import { faGamepad, faCircleDot } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { motion } from "framer-motion";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Button } from "@clanker/ui/components/button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@clanker/ui/components/card";
-import { LayoutGrid } from "lucide-react";
 import LeagueRankText from "@/components/LeagueRankText";
-import HubDesktopSurface, { type HubDesktopContainer } from "@/components/HubDesktopSurface";
-import { useHubPrefs } from "@/components/HubPrefsProvider";
-import { gridStepForDensity } from "@/lib/hub-prefs";
 import { useHubLocale } from "@/components/locale-provider";
 import { apiUrl } from "@/config";
 import { useHubLayout } from "@/hooks/use-hub-layout";
-import { useHubSurfaceEngine } from "@/hooks/use-hub-surface-engine";
 import {
   formatGameDuration,
   getLeagueRankPalette,
@@ -28,12 +22,10 @@ import {
   type LeagueRankedEntry,
 } from "@/lib/league-format";
 import {
-  PUBLIC_PROFILE_CONTAINER_DEFAULT_LAYOUTS,
-  PUBLIC_PROFILE_CONTAINER_ORDER,
-  PUBLIC_PROFILE_NODES,
-  type PublicProfileContainerId,
-} from "@/lib/hub-public-profile-surface";
-import { readContainerMetadataV1 } from "@/lib/hub-grid-node";
+  discordAvatarUrl,
+  discordBannerUrl,
+  accentColorToHex,
+} from "@/lib/discordCdn";
 import { toBcp47, type HubLocale } from "@/i18n/hub-copy";
 
 type LeagueRecentMatch = {
@@ -115,13 +107,9 @@ async function readError(res: Response): Promise<string> {
 }
 
 function formatShortDate(value: string | null, locale: HubLocale, emptyLabel: string): string {
-  if (!value) {
-    return emptyLabel;
-  }
+  if (!value) return emptyLabel;
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
+  if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleDateString(toBcp47(locale), {
     day: "numeric",
     month: "short",
@@ -129,56 +117,12 @@ function formatShortDate(value: string | null, locale: HubLocale, emptyLabel: st
   });
 }
 
-function leagueIntroLine(
-  leagueLinked: boolean,
-  stats: PublicLeagueStats,
-  intro: {
-    none: string;
-    notSynced: string;
-    soon: string;
-    synced: string;
-  },
-): string {
-  if (!leagueLinked) {
-    return intro.none;
-  }
-  if (!stats.available) {
-    if (stats.source === "not_synced") {
-      return intro.notSynced;
-    }
-    return intro.soon;
-  }
-  return intro.synced;
-}
-
 export default function PublicProfilePage() {
   const { copy, locale } = useHubLocale();
   const p = copy.publicProfile;
-  const { me, layoutEditMode, gridSnapEnabled, gridVisible } = useHubLayout();
-  const { prefs } = useHubPrefs();
+  const { me } = useHubLayout();
   const { userId = "" } = useParams();
   const [state, setState] = useState<ProfileState>({ status: "loading" });
-
-  const surface = useHubSurfaceEngine({
-    layoutEditMode,
-    gridSnapEnabled,
-    gridStep: gridStepForDensity(prefs.desktop.gridDensity),
-    prefs,
-    defaultLayouts: PUBLIC_PROFILE_CONTAINER_DEFAULT_LAYOUTS,
-    enableRemoteSync: false,
-    persistence: {
-      readLayout: () =>
-        Object.fromEntries(
-          Object.entries(PUBLIC_PROFILE_CONTAINER_DEFAULT_LAYOUTS).map(([id, layout]) => [
-            id,
-            { ...layout },
-          ]),
-        ) as Record<string, typeof PUBLIC_PROFILE_CONTAINER_DEFAULT_LAYOUTS[PublicProfileContainerId]>,
-      writeLayout: () => undefined,
-      readAutosaveEnabled: () => false,
-      writeAutosaveEnabled: () => undefined,
-    },
-  });
 
   useEffect(() => {
     if (!userId) {
@@ -202,45 +146,32 @@ export default function PublicProfilePage() {
           setState({ status: "error", message: await readError(res) });
           return;
         }
-
         setState({ status: "ready", profile: (await res.json()) as PublicProfile });
       } catch (error) {
-        if ((error as Error).name === "AbortError") {
-          return;
-        }
-        setState({
-          status: "error",
-          message: p.loadErrorNetwork,
-        });
+        if ((error as Error).name === "AbortError") return;
+        setState({ status: "error", message: p.loadErrorNetwork });
       }
     };
 
     setState({ status: "loading" });
     void loadProfile();
-
     return () => controller.abort();
   }, [p.loadErrorNetwork, userId]);
 
   if (state.status === "loading") {
     return (
-      <div className="flex flex-col gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>{p.loadingTitle}</CardTitle>
-            <CardDescription>{p.loadingDesc}</CardDescription>
-          </CardHeader>
-        </Card>
+      <div className="mx-auto max-w-4xl px-4 py-10 text-muted-foreground">
+        {p.loadingTitle}
       </div>
     );
   }
 
   if (state.status === "not_found") {
     return (
-      <div className="flex flex-col gap-6">
+      <div className="mx-auto max-w-lg px-4 py-10">
         <Card>
           <CardHeader>
             <CardTitle>{p.notFoundTitle}</CardTitle>
-            <CardDescription>{p.notFoundDesc}</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-3">
             <Button asChild variant="outline">
@@ -257,11 +188,10 @@ export default function PublicProfilePage() {
 
   if (state.status === "error") {
     return (
-      <div className="flex flex-col gap-6">
+      <div className="mx-auto max-w-lg px-4 py-10">
         <Card>
           <CardHeader>
             <CardTitle>{p.errorTitle}</CardTitle>
-            <CardDescription>{state.message}</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-3">
             <Button asChild variant="outline">
@@ -276,306 +206,225 @@ export default function PublicProfilePage() {
   const { profile } = state;
   const u = profile.user;
   const displayName = u.global_name ?? u.username;
-  const leagueLinked = profile.integrations.league !== null;
-  const stats = profile.stats.league;
-  const leagueIntro = leagueIntroLine(leagueLinked, stats, p.leagueIntro);
-  const riotSync = stats.available && stats.source === "riot_sync" ? stats : null;
-  const leagueIdentity = profile.integrations.league
-    ? `${profile.integrations.league.riotId}#${profile.integrations.league.tagLine}`
-    : "—";
+  const riotSync =
+    profile.stats.league.available && profile.stats.league.source === "riot_sync"
+      ? profile.stats.league
+      : null;
+  const leagueRankPalette = riotSync ? getLeagueRankPalette(riotSync.preferredRank) : null;
   const formattedLeagueRank = riotSync?.preferredRank
     ? formatLeagueRank(riotSync.preferredRank, locale)
     : null;
-  const leagueRankPalette = riotSync ? getLeagueRankPalette(riotSync.preferredRank) : null;
-  const leagueRankFallback = p.rankFallback;
   const isOwnProfile = me.status === "user" && me.profile.id === u.id;
 
-  const sectionById: Record<string, ReactNode> = {
-    status: (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <FontAwesomeIcon icon={faShieldHalved} /> {p.cardStatusTitle}
-          </CardTitle>
-          <CardDescription>{p.cardStatusDesc}</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-2 text-sm text-muted-foreground">
-          <p>
-            {p.labelProfileStatus}: {leagueLinked ? p.profileStatusLeague : p.profileStatusBase}
-          </p>
-          <p>
-            {p.labelLeagueConnection}: {leagueLinked ? p.leagueLinkPublished : p.leagueLinkNot}
-          </p>
-          <p>
-            {p.labelLeagueStats}:{" "}
-            {riotSync ? p.statsSynced : leagueLinked ? p.statsWaiting : p.statsNone}
-          </p>
-          <p>
-            {p.steamTitle}: {p.steamNotLinked}
-          </p>
-        </CardContent>
-      </Card>
-    ),
-    games: (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <FontAwesomeIcon icon={faGamepad} /> {p.cardGamesTitle}
-          </CardTitle>
-          <CardDescription>{p.cardGamesDesc}</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-2 text-sm text-muted-foreground">
-          {profile.integrations.league ? (
-            <>
-              <p>
-                <span className="font-mono text-foreground">{leagueIdentity}</span>
-                <span className="px-2 text-muted-foreground/70">{p.separator}</span>
-                <span className="text-foreground/90">{profile.integrations.league.region}</span>
-              </p>
-              <p>
-                {p.gamesRankLabel}:{" "}
-                {formattedLeagueRank ? (
-                  leagueRankPalette ? (
-                    <LeagueRankText
-                      text={formattedLeagueRank}
-                      colors={leagueRankPalette}
-                      className="font-medium"
-                    />
-                  ) : (
-                    <span className="text-foreground">{formattedLeagueRank}</span>
-                  )
-                ) : (
-                  <span className="text-foreground">{leagueRankFallback}</span>
-                )}
-              </p>
-              <p className="text-xs text-muted-foreground/80">
-                {p.syncedShort(
-                  formatShortDate(stats.lastSyncRequestedAt, locale, p.noSyncYetShort),
-                )}
-              </p>
-            </>
-          ) : (
-            <>
-              <p>{p.noLeaguePublic}</p>
-              <p>{p.rankDash}</p>
-              <p>{p.regionDash}</p>
-            </>
-          )}
-        </CardContent>
-      </Card>
-    ),
-    more: (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <FontAwesomeIcon icon={faUserGear} /> {p.cardMoreTitle}
-          </CardTitle>
-          <CardDescription>{p.cardMoreDesc}</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-2 text-sm text-muted-foreground">
-          <p>
-            {p.discordId}: <span className="font-mono text-foreground">{u.id}</span>
-          </p>
-          <p>
-            {p.displayName}: {displayName}
-          </p>
-          <p>
-            {p.linkedSince}:{" "}
-            {formatTimestamp(profile.integrations.league?.linkedAt ?? null, locale)}
-          </p>
-          <p>
-            {p.lastLeagueSync}:{" "}
-            {formatTimestamp(profile.integrations.league?.lastSyncRequestedAt ?? null, locale)}
-          </p>
-        </CardContent>
-      </Card>
-    ),
-    leagueStats: (
-      <Card>
-        <CardHeader>
-          <CardTitle>{p.leagueStatsTitle}</CardTitle>
-          <CardDescription>
-            {riotSync
-              ? p.leagueStatsDescFetched(
-                  formatTimestamp(riotSync.fetchedAt, locale),
-                  `${riotSync.account.gameName}#${riotSync.account.tagLine}`,
-                )
-              : leagueIntro}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-6 text-sm">
-          {!profile.integrations.league ? (
-            <p className="text-muted-foreground">{p.noLeagueData}</p>
-          ) : !riotSync ? (
-            <p className="text-muted-foreground">
-              {stats.source === "not_synced" ? p.notSyncedYet : p.statsUnavailable}
-            </p>
-          ) : (
-            <>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="rounded-lg border border-border bg-muted/30 p-4">
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">{p.accountLabel}</p>
-                  <p className="mt-2 font-mono text-base font-medium text-foreground">
-                    {leagueIdentity}
-                  </p>
-                </div>
-                <div className="rounded-lg border border-border bg-muted/30 p-4">
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">{p.regionLabel}</p>
-                  <p className="mt-2 text-base font-medium text-foreground">
-                    {profile.integrations.league.region}
-                  </p>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <p className="font-medium text-foreground">{p.rankedQueues}</p>
-                {riotSync.leagueEntries.length > 0 ? (
-                  <div className="grid gap-2 md:grid-cols-2">
-                    {riotSync.leagueEntries.map((entry) => (
-                      <div key={entry.queueType} className="rounded-md border border-border px-3 py-2">
-                        <p className="text-foreground">{entry.queueType}</p>
-                        <p className="text-muted-foreground">
-                          {p.rankedEntryLine(entry.tier, entry.rank, entry.leaguePoints)}
-                        </p>
-                        <p className="text-muted-foreground">
-                          {p.rankedEntryRecord(entry.wins, entry.losses, entry.hotStreak ? p.hotStreak : "")}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-muted-foreground">{p.noRankedReturned}</p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <p className="font-medium text-foreground">{p.recentMatches}</p>
-                {riotSync.recentMatches.length > 0 ? (
-                  <div className="space-y-2">
-                    {riotSync.recentMatches.map((match) => (
-                      <div
-                        key={match.matchId}
-                        className="flex flex-col gap-1 rounded-md border border-border px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
-                      >
-                        <div>
-                          <p className="text-foreground">
-                            {match.championName}
-                            <span className="px-2 text-muted-foreground/70">{p.separator}</span>
-                            <span
-                              className={
-                                match.win
-                                  ? "text-emerald-600 dark:text-emerald-400"
-                                  : "text-destructive"
-                              }
-                            >
-                              {match.win ? p.win : p.loss}
-                            </span>
-                          </p>
-                          <p className="text-muted-foreground">
-                            {p.matchStatsLine(
-                              match.kills,
-                              match.deaths,
-                              match.assists,
-                              match.totalCs,
-                              match.championLevel,
-                            )}
-                          </p>
-                        </div>
-                        <div className="text-sm text-muted-foreground sm:text-right">
-                          <p>{formatGameDuration(match.gameDurationSeconds)}</p>
-                          <p>{formatTimestamp(new Date(match.gameCreation).toISOString(), locale)}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-muted-foreground">{p.noMatchHistory}</p>
-                )}
-              </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
-    ),
-    steam: (
-      <Card>
-        <CardHeader>
-          <CardTitle>{p.steamTitle}</CardTitle>
-          <CardDescription>{p.steamDesc}</CardDescription>
-        </CardHeader>
-        <CardContent className="text-sm text-muted-foreground">{p.steamBody}</CardContent>
-      </Card>
-    ),
-  };
-
-  const containerLabel: Record<PublicProfileContainerId, string> = {
-    "public-profile.overview": p.pageTitle,
-    "public-profile.league": p.leagueStatsTitle,
-    "public-profile.steam": p.steamTitle,
-  };
-
-  const containers: HubDesktopContainer[] = PUBLIC_PROFILE_CONTAINER_ORDER.map((id) => {
-    const node = PUBLIC_PROFILE_NODES[id];
-    const md = node ? readContainerMetadataV1(node) : null;
-    const children = md?.staticChildren ?? [];
-
-    const childNodes = children.map((child) => sectionById[child.id]).filter(Boolean);
-    const layoutClassName =
-      id === "public-profile.overview" ? "grid gap-4 lg:grid-cols-3" : "flex flex-col gap-4";
-
-    return {
-      id,
-      label: containerLabel[id],
-      description: "",
-      tone: "useful",
-      icon: LayoutGrid,
-      content: <div className={layoutClassName}>{childNodes}</div>,
-    };
-  });
+  const accentHex = u.accent_color ? accentColorToHex(u.accent_color) : "#5865f2";
+  const bannerBg = u.banner
+    ? `url(${discordBannerUrl(u.id, u.banner, 600)})`
+    : `linear-gradient(135deg, ${accentHex}cc 0%, ${accentHex}44 100%)`;
 
   return (
-    <div className="flex flex-col gap-6">
-      <motion.header
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.25, ease: "easeOut" }}
-        className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"
-      >
-        <div>
-          <h1 className="text-3xl font-semibold tracking-tight">{p.pageTitle}</h1>
-          <p className="mt-2 text-muted-foreground">{p.pageIntro(displayName, leagueIntro)}</p>
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25, ease: "easeOut" }}
+      className="mx-auto max-w-4xl"
+    >
+      {/* Banner + avatar header */}
+      <div className="relative">
+        <div
+          className="h-44 w-full rounded-xl bg-cover bg-center sm:h-56"
+          style={{ backgroundImage: bannerBg }}
+        />
+
+        {/* Avatar */}
+        <div className="absolute bottom-0 left-6 translate-y-1/2">
+          <img
+            src={discordAvatarUrl(u.id, u.avatar, 128)}
+            alt={displayName}
+            className="h-24 w-24 rounded-full border-4 border-background shadow-lg sm:h-28 sm:w-28"
+          />
         </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-2 self-start">
-          {isOwnProfile ? (
-            <Button type="button" variant="secondary" asChild>
+      </div>
+
+      {/* Name row */}
+      <div className="mt-14 flex flex-wrap items-start justify-between gap-3 px-2 sm:mt-16">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{displayName}</h1>
+          <p className="text-sm text-muted-foreground">@{u.username}</p>
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          {isOwnProfile && (
+            <Button variant="secondary" asChild>
               <Link to="/profile/settings">{p.settingsButton}</Link>
             </Button>
-          ) : null}
-          <Button type="button" asChild>
+          )}
+          <Button asChild>
             <Link to="/dashboard">{p.openHub}</Link>
           </Button>
         </div>
-      </motion.header>
-      <HubDesktopSurface
-        variant="panel"
-        widgets={[]}
-        containers={containers}
-        layouts={surface.activeLayout}
-        hiddenWidgetIds={[]}
-        onMoveWidget={surface.moveWidget}
-        onResizeWidget={surface.resizeWidget}
-        onFocusWidget={surface.focusWidget}
-        onOpenWidget={() => undefined}
-        onHideWidget={() => undefined}
-        layoutEditMode={layoutEditMode}
-        gridStep={gridStepForDensity(prefs.desktop.gridDensity)}
-        gridSnapEnabled={gridSnapEnabled}
-        gridCompaction={prefs.desktop.gridCompaction}
-        showGrid={gridVisible}
-        selectedWidgetIds={surface.selectedWidgetIds}
-        onSelectWidget={surface.toggleWidgetInSelection}
-      />
-    </div>
+      </div>
+
+      {/* Sections */}
+      <div className="mt-8 flex flex-col gap-6 px-2">
+        {/* League section */}
+        <section>
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-widest text-muted-foreground">
+            <FontAwesomeIcon icon={faGamepad} />
+            {p.cardGamesTitle}
+          </h2>
+
+          {!profile.integrations.league ? (
+            <Card>
+              <CardContent className="py-6 text-sm text-muted-foreground">
+                {p.noLeaguePublic}
+              </CardContent>
+            </Card>
+          ) : !riotSync ? (
+            <Card>
+              <CardContent className="py-6 text-sm text-muted-foreground">
+                {profile.stats.league.source === "not_synced" ? p.notSyncedYet : p.statsUnavailable}
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="flex flex-col gap-4">
+              {/* Identity + rank bar */}
+              <Card>
+                <CardContent className="flex flex-wrap items-center justify-between gap-4 py-5">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs uppercase tracking-wide text-muted-foreground">
+                      {p.accountLabel}
+                    </span>
+                    <span className="font-mono text-lg font-semibold text-foreground">
+                      {riotSync.account.gameName}
+                      <span className="text-muted-foreground">#{riotSync.account.tagLine}</span>
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {profile.integrations.league.region}
+                      {" · "}
+                      {p.syncedShort(
+                        formatShortDate(
+                          profile.stats.league.lastSyncRequestedAt,
+                          locale,
+                          p.noSyncYetShort,
+                        ),
+                      )}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-col items-end gap-1">
+                    <span className="text-xs uppercase tracking-wide text-muted-foreground">
+                      {p.gamesRankLabel}
+                    </span>
+                    {formattedLeagueRank ? (
+                      leagueRankPalette ? (
+                        <LeagueRankText
+                          text={formattedLeagueRank}
+                          colors={leagueRankPalette}
+                          className="text-2xl font-bold"
+                        />
+                      ) : (
+                        <span className="text-2xl font-bold text-foreground">
+                          {formattedLeagueRank}
+                        </span>
+                      )
+                    ) : (
+                      <span className="text-2xl font-bold text-muted-foreground">
+                        {p.rankFallback}
+                      </span>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Ranked queues */}
+              {riotSync.leagueEntries.length > 0 && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {riotSync.leagueEntries.map((entry) => (
+                    <Card key={entry.queueType}>
+                      <CardContent className="py-4">
+                        <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                          {entry.queueType}
+                        </p>
+                        <p className="mt-1 font-semibold text-foreground">
+                          {p.rankedEntryLine(entry.tier, entry.rank, entry.leaguePoints)}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {p.rankedEntryRecord(
+                            entry.wins,
+                            entry.losses,
+                            entry.hotStreak ? p.hotStreak : "",
+                          )}
+                        </p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+
+              {/* Recent matches */}
+              {riotSync.recentMatches.length > 0 && (
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+                    {p.recentMatches}
+                  </p>
+                  <div className="flex flex-col gap-2">
+                    {riotSync.recentMatches.map((match) => (
+                      <Card key={match.matchId}>
+                        <CardContent className="flex items-center justify-between gap-4 py-3">
+                          <div className="flex items-center gap-3">
+                            <span
+                              className={`w-1.5 self-stretch rounded-full ${match.win ? "bg-emerald-500" : "bg-destructive"}`}
+                            />
+                            <div>
+                              <p className="font-medium text-foreground">{match.championName}</p>
+                              <p className="text-sm text-muted-foreground">
+                                {p.matchStatsLine(
+                                  match.kills,
+                                  match.deaths,
+                                  match.assists,
+                                  match.totalCs,
+                                  match.championLevel,
+                                )}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="text-right text-sm text-muted-foreground">
+                            <p
+                              className={
+                                match.win
+                                  ? "font-medium text-emerald-600 dark:text-emerald-400"
+                                  : "font-medium text-destructive"
+                              }
+                            >
+                              {match.win ? p.win : p.loss}
+                            </p>
+                            <p>{formatGameDuration(match.gameDurationSeconds)}</p>
+                            <p className="text-xs">
+                              {formatTimestamp(new Date(match.gameCreation).toISOString(), locale)}
+                            </p>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+
+        {/* Steam placeholder */}
+        <section>
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-widest text-muted-foreground">
+            <FontAwesomeIcon icon={faCircleDot} />
+            {p.steamTitle}
+          </h2>
+          <Card>
+            <CardContent className="py-6 text-sm text-muted-foreground">
+              {p.steamBody}
+            </CardContent>
+          </Card>
+        </section>
+      </div>
+    </motion.div>
   );
 }
-

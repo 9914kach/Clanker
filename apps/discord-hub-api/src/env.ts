@@ -91,6 +91,24 @@ function parseDatabaseUrl(raw: string | undefined): string | undefined {
   return s;
 }
 
+export type DbConfig =
+  | { kind: "url"; url: string }
+  | { kind: "params"; host: string; port: number; user: string; password: string; database: string };
+
+function parseDbConfig(): DbConfig | undefined {
+  const url = parseDatabaseUrl(process.env.DATABASE_URL);
+  if (url) return { kind: "url", url };
+
+  const user = process.env.POSTGRES_USER?.trim();
+  const password = process.env.POSTGRES_PASSWORD?.trim();
+  const database = process.env.POSTGRES_DB?.trim();
+  if (!user || !password || !database) return undefined;
+
+  const host = process.env.POSTGRES_HOST?.trim() || "127.0.0.1";
+  const port = Number(process.env.POSTGRES_PORT?.trim() || "5432");
+  return { kind: "params", host, port, user, password, database };
+}
+
 export type DiscordOAuthPrompt = "consent" | "none";
 
 export function loadEnv() {
@@ -146,6 +164,7 @@ export function loadEnv() {
     ),
     discordBotToken,
     riotApiKey,
+    musicBotHttpUrl: process.env.MUSIC_BOT_HTTP_URL?.trim() || undefined,
     discordHubAllowedGuildIds: parseSnowflakeList(
       process.env.DISCORD_HUB_ALLOWED_GUILD_IDS,
     ),
@@ -158,7 +177,7 @@ export function loadEnv() {
     discordGatewayIntents: parseGatewayIntents(
       process.env.DISCORD_GATEWAY_INTENTS,
     ),
-    databaseUrl: parseDatabaseUrl(process.env.DATABASE_URL),
+    dbConfig: parseDbConfig(),
   };
 }
 
