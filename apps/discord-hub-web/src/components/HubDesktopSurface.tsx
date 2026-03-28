@@ -13,7 +13,7 @@ import { useTheme } from "@/components/theme-provider";
 import { hubEnterMotion, hubPopMotion } from "@/lib/hub-motion";
 import { hubContextData } from "@/lib/hub-shell-context";
 import { classifyTarget, getCapabilities, type HubEntityCapabilities } from "@/lib/hub-shell-classification";
-import { HUB_DESKTOP_LAYOUT_GRID, type HubDesktopWidgetLayout } from "@/lib/hub-desktop-layout";
+import { HUB_DESKTOP_LAYOUT_GRID, effectiveSnapStep, type HubDesktopWidgetLayout, type HubSnapStrength } from "@/lib/hub-desktop-layout";
 import {
   DEFAULT_WIDGET_VISUAL_PREFS,
   effectiveWidgetTone,
@@ -125,7 +125,7 @@ function DesktopWidgetCard({
 
   return (
     <div
-      className="h-full"
+      className="group h-full"
       onPointerDown={handleWidgetPointerDown}
       {...hubContextData({
         type: "widget",
@@ -137,11 +137,9 @@ function DesktopWidgetCard({
       <Card
         className={cn(
           "relative h-full rounded-[1.4rem] border-border/70 shadow-sm transition",
-          !layoutEditMode &&
-            "hover:-translate-y-0.5 hover:border-border/90 hover:shadow-md motion-reduce:hover:translate-y-0",
+          "hover:-translate-y-0.5 hover:border-border/90 hover:shadow-md motion-reduce:hover:translate-y-0",
           blurClass(visualPrefs.blurStrength),
           toneAccentClass(effectiveTone),
-          layoutEditMode && itemCapabilities.movable && "cursor-grab active:cursor-grabbing",
           layoutEditMode &&
             selected &&
             "border-primary/70 shadow-[0_0_0_2px_color-mix(in_oklab,var(--primary)_40%,transparent),0_16px_36px_color-mix(in_oklab,var(--primary)_26%,transparent)]",
@@ -164,7 +162,7 @@ function DesktopWidgetCard({
           </div>
           <div className="flex items-center gap-2">
             {visualPrefs.showToneBadge ? <Badge variant={toneVariant(effectiveTone)}>{effectiveTone}</Badge> : null}
-            {layoutEditMode && itemCapabilities.movable ? (
+            {itemCapabilities.movable ? (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -172,10 +170,13 @@ function DesktopWidgetCard({
                     variant="ghost"
                     size="sm"
                     aria-label={ds.dragAria(item.label)}
-                    className="hub-widget-drag-handle cursor-grab active:cursor-grabbing"
+                    className={cn(
+                      "hub-widget-drag-handle cursor-grab active:cursor-grabbing transition-opacity",
+                      !layoutEditMode && "opacity-0 group-hover:opacity-50",
+                    )}
                   >
                     <GripVertical data-icon="inline-start" />
-                    {ds.dragButton}
+                    {layoutEditMode ? ds.dragButton : null}
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>{ds.dragTooltip}</TooltipContent>
@@ -238,6 +239,7 @@ export default function HubDesktopSurface({
   onHideWidget,
   layoutEditMode,
   gridStep = HUB_DESKTOP_LAYOUT_GRID,
+  snapStrength = "standard" as HubSnapStrength,
   gridSnapEnabled = true,
   showGrid = false,
   selectedWidgetIds = [],
@@ -259,6 +261,7 @@ export default function HubDesktopSurface({
   onHideWidget: (id: string) => void;
   layoutEditMode: boolean;
   gridStep?: number;
+  snapStrength?: HubSnapStrength;
   gridSnapEnabled?: boolean;
   showGrid?: boolean;
   selectedWidgetIds?: readonly string[];
@@ -278,7 +281,9 @@ export default function HubDesktopSurface({
   const [surfaceWidth, setSurfaceWidth] = useState(0);
   const containerPadding = 16;
   const pxCols = Math.max(240, Math.floor(surfaceWidth - containerPadding * 2));
-  const gridVisualStep = gridStep;
+  const gridVisualStep = gridSnapEnabled
+    ? effectiveSnapStep(gridStep, snapStrength)
+    : HUB_DESKTOP_LAYOUT_GRID;
 
   useLayoutEffect(() => {
     const el = surfaceRef.current;
@@ -350,6 +355,7 @@ export default function HubDesktopSurface({
         cellHeight: 1,
         margin: 0,
         float: gridCompaction === "none",
+        overlap: true,
         draggable: { handle: ".hub-widget-drag-handle" },
       },
       root,
@@ -408,8 +414,8 @@ export default function HubDesktopSurface({
         y: Math.round(layout.y),
         w: Math.max(120, Math.round(layout.w)),
         h: Math.max(120, Math.round(layout.h)),
-        noMove: !layoutEditMode || !itemCaps.movable,
-        noResize: !layoutEditMode || !itemCaps.resizable,
+        noMove: !itemCaps.movable,
+        noResize: !itemCaps.resizable,
         minW: 120,
         minH: 100,
       };
@@ -417,8 +423,8 @@ export default function HubDesktopSurface({
       el.style.zIndex = String(Math.max(1, layout.z));
     }
     grid.batchUpdate(false);
-    grid.enableMove(layoutEditMode);
-    grid.enableResize(layoutEditMode);
+    grid.enableMove(true);
+    grid.enableResize(true);
 
     // Cleanup ghost nodes if React removed elements this frame.
     for (const node of [...grid.engine.nodes]) {
@@ -463,13 +469,6 @@ export default function HubDesktopSurface({
       ) : null}
 
       <div className="relative flex min-h-full flex-1 flex-col">
-        {layoutEditMode && variant === "desktop" ? (
-          <div className="sticky top-0 z-30 border-b border-primary/35 bg-primary/15 px-4 py-2 text-center text-xs font-medium text-primary shadow-sm backdrop-blur-md md:px-5">
-            <span className="mr-2 font-semibold">{ds.layoutEditBanner}</span>
-            <span className="text-muted-foreground">{ds.layoutEditHint}</span>
-            <div className="mt-1.5 text-[0.7rem] font-normal text-primary/90">{ds.editStickyHelp}</div>
-          </div>
-        ) : null}
 
         <div className={cn("flex flex-1 flex-col", variant === "desktop" ? "gap-0 p-0" : "gap-4 p-4 md:p-5")}>
           <div className="block lg:hidden">
@@ -563,7 +562,7 @@ export default function HubDesktopSurface({
           <div
             ref={surfaceRef}
             className={cn(
-              "relative hidden overflow-hidden lg:block",
+              "relative hidden flex-1 overflow-hidden lg:block",
               variant === "desktop"
                 ? "before:pointer-events-none before:absolute before:inset-0 before:bg-[radial-gradient(circle_at_top_left,color-mix(in_oklab,var(--primary)_16%,transparent),transparent_26%)] before:content-['']"
                 : "rounded-[2rem] border border-border/60 bg-background/28 before:pointer-events-none before:absolute before:inset-0 before:bg-[radial-gradient(circle_at_top_left,color-mix(in_oklab,var(--primary)_16%,transparent),transparent_26%)] before:content-['']",
@@ -580,6 +579,7 @@ export default function HubDesktopSurface({
                   backgroundImage:
                     "linear-gradient(to right, color-mix(in oklab, var(--primary) 38%, transparent) 1px, transparent 1px), linear-gradient(to bottom, color-mix(in oklab, var(--primary) 38%, transparent) 1px, transparent 1px)",
                   backgroundSize: `${gridSnapEnabled ? gridVisualStep : HUB_DESKTOP_LAYOUT_GRID}px ${gridSnapEnabled ? gridVisualStep : HUB_DESKTOP_LAYOUT_GRID}px`,
+                  backgroundPosition: `${containerPadding}px 0px`,
                 }}
                 aria-hidden
               />
@@ -587,7 +587,7 @@ export default function HubDesktopSurface({
 
             <div
               ref={gridRootRef}
-              className="hub-desktop-grid grid-stack relative z-10"
+              className={cn("hub-desktop-grid grid-stack relative z-10", layoutEditMode && "layout-edit-mode")}
               style={{
                 minHeight: 580,
                 marginInline: `${containerPadding}px`,

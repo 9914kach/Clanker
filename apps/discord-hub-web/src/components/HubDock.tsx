@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import type { ComponentType } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
@@ -7,6 +8,7 @@ import {
   Keyboard,
   LayoutTemplate,
   Grid2X2,
+  GripVertical,
   Magnet,
   MoreHorizontal,
   Palette,
@@ -68,6 +70,7 @@ export default function HubDock({
   onOpenCommandPalette,
   onSummonGoblin,
   onAppeaseHamster,
+  onOpenPrefs,
   dockPosition = "bottom",
   dockScale = "md",
 }: {
@@ -103,6 +106,8 @@ export default function HubDock({
   onOpenCommandPalette?: (() => void) | null;
   onSummonGoblin?: (() => void) | null;
   onAppeaseHamster?: (() => void) | null;
+  onOpenPrefs?: (() => void) | null;
+
   dockPosition?: "bottom" | "left";
   dockScale?: "sm" | "md" | "lg";
 }) {
@@ -142,6 +147,13 @@ export default function HubDock({
   const canRedo = desktopShell?.canRedoLayout ?? false;
   const autosaveOn = desktopShell?.autosaveLayoutEnabled ?? false;
 
+  const [toolbarPos, setToolbarPos] = useState<{ x: number; y: number } | null>(null);
+  const dragRef = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null);
+
+  useEffect(() => {
+    if (!layoutEditMode) setToolbarPos(null);
+  }, [layoutEditMode]);
+
   const desktopGate = (fn: () => void) => {
     if (!isDashboardRoute) {
       play("panel");
@@ -158,7 +170,8 @@ export default function HubDock({
   if (layoutEditMode) {
     return (
       <div
-        className={shellClassNameLayoutEdit}
+        className={toolbarPos ? "pointer-events-none fixed z-40" : shellClassNameLayoutEdit}
+        style={toolbarPos ? { left: toolbarPos.x, top: toolbarPos.y } : undefined}
         role="toolbar"
         aria-label={em.toolbarAria}
         {...hubContextData({ type: "shell.nav", area: "dock" })}
@@ -171,10 +184,35 @@ export default function HubDock({
           layoutEditMode={layoutEditMode}
           layoutEditChrome="none"
           className={cn(
-            "pointer-events-auto flex max-w-[min(100%,56rem)] flex-wrap items-center justify-center gap-1 rounded-2xl border border-primary/35 bg-background/90 px-2 py-1.5 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/75",
-            "ring-2 ring-primary/30",
+            "pointer-events-auto flex max-w-[min(100%,56rem)] flex-wrap items-center justify-center gap-1 rounded-2xl border border-border/20 bg-background/50 px-2 py-1.5 shadow-md backdrop-blur-md supports-[backdrop-filter]:bg-background/40",
           )}
         >
+          <div
+            className="cursor-grab active:cursor-grabbing touch-none px-1 text-muted-foreground/35 hover:text-muted-foreground/70 transition-colors"
+            onPointerDown={(e) => {
+              const toolbar = e.currentTarget.parentElement;
+              if (!toolbar) return;
+              const rect = toolbar.getBoundingClientRect();
+              dragRef.current = { sx: e.clientX, sy: e.clientY, ox: rect.left, oy: rect.top };
+              e.currentTarget.setPointerCapture(e.pointerId);
+              e.stopPropagation();
+            }}
+            onPointerMove={(e) => {
+              if (!dragRef.current) return;
+              setToolbarPos({
+                x: dragRef.current.ox + (e.clientX - dragRef.current.sx),
+                y: dragRef.current.oy + (e.clientY - dragRef.current.sy),
+              });
+            }}
+            onPointerUp={(e) => {
+              dragRef.current = null;
+              e.currentTarget.releasePointerCapture(e.pointerId);
+            }}
+            aria-hidden
+          >
+            <GripVertical className="size-4" />
+          </div>
+
           {isDirty && !autosaveOn ? (
             <Badge variant="secondary" className="hidden shrink-0 rounded-lg sm:inline-flex">
               {em.unsavedBadge}
@@ -237,6 +275,24 @@ export default function HubDock({
               </DropdownMenuItem>
           </DropdownMenuContent>
           </DropdownMenu>
+
+          {onOpenPrefs ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="rounded-xl"
+                  onClick={onOpenPrefs}
+                >
+                  <Palette className="size-4" />
+                  <span className="hidden sm:inline">{copy.hubPrefsPanel.openButton}</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{copy.hubPrefsPanel.openButton}</TooltipContent>
+            </Tooltip>
+          ) : null}
 
           {hiddenCount > 0 ? (
             <Tooltip>

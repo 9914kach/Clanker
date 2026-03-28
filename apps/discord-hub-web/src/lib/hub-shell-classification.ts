@@ -237,8 +237,6 @@ export function getCapabilities(
       ...base,
       editableInLayout: false,
       reorderable: false,
-      movable: false,
-      resizable: false,
       hideable: false,
     };
   }

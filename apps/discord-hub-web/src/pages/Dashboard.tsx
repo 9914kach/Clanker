@@ -868,6 +868,7 @@ export default function DashboardPage() {
       onHideWidget={hideWidget}
       layoutEditMode={layoutEditMode}
       gridStep={gridStepForDensity(prefs.desktop.gridDensity)}
+      snapStrength={prefs.desktop.snapStrength}
       gridSnapEnabled={gridSnapEnabled}
       gridCompaction={prefs.desktop.gridCompaction}
       showGrid={gridVisible}

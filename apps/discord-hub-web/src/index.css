@@ -467,7 +467,7 @@ code {
   --hub-shell-tint-1: transparent;
   --hub-shell-tint-2: transparent;
   --hub-shell-tint-3: transparent;
-  --hub-shell-bottom-bar: 40px;
+  --hub-shell-bottom-bar: 0px;
   --hub-tab-radius-base: 0.75rem;
   --hub-tab-radius: max(var(--hub-tab-radius-base), calc(var(--radius) * 1.4));
   --hub-tab-overhang: 0rem;
@@ -506,6 +506,7 @@ code {
 .hub-shell-header {
   position: relative;
   padding-bottom: var(--hub-tab-raise);
+  background: var(--background);
 }
 
 .hub-shell-header-inner {
@@ -528,10 +529,7 @@ code {
 
 .hub-workspace-tab-strip {
   position: relative;
-  z-index: 15;
-  margin-top: calc(var(--hub-tab-raise) * -1);
-  margin-bottom: calc(var(--hub-tab-overhang) * -1);
-  padding-bottom: var(--hub-tab-overhang);
+  z-index: 20;
   width: fit-content;
   background: transparent;
 }
@@ -550,8 +548,8 @@ code {
   position: relative;
   z-index: 1;
   display: inline-flex;
-  align-items: flex-end;
-  gap: 0.4rem;
+  align-items: flex-start;
+  gap: 0.25rem;
   padding-inline: 0;
   width: fit-content;
   background: transparent;
@@ -563,13 +561,15 @@ code {
   align-items: center;
   gap: 0.25rem;
   padding: 0;
-  border: 0;
+  border: 1px solid color-mix(in oklab, var(--border) 60%, transparent);
   box-shadow: none;
   border-radius: 0 0 calc(var(--hub-tab-radius) * 0.55) calc(var(--hub-tab-radius) * 0.55);
-  background: transparent;
+  background: color-mix(in oklab, var(--background) 82%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
   margin-left: calc(var(--hub-tab-overlap) * -1);
-  min-height: 2.5rem;
+  min-height: 2rem;
 }
 
 .hub-workspace-tab:first-child {
@@ -606,9 +606,21 @@ code {
 
 .hub-workspace-tab[data-active="true"] {
   z-index: 2;
-  border-color: var(--border);
-  background: transparent;
+  border-color: color-mix(in oklab, var(--border) 60%, transparent);
+  background: color-mix(in oklab, var(--background) 92%, transparent);
   box-shadow: none;
+}
+
+/* Mask the tab's top border + the header's bottom border so active tab merges with navbar */
+.hub-workspace-tab[data-active="true"]::before {
+  content: "";
+  position: absolute;
+  top: -2px;
+  left: -1px;
+  right: -1px;
+  height: 3px;
+  background: var(--background);
+  z-index: 3;
 }
 
 .hub-workspace-tab[data-active="true"]::after {
@@ -621,21 +633,21 @@ code {
 }
 
 .hub-workspace-tab[data-active="false"] {
-  background: transparent;
+  background: color-mix(in oklab, var(--background) 72%, transparent);
 }
 
 .hub-workspace-tab-label {
   border-radius: 0 0 calc(var(--hub-tab-radius) * 0.85) calc(var(--hub-tab-radius) * 0.85);
-  height: 2.5rem;
-  padding-inline: 0.9rem;
-  font-size: 0.85rem;
-  gap: 0.5rem;
+  height: 2rem;
+  padding-inline: 0.65rem;
+  font-size: 0.78rem;
+  gap: 0.4rem;
   line-height: 1;
 }
 
 .hub-workspace-tab-label svg {
-  width: 1rem;
-  height: 1rem;
+  width: 0.875rem;
+  height: 0.875rem;
 }
 
 .hub-workspace-tab-close {
@@ -655,4 +667,52 @@ code {
 .hub-desktop-grid.grid-stack > .grid-stack-placeholder > .placeholder-content {
   inset: 0 !important;
   margin: 0 !important;
+}
+
+/* Resize handles — always present, visible on widget hover, more prominent in edit mode. */
+.hub-desktop-grid .ui-resizable-handle {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  z-index: 30;
+}
+
+.hub-desktop-grid .grid-stack-item:hover .ui-resizable-handle {
+  opacity: 0.35;
+}
+
+.hub-desktop-grid.layout-edit-mode .ui-resizable-handle {
+  opacity: 0.65;
+}
+
+/* Corner-only handles for natural resize affordance. */
+.hub-desktop-grid .ui-resizable-se,
+.hub-desktop-grid .ui-resizable-sw,
+.hub-desktop-grid .ui-resizable-ne,
+.hub-desktop-grid .ui-resizable-nw {
+  width: 18px !important;
+  height: 18px !important;
+}
+
+.hub-desktop-grid .ui-resizable-se {
+  right: 4px !important;
+  bottom: 4px !important;
+  cursor: se-resize;
+}
+
+.hub-desktop-grid .ui-resizable-sw {
+  left: 4px !important;
+  bottom: 4px !important;
+  cursor: sw-resize;
+}
+
+.hub-desktop-grid .ui-resizable-ne {
+  right: 4px !important;
+  top: 4px !important;
+  cursor: ne-resize;
+}
+
+.hub-desktop-grid .ui-resizable-nw {
+  left: 4px !important;
+  top: 4px !important;
+  cursor: nw-resize;
 }

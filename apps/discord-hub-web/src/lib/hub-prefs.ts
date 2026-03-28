@@ -96,7 +96,7 @@ export const DEFAULT_HUB_PREFS: HubPrefs = {
   },
   dock: {
     position: "bottom",
-    scale: "md",
+    scale: "sm",
   },
   motion: {
     animationIntensity: 100,
@@ -132,12 +132,12 @@ export function cloneHubPrefs(prefs: HubPrefs): HubPrefs {
 
 export function gridStepForDensity(density: HubGridDensity): number {
   if (density === "compact") {
-    return 192;
+    return 64;
   }
   if (density === "expanded") {
     return 128;
   }
-  return 160;
+  return 96;
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {

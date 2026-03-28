@@ -510,10 +510,10 @@ export default function HubLayout() {
   }, [pathname]);
 
   useEffect(() => {
-    if (pathname === "/login") {
+    if (pathname === "/login" && me.status === "user") {
       navigate("/dashboard", { replace: true });
     }
-  }, [navigate, pathname]);
+  }, [navigate, pathname, me.status]);
 
   useLayoutEffect(() => {
     const el = topbarRef.current;
@@ -744,7 +744,6 @@ export default function HubLayout() {
 
   useEffect(() => {
     if (!layoutEditMode) return;
-    setPrefsPanelOpen(false);
     if (commandOpen) {
       handleCommandOpenChange(false);
     }
@@ -1033,7 +1032,7 @@ export default function HubLayout() {
 
   const navButtonClassName = (isActive: boolean) =>
     cn(
-      "relative inline-flex items-center gap-1.5 rounded-xl border px-2 py-1 text-xs font-medium transition",
+      "relative inline-flex items-center gap-1 rounded-xl border px-2 py-0.5 text-xs font-medium transition",
       "border-transparent bg-background/35 text-muted-foreground hover:bg-muted/65 hover:text-foreground",
       isActive &&
         "border-primary/35 bg-background/80 text-foreground shadow-[0_10px_24px_color-mix(in_oklab,var(--primary)_16%,transparent)]",
@@ -1292,7 +1291,7 @@ export default function HubLayout() {
             if (layoutEditMode) e.preventDefault();
           }}
           className={cn(
-            "flex items-center gap-2 rounded-2xl border border-border/60 bg-background/55 px-2.5 py-1.5 shadow-sm transition hover:bg-muted/70 hover:shadow-md",
+            "flex items-center gap-1.5 rounded-2xl border border-border/60 bg-background/55 px-2 py-1 shadow-sm transition hover:bg-muted/70 hover:shadow-md",
             layoutEditMode && "pointer-events-none select-none",
           )}
           title={copy.chrome.identityNavHint}
@@ -1322,7 +1321,7 @@ export default function HubLayout() {
           <span className="hidden size-2 rounded-full bg-emerald-400 shadow-[0_0_0_3px_color-mix(in_oklab,var(--background)_88%,transparent)] md:inline-block" />
         </NavLink>
       ) : (
-        <div className="hidden rounded-2xl border border-border/60 bg-background/55 px-2.5 py-1.5 text-xs text-muted-foreground md:block">
+        <div className="hidden rounded-2xl border border-border/60 bg-background/55 px-2 py-1 text-xs text-muted-foreground md:block">
           {me.status === "loading"
             ? copy.layout.loadingAccount
             : me.status === "backend_error"
@@ -1440,8 +1439,8 @@ export default function HubLayout() {
         className="hub-shell-header relative z-20"
         {...hubContextData({ type: "shell.nav", area: "topbar" })}
       >
-        <div className="hub-shell-header-inner flex flex-col gap-1.5 px-3 py-1 md:px-4">
-          <div className="flex flex-col gap-1.5 lg:flex-row lg:items-center lg:gap-3 lg:gap-y-0">
+        <div className="hub-shell-header-inner flex flex-col gap-1 px-3 py-0.5 md:px-4">
+          <div className="flex flex-col gap-1 lg:flex-row lg:items-center lg:gap-2 lg:gap-y-0">
           <div className="flex min-w-0 items-center gap-2 lg:shrink-0">
             <HubShellObject
               as="div"
@@ -1535,10 +1534,9 @@ export default function HubLayout() {
           </div>
 
         </div>
-      </header>
 
-      {openWorkspaceTabs.length > 0 ? (
-        <div className="hub-workspace-tab-strip inline-flex w-fit px-3 md:px-4">
+        {openWorkspaceTabs.length > 0 && !layoutEditMode ? (
+          <div className="hub-workspace-tab-strip inline-flex w-fit px-3 md:px-4">
           <div className="inline-flex w-fit items-center overflow-x-auto bg-transparent">
             <Tabs
               value={pathname}
@@ -1585,7 +1583,7 @@ export default function HubLayout() {
                             type="button"
                             variant="ghost"
                             size="icon"
-                            className="hub-workspace-tab-close h-6 w-6 rounded-full text-muted-foreground transition hover:text-foreground"
+                            className="hub-workspace-tab-close h-5 w-5 rounded-full text-muted-foreground transition hover:text-foreground"
                             onClick={(event) => {
                               event.preventDefault();
                               event.stopPropagation();
@@ -1595,7 +1593,7 @@ export default function HubLayout() {
                             aria-label={`Close ${tab.label}`}
                             title={`Close ${tab.label}`}
                           >
-                            <X className="size-3.5" />
+                            <X className="size-3" />
                           </Button>
                         )}
                       </Reorder.Item>
@@ -1605,13 +1603,14 @@ export default function HubLayout() {
               </TabsList>
             </Tabs>
           </div>
-        </div>
-      ) : null}
+          </div>
+        ) : null}
+      </header>
 
       <div className="relative z-10 flex min-h-0 flex-1">
         <main
           className={cn(
-            "flex min-h-0 flex-1 overflow-auto pb-[calc(6rem+var(--hub-shell-bottom-bar))]",
+            "flex min-h-0 flex-1 overflow-auto",
             authGateActive && "pointer-events-none select-none opacity-40",
           )}
         >
@@ -1630,7 +1629,7 @@ export default function HubLayout() {
             >
               <div
                 className={cn(
-                  "min-h-0 flex-1 overflow-auto px-3 py-5 md:px-4 md:py-6",
+                  "min-h-0 flex-1 overflow-auto px-3 pb-5 md:px-4 md:pb-6",
                   layoutEditMode &&
                     !routeContentCaps.editableInLayout &&
                     "[&_a]:pointer-events-none [&_button]:pointer-events-none [&_input]:pointer-events-none [&_select]:pointer-events-none [&_textarea]:pointer-events-none [&_[role=button]]:pointer-events-none",
@@ -1677,7 +1676,7 @@ export default function HubLayout() {
         ) : null}
       </div>
 
-      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 h-[var(--hub-shell-bottom-bar)] border-t border-border/55 bg-background/95" />
+      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 h-[var(--hub-shell-bottom-bar)]" />
 
       <HubDock
         tools={orderedDockTools}
@@ -1706,6 +1705,7 @@ export default function HubLayout() {
         onOpenCommandPalette={actionApi.openCommandPalette}
         onSummonGoblin={actionApi.summonGoblin}
         onAppeaseHamster={actionApi.appeaseHamster}
+        onOpenPrefs={() => setPrefsPanelOpen(true)}
         onDesktopOnlyAction={() => {
           toasts.push({ kind: "info", title: copy.editMode.desktopOnlyToast });
         }}

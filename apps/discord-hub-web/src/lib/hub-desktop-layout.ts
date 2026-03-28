@@ -7,7 +7,7 @@ export type HubDesktopWidgetLayout = {
   hidden: boolean;
 };
 
-export const HUB_DESKTOP_LAYOUT_GRID = 160;
+export const HUB_DESKTOP_LAYOUT_GRID = 192;
 
 export type HubSnapStrength = "relaxed" | "standard" | "firm";
 

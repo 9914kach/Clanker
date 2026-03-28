@@ -22,21 +22,32 @@ const DEFAULT_WIDGET_ORDER = [
   "custom-modules",
 ] as const;
 
-const DEFAULT_HIDDEN_WIDGETS = ["presence-radar", "ritual-console", "custom-modules"] as const;
+const DEFAULT_HIDDEN_WIDGETS = [
+  "lore-quote",
+  "discord-wiretap",
+  "mood-clock",
+  "wheel-launchpad",
+  "chaos-meter",
+  "voice-orbit",
+  "neutralen-radio",
+  "presence-radar",
+  "ritual-console",
+  "custom-modules",
+] as const;
 
 export const DEFAULT_WIDGET_LAYOUTS: Record<string, HubDesktopWidgetLayout> = {
-  welcome: { x: 0, y: 0, w: 2 * HUB_DESKTOP_LAYOUT_GRID, h: 2 * HUB_DESKTOP_LAYOUT_GRID, z: 1, hidden: false },
-  "server-pulse": { x: 2 * HUB_DESKTOP_LAYOUT_GRID, y: 0, w: 2 * HUB_DESKTOP_LAYOUT_GRID, h: 2 * HUB_DESKTOP_LAYOUT_GRID, z: 2, hidden: false },
-  "wheel-launchpad": { x: 4 * HUB_DESKTOP_LAYOUT_GRID, y: 0, w: 2 * HUB_DESKTOP_LAYOUT_GRID, h: 2 * HUB_DESKTOP_LAYOUT_GRID, z: 3, hidden: false },
-  "chaos-meter": { x: 0, y: 2 * HUB_DESKTOP_LAYOUT_GRID, w: 2 * HUB_DESKTOP_LAYOUT_GRID, h: 2 * HUB_DESKTOP_LAYOUT_GRID, z: 4, hidden: false },
-  "voice-orbit": { x: 2 * HUB_DESKTOP_LAYOUT_GRID, y: 2 * HUB_DESKTOP_LAYOUT_GRID, w: 2 * HUB_DESKTOP_LAYOUT_GRID, h: 2 * HUB_DESKTOP_LAYOUT_GRID, z: 5, hidden: false },
-  "neutralen-radio": { x: 4 * HUB_DESKTOP_LAYOUT_GRID, y: 2 * HUB_DESKTOP_LAYOUT_GRID, w: 2 * HUB_DESKTOP_LAYOUT_GRID, h: 2 * HUB_DESKTOP_LAYOUT_GRID, z: 6, hidden: false },
-  "mood-clock": { x: 0, y: 4 * HUB_DESKTOP_LAYOUT_GRID, w: 2 * HUB_DESKTOP_LAYOUT_GRID, h: 2 * HUB_DESKTOP_LAYOUT_GRID, z: 7, hidden: false },
-  "lore-quote": { x: 2 * HUB_DESKTOP_LAYOUT_GRID, y: 4 * HUB_DESKTOP_LAYOUT_GRID, w: 2 * HUB_DESKTOP_LAYOUT_GRID, h: 2 * HUB_DESKTOP_LAYOUT_GRID, z: 8, hidden: false },
-  "discord-wiretap": { x: 4 * HUB_DESKTOP_LAYOUT_GRID, y: 4 * HUB_DESKTOP_LAYOUT_GRID, w: 2 * HUB_DESKTOP_LAYOUT_GRID, h: 2 * HUB_DESKTOP_LAYOUT_GRID, z: 9, hidden: false },
-  "presence-radar": { x: 0, y: 6 * HUB_DESKTOP_LAYOUT_GRID, w: 2 * HUB_DESKTOP_LAYOUT_GRID, h: 2 * HUB_DESKTOP_LAYOUT_GRID, z: 10, hidden: true },
-  "ritual-console": { x: 2 * HUB_DESKTOP_LAYOUT_GRID, y: 6 * HUB_DESKTOP_LAYOUT_GRID, w: 2 * HUB_DESKTOP_LAYOUT_GRID, h: 2 * HUB_DESKTOP_LAYOUT_GRID, z: 11, hidden: true },
-  "custom-modules": { x: 4 * HUB_DESKTOP_LAYOUT_GRID, y: 6 * HUB_DESKTOP_LAYOUT_GRID, w: 2 * HUB_DESKTOP_LAYOUT_GRID, h: 2 * HUB_DESKTOP_LAYOUT_GRID, z: 12, hidden: true },
+  welcome: { x: 0, y: 0, w: HUB_DESKTOP_LAYOUT_GRID, h: HUB_DESKTOP_LAYOUT_GRID, z: 1, hidden: false },
+  "server-pulse": { x: HUB_DESKTOP_LAYOUT_GRID, y: 0, w: HUB_DESKTOP_LAYOUT_GRID, h: HUB_DESKTOP_LAYOUT_GRID, z: 2, hidden: false },
+  "wheel-launchpad": { x: 2 * HUB_DESKTOP_LAYOUT_GRID, y: 0, w: HUB_DESKTOP_LAYOUT_GRID, h: HUB_DESKTOP_LAYOUT_GRID, z: 3, hidden: true },
+  "chaos-meter": { x: 0, y: HUB_DESKTOP_LAYOUT_GRID, w: HUB_DESKTOP_LAYOUT_GRID, h: HUB_DESKTOP_LAYOUT_GRID, z: 4, hidden: true },
+  "voice-orbit": { x: HUB_DESKTOP_LAYOUT_GRID, y: HUB_DESKTOP_LAYOUT_GRID, w: HUB_DESKTOP_LAYOUT_GRID, h: HUB_DESKTOP_LAYOUT_GRID, z: 5, hidden: true },
+  "neutralen-radio": { x: 2 * HUB_DESKTOP_LAYOUT_GRID, y: HUB_DESKTOP_LAYOUT_GRID, w: HUB_DESKTOP_LAYOUT_GRID, h: HUB_DESKTOP_LAYOUT_GRID, z: 6, hidden: true },
+  "mood-clock": { x: 0, y: 2 * HUB_DESKTOP_LAYOUT_GRID, w: HUB_DESKTOP_LAYOUT_GRID, h: HUB_DESKTOP_LAYOUT_GRID, z: 7, hidden: true },
+  "lore-quote": { x: HUB_DESKTOP_LAYOUT_GRID, y: 2 * HUB_DESKTOP_LAYOUT_GRID, w: HUB_DESKTOP_LAYOUT_GRID, h: HUB_DESKTOP_LAYOUT_GRID, z: 8, hidden: true },
+  "discord-wiretap": { x: 2 * HUB_DESKTOP_LAYOUT_GRID, y: 2 * HUB_DESKTOP_LAYOUT_GRID, w: HUB_DESKTOP_LAYOUT_GRID, h: HUB_DESKTOP_LAYOUT_GRID, z: 9, hidden: true },
+  "presence-radar": { x: 0, y: 3 * HUB_DESKTOP_LAYOUT_GRID, w: HUB_DESKTOP_LAYOUT_GRID, h: HUB_DESKTOP_LAYOUT_GRID, z: 10, hidden: true },
+  "ritual-console": { x: HUB_DESKTOP_LAYOUT_GRID, y: 3 * HUB_DESKTOP_LAYOUT_GRID, w: HUB_DESKTOP_LAYOUT_GRID, h: HUB_DESKTOP_LAYOUT_GRID, z: 11, hidden: true },
+  "custom-modules": { x: 2 * HUB_DESKTOP_LAYOUT_GRID, y: 3 * HUB_DESKTOP_LAYOUT_GRID, w: HUB_DESKTOP_LAYOUT_GRID, h: HUB_DESKTOP_LAYOUT_GRID, z: 12, hidden: true },
 };
 
 type HubDashboardLayoutV4 = {
