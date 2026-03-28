@@ -9,7 +9,6 @@ import {
 } from "react";
 import {
   AppWindow,
-  ArrowLeft,
   Command,
   Inspect,
   LayoutGrid,
@@ -20,7 +19,7 @@ import {
   X,
 } from "lucide-react";
 import { Link, NavLink, Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { Reorder } from "framer-motion";
+import { Reorder, useReducedMotion } from "framer-motion";
 import { Button } from "@clanker/ui/components/button";
 import { Tabs, TabsList, TabsTrigger } from "@clanker/ui/components/tabs";
 import {
@@ -61,6 +60,7 @@ import { discordAvatarUrl } from "@/lib/discordCdn";
 import { hubContextData, isTextEditingTarget, resolveHubContextTarget, type HubContextTarget } from "@/lib/hub-shell-context";
 import { buildHubShellMenu } from "@/lib/hub-shell-menu";
 import { classifyTarget, getCapabilities, isEditable } from "@/lib/hub-shell-classification";
+import type { HubDesktopStylePackId } from "@/lib/hub-prefs";
 import HubNavBookmarkDialog from "@/components/HubNavBookmarkDialog";
 import HubPrefsPanel from "@/components/HubPrefsPanel";
 import HubShellInspectCursor from "@/components/HubShellInspectCursor";
@@ -89,6 +89,13 @@ import {
 
 /** Text-raden i headern (rullande kompisrader). Sätt till `false` för att dölja. */
 const SHOW_HUB_LIVE_TICKER = true;
+const STYLE_PACK_CYCLE_ORDER: readonly HubDesktopStylePackId[] = [
+  "default",
+  "paper",
+  "campfire",
+  "midnight",
+  "signal",
+];
 const DOCK_STORAGE_KEY = "hub.dock.pins.v1";
 const LAYOUT_EDIT_KEY = "hub.shell.layoutEdit.v1";
 const GRID_SNAP_KEY = "hub.shell.gridSnap.v1";
@@ -278,6 +285,7 @@ export default function HubLayout() {
   const toasts = useHubToasts();
   const { colorPalette, setColorPalette } = useTheme();
   const { enabled: audioEnabled, toggleEnabled: toggleAudio, play } = useHubAudio();
+  const reducedMotion = useReducedMotion() ?? false;
   const [me, setMe] = useState<HubSessionState>({ status: "loading" });
   const [commandOpen, setCommandOpen] = useState(false);
   const [desktopShellState, setDesktopShellState] = useState<HubDesktopShellState | null>(null);
@@ -286,8 +294,11 @@ export default function HubLayout() {
   const [gridVisible, setGridVisible] = useState(readGridVisible);
   const [nativeBrowserContextMenu, setNativeBrowserContextMenu] = useState(readNativeBrowserContextMenu);
   const [prefsPanelOpen, setPrefsPanelOpen] = useState(false);
-  const { prefs: hubPrefs } = useHubPrefs();
+  const { prefs: hubPrefs, patchPrefs } = useHubPrefs();
   useHubSettingsSync(me, hubPrefs);
+  const chaosPulseTimerRef = useRef<number | null>(null);
+  const [chaosPulseNonce, setChaosPulseNonce] = useState(0);
+  const [chaosPulseActive, setChaosPulseActive] = useState(false);
   const [shellContextMenu, setShellContextMenu] = useState<{
     target: HubContextTarget;
     position: { x: number; y: number };
@@ -296,6 +307,7 @@ export default function HubLayout() {
   const lastCommandTriggerRef = useRef<HTMLElement | null>(null);
   const leaderTimeoutRef = useRef<number | null>(null);
   const awaitingLeaderRef = useRef(false);
+  const bootToastShownRef = useRef(false);
   const isDashboardRoute = pathname === "/dashboard";
   const authGateActive = me.status !== "user";
   const oauthError = searchParams.get("error") === "oauth";
@@ -337,6 +349,75 @@ export default function HubLayout() {
   useEffect(() => {
     void refreshMe();
   }, [refreshMe]);
+
+  useEffect(() => {
+    const handler = () => {
+      if (reducedMotion || hubPrefs.motion.animationIntensity <= 0) {
+        return;
+      }
+      if (chaosPulseTimerRef.current !== null) {
+        window.clearTimeout(chaosPulseTimerRef.current);
+      }
+      setChaosPulseNonce((prev) => prev + 1);
+      setChaosPulseActive(true);
+      chaosPulseTimerRef.current = window.setTimeout(() => {
+        setChaosPulseActive(false);
+      }, 820);
+    };
+
+    window.addEventListener("hub:chaos-pulse", handler);
+    return () => {
+      window.removeEventListener("hub:chaos-pulse", handler);
+      if (chaosPulseTimerRef.current !== null) {
+        window.clearTimeout(chaosPulseTimerRef.current);
+        chaosPulseTimerRef.current = null;
+      }
+    };
+  }, [hubPrefs.motion.animationIntensity, reducedMotion]);
+
+  useEffect(() => {
+    if (me.status !== "user") {
+      return;
+    }
+
+    if (bootToastShownRef.current) {
+      return;
+    }
+
+    const now = new Date();
+    const dayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const storageKey = `hub.boot.toast.v1.${me.profile.id}.${dayKey}`;
+    let shouldShow = true;
+
+    try {
+      if (localStorage.getItem(storageKey) === "1") {
+        shouldShow = false;
+      } else {
+        localStorage.setItem(storageKey, "1");
+      }
+    } catch {
+      // ignore storage failures
+    }
+
+    if (!shouldShow) {
+      return;
+    }
+
+    bootToastShownRef.current = true;
+    play("confirm");
+    toasts.push({
+      kind: "info",
+      title: copy.chrome.bootToastTitle,
+      message: copy.chrome.bootToastMessage,
+    });
+  }, [
+    copy.chrome.bootToastMessage,
+    copy.chrome.bootToastTitle,
+    me.status,
+    me.status === "user" ? me.profile.id : null,
+    play,
+    toasts,
+  ]);
 
   useEffect(() => {
     if (me.status !== "backend_error") {
@@ -926,6 +1007,30 @@ export default function HubLayout() {
   const actionApi = useMemo(() => createHubActionApi(actionEnvironment), [actionEnvironment]);
   const baseActions = useMemo(() => buildHubActions(actionEnvironment), [actionEnvironment]);
 
+  const cycleStylePack = useCallback(() => {
+    const current = hubPrefs.desktop.stylePackId;
+    const index = STYLE_PACK_CYCLE_ORDER.indexOf(current);
+    const next =
+      STYLE_PACK_CYCLE_ORDER[(index + 1) % STYLE_PACK_CYCLE_ORDER.length] ?? STYLE_PACK_CYCLE_ORDER[0] ?? "default";
+
+    patchPrefs({ desktop: { ...hubPrefs.desktop, stylePackId: next } });
+    play("panel");
+
+    const p = copy.hubPrefsPanel.desktop;
+    const label =
+      next === "default"
+        ? p.stylePackDefault
+        : next === "midnight"
+          ? p.stylePackMidnight
+          : next === "paper"
+            ? p.stylePackPaper
+            : next === "signal"
+              ? p.stylePackSignal
+              : p.stylePackCampfire;
+
+    toasts.push({ kind: "success", title: p.stylePack, message: label });
+  }, [copy.hubPrefsPanel.desktop, hubPrefs.desktop, patchPrefs, play, toasts]);
+
   const navButtonClassName = (isActive: boolean) =>
     cn(
       "relative inline-flex items-center gap-1.5 rounded-xl border px-2 py-1 text-xs font-medium transition",
@@ -1027,6 +1132,7 @@ export default function HubLayout() {
       }
 
       event.preventDefault();
+      play("panel");
       const hit = forceTarget ?? contextMenuHitElement(event);
       const target = normalizeContextTarget(resolveHubContextTarget(hit));
       if (import.meta.env.DEV) {
@@ -1037,7 +1143,7 @@ export default function HubLayout() {
         position: { x: event.clientX, y: event.clientY },
       });
     },
-    [closeShellContextMenu, nativeBrowserContextMenu, normalizeContextTarget],
+    [closeShellContextMenu, nativeBrowserContextMenu, normalizeContextTarget, play],
   );
 
   useEffect(() => {
@@ -1301,6 +1407,7 @@ export default function HubLayout() {
       className={cn(
         "hub-os-select-root relative flex h-dvh flex-col overflow-hidden bg-background text-foreground",
         layoutEditMode && "ring-2 ring-inset ring-primary/30",
+        chaosPulseActive && "hub-chaos-pulse-shake",
       )}
       data-style-pack={hubPrefs.desktop.stylePackId}
       onContextMenu={openShellContextMenu}
@@ -1308,6 +1415,25 @@ export default function HubLayout() {
       <HubShellInspectCursor active={shellCustomCursorActive} prefs={hubPrefs.inspectCursor} />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,color-mix(in_oklab,var(--primary)_18%,transparent),transparent_24%),radial-gradient(circle_at_bottom_right,color-mix(in_oklab,var(--accent)_14%,transparent),transparent_28%),linear-gradient(180deg,color-mix(in_oklab,var(--background)_94%,black),var(--background))]" />
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_right,color-mix(in_oklab,var(--border)_18%,transparent)_1px,transparent_1px),linear-gradient(to_bottom,color-mix(in_oklab,var(--border)_14%,transparent)_1px,transparent_1px)] bg-[size:96px_96px] opacity-35 dark:hidden" />
+      {hubPrefs.desktop.stylePackId === "signal" ? (
+        <div className="pointer-events-none absolute inset-0 hub-signal-scanlines" />
+      ) : null}
+      {hubPrefs.desktop.stylePackId === "paper" ? (
+        <div className="pointer-events-none absolute inset-0 hub-paper-grain" />
+      ) : null}
+      {hubPrefs.desktop.stylePackId === "midnight" ? (
+        <div className="pointer-events-none absolute inset-0 hub-midnight-stars" />
+      ) : null}
+      {hubPrefs.desktop.stylePackId === "campfire" ? (
+        <div className="pointer-events-none absolute inset-0 hub-campfire-embers" />
+      ) : null}
+      {chaosPulseActive ? (
+        <div
+          key={chaosPulseNonce}
+          className="pointer-events-none absolute inset-0 z-10 hub-chaos-pulse-overlay"
+          aria-hidden
+        />
+      ) : null}
 
       <header
         ref={topbarRef}
@@ -1573,6 +1699,13 @@ export default function HubLayout() {
         onRedoLayout={() => desktopShellState?.redoLayout()}
         onToggleAutosaveLayout={() => desktopShellState?.toggleAutosaveLayout()}
         copy={copy}
+        audioEnabled={audioEnabled}
+        onToggleAudio={actionApi.toggleAudio}
+        onCyclePalette={actionApi.cyclePalette}
+        onCycleStylePack={cycleStylePack}
+        onOpenCommandPalette={actionApi.openCommandPalette}
+        onSummonGoblin={actionApi.summonGoblin}
+        onAppeaseHamster={actionApi.appeaseHamster}
         onDesktopOnlyAction={() => {
           toasts.push({ kind: "info", title: copy.editMode.desktopOnlyToast });
         }}

@@ -3,16 +3,22 @@ import { useLocation, useNavigate } from "react-router-dom";
 import {
   Check,
   Cloud,
+  Eye,
   Keyboard,
   LayoutTemplate,
   Grid2X2,
   Magnet,
   MoreHorizontal,
+  Palette,
   Plus,
   Redo2,
   RotateCcw,
   Save,
+  Search,
+  Sparkles,
   Undo2,
+  Volume2,
+  VolumeX,
   X,
 } from "lucide-react";
 import { Button } from "@clanker/ui/components/button";
@@ -55,6 +61,13 @@ export default function HubDock({
   onToggleAutosaveLayout,
   copy,
   onDesktopOnlyAction,
+  audioEnabled = true,
+  onToggleAudio,
+  onCyclePalette,
+  onCycleStylePack,
+  onOpenCommandPalette,
+  onSummonGoblin,
+  onAppeaseHamster,
   dockPosition = "bottom",
   dockScale = "md",
 }: {
@@ -83,6 +96,13 @@ export default function HubDock({
   onToggleAutosaveLayout: () => void;
   copy: HubCopy;
   onDesktopOnlyAction?: () => void;
+  audioEnabled?: boolean;
+  onToggleAudio?: (() => void) | null;
+  onCyclePalette?: (() => void) | null;
+  onCycleStylePack?: (() => void) | null;
+  onOpenCommandPalette?: (() => void) | null;
+  onSummonGoblin?: (() => void) | null;
+  onAppeaseHamster?: (() => void) | null;
   dockPosition?: "bottom" | "left";
   dockScale?: "sm" | "md" | "lg";
 }) {
@@ -90,6 +110,7 @@ export default function HubDock({
   const navigate = useNavigate();
   const { play } = useHubAudio();
   const em = copy.editMode;
+  const shellMenu = copy.shellMenu;
   const isActive = (path: string) => (path === "/dashboard" ? pathname === "/dashboard" : pathname.startsWith(path));
   const go = (path: string) => {
     play("dock");
@@ -98,6 +119,11 @@ export default function HubDock({
 
   const iconSize = dockScale === "sm" ? "size-4" : dockScale === "lg" ? "size-6" : "size-5";
   const buttonSize = dockScale === "sm" ? "size-9" : dockScale === "lg" ? "size-13" : "size-11";
+  const tooltipSide = dockPosition === "left" ? ("right" as const) : ("top" as const);
+  const hoverNudge =
+    dockPosition === "left"
+      ? "hover:translate-x-0.5 motion-reduce:hover:translate-x-0"
+      : "hover:-translate-y-0.5 motion-reduce:hover:translate-y-0";
 
   const shellClassName =
     dockPosition === "left"
@@ -209,8 +235,32 @@ export default function HubDock({
               >
                 {em.layoutRestoreAll}
               </DropdownMenuItem>
-            </DropdownMenuContent>
+          </DropdownMenuContent>
           </DropdownMenu>
+
+          {hiddenCount > 0 ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="rounded-xl"
+                  disabled={!isDashboardRoute || !desktopShell}
+                  onClick={() => {
+                    desktopGate(() => desktopShell!.revealAllHiddenWidgets());
+                  }}
+                >
+                  <Eye className="size-4" />
+                  <span className="hidden sm:inline">{em.layoutRestoreAll}</span>
+                  <Badge variant="secondary" className="ms-1 rounded-lg px-2 py-0 text-xs">
+                    {hiddenCount}
+                  </Badge>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{em.layoutRestoreAll}</TooltipContent>
+            </Tooltip>
+          ) : null}
 
           <Tooltip>
             <TooltipTrigger asChild>
@@ -407,11 +457,31 @@ export default function HubDock({
   }
 
   const pillOrientation = dockPosition === "left" ? "flex-col" : "flex-row";
-  const pillSeparatorClass = dockPosition === "left" ? "w-full h-px mt-1 border-t border-border/60 pt-1" : "ml-1 flex items-center gap-1 border-l border-border/60 pl-1";
+  const pillSeparatorClass =
+    dockPosition === "left"
+      ? "mt-1 flex w-full justify-center border-t border-border/60 pt-1"
+      : "ml-1 flex items-center gap-1 border-l border-border/60 pl-1";
   const indicatorClass =
     dockPosition === "left"
       ? "absolute -left-1 top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full"
       : "absolute -top-1 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full";
+
+  const systemTrayEnabled =
+    Boolean(onToggleAudio) ||
+    Boolean(onCyclePalette) ||
+    Boolean(onCycleStylePack) ||
+    Boolean(onOpenCommandPalette) ||
+    Boolean(onSummonGoblin) ||
+    Boolean(onAppeaseHamster);
+
+  const runChaosPulse = () => {
+    if (onSummonGoblin && onAppeaseHamster) {
+      (Date.now() % 2 === 0 ? onSummonGoblin : onAppeaseHamster)();
+      return;
+    }
+    onSummonGoblin?.();
+    onAppeaseHamster?.();
+  };
 
   return (
     <div className={shellClassName} {...hubContextData({ type: "shell.nav", area: "dock" })}>
@@ -422,6 +492,7 @@ export default function HubDock({
         label={dockShellLabel}
         layoutEditMode={layoutEditMode}
         className={cn(
+          "hub-dock-pill",
           "pointer-events-auto flex items-center gap-1 rounded-2xl border border-border/70 bg-background/70 px-2 py-1.5 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/55",
           "ring-1 ring-foreground/5",
           pillOrientation,
@@ -431,66 +502,25 @@ export default function HubDock({
           const Icon = tool.icon;
           const active = isActive(tool.path);
           return (
-            <button
-              key={tool.id}
-              type="button"
-              onClick={() => go(tool.path)}
-              className={cn(
-                "group relative flex items-center justify-center rounded-xl transition",
-                "hover:bg-muted/70 hover:shadow-sm active:scale-[0.98]",
-                buttonSize,
-                active ? "bg-muted/80" : "bg-transparent",
-              )}
-              title={tool.description}
-              {...hubContextData({
-                type: "tool",
-                toolId: tool.id,
-                label: tool.label,
-                path: tool.path,
-                pinned: pinnedIds.includes(tool.id),
-              })}
-            >
-              <Icon
-                className={cn(
-                  "transition",
-                  iconSize,
-                  active ? "text-foreground" : "text-muted-foreground group-hover:text-foreground",
-                )}
-              />
-              <span
-                className={cn(
-                  indicatorClass,
-                  active
-                    ? "bg-primary shadow-[0_0_0_3px_color-mix(in_oklab,var(--primary)_18%,transparent)]"
-                    : "bg-transparent",
-                )}
-              />
-            </button>
-          );
-        })}
-
-        {meTool ? (
-          <div className={pillSeparatorClass}>
-            {(() => {
-              const Icon = meTool.icon;
-              const active = isActive(meTool.path);
-              return (
+            <Tooltip key={tool.id}>
+              <TooltipTrigger asChild>
                 <button
                   type="button"
-                  onClick={() => go(meTool.path)}
+                  onClick={() => go(tool.path)}
                   className={cn(
-                    "group relative flex items-center justify-center rounded-xl transition",
+                    "group relative flex items-center justify-center rounded-xl transition will-change-transform",
                     "hover:bg-muted/70 hover:shadow-sm active:scale-[0.98]",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+                    hoverNudge,
                     buttonSize,
                     active ? "bg-muted/80" : "bg-transparent",
                   )}
-                  title={meTool.description}
                   {...hubContextData({
-                    type: "profile",
-                    profileId: null,
-                    profilePath: meTool.path,
-                    label: meTool.label,
-                    isOwnProfile: true,
+                    type: "tool",
+                    toolId: tool.id,
+                    label: tool.label,
+                    path: tool.path,
+                    pinned: pinnedIds.includes(tool.id),
                   })}
                 >
                   <Icon
@@ -500,11 +530,228 @@ export default function HubDock({
                       active ? "text-foreground" : "text-muted-foreground group-hover:text-foreground",
                     )}
                   />
+                  <span
+                    className={cn(
+                      indicatorClass,
+                      active
+                        ? "bg-primary shadow-[0_0_0_3px_color-mix(in_oklab,var(--primary)_18%,transparent)]"
+                        : "bg-transparent",
+                    )}
+                  />
                 </button>
+              </TooltipTrigger>
+              <TooltipContent side={tooltipSide} sideOffset={10} className="max-w-64">
+                <div className="flex flex-col gap-0.5">
+                  <p className="text-xs font-semibold text-foreground">{tool.label}</p>
+                  <p className="text-xs text-muted-foreground">{tool.description}</p>
+                </div>
+              </TooltipContent>
+            </Tooltip>
+          );
+        })}
+
+        {meTool ? (
+          <div className={pillSeparatorClass}>
+            {(() => {
+              const Icon = meTool.icon;
+              const active = isActive(meTool.path);
+              return (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={() => go(meTool.path)}
+                      className={cn(
+                        "group relative flex items-center justify-center rounded-xl transition will-change-transform",
+                        "hover:bg-muted/70 hover:shadow-sm active:scale-[0.98]",
+                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+                        hoverNudge,
+                        buttonSize,
+                        active ? "bg-muted/80" : "bg-transparent",
+                      )}
+                      {...hubContextData({
+                        type: "profile",
+                        profileId: null,
+                        profilePath: meTool.path,
+                        label: meTool.label,
+                        isOwnProfile: true,
+                      })}
+                    >
+                      <Icon
+                        className={cn(
+                          "transition",
+                          iconSize,
+                          active ? "text-foreground" : "text-muted-foreground group-hover:text-foreground",
+                        )}
+                      />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side={tooltipSide} sideOffset={10} className="max-w-64">
+                    <div className="flex flex-col gap-0.5">
+                      <p className="text-xs font-semibold text-foreground">{meTool.label}</p>
+                      <p className="text-xs text-muted-foreground">{meTool.description}</p>
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
               );
             })()}
           </div>
         ) : null}
+
+        <div className={pillSeparatorClass}>
+          {systemTrayEnabled ? (
+            <DropdownMenu
+              onOpenChange={(open) => {
+                if (open) {
+                  play("panel");
+                }
+              }}
+            >
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className={cn(
+                        "group relative flex items-center justify-center rounded-xl transition will-change-transform",
+                        "hover:bg-muted/70 hover:shadow-sm active:scale-[0.98]",
+                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+                        hoverNudge,
+                        buttonSize,
+                      )}
+                      aria-label={shellMenu.system}
+                      {...hubContextData({
+                        type: "shell.object",
+                        kind: "dockBar",
+                        objectId: "shell.dock.tray",
+                        label: shellMenu.system,
+                      })}
+                    >
+                      <Sparkles className={cn("transition", iconSize, "text-muted-foreground group-hover:text-foreground")} />
+                      <span
+                        className={cn(
+                          "absolute -right-0.5 -top-0.5 size-2 rounded-full",
+                          audioEnabled ? "hub-dock-led bg-primary/70" : "bg-muted-foreground/35",
+                        )}
+                        aria-hidden
+                      />
+                    </button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent side={tooltipSide} sideOffset={10}>
+                  {shellMenu.system}
+                </TooltipContent>
+              </Tooltip>
+
+              <DropdownMenuContent align="center" className="min-w-[14rem]">
+                <DropdownMenuLabel>{shellMenu.neutralenOs}</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+
+                {onOpenCommandPalette ? (
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      onOpenCommandPalette();
+                    }}
+                  >
+                    <Search className="mr-2 size-4 opacity-70" />
+                    {shellMenu.openCommandBar}
+                  </DropdownMenuItem>
+                ) : null}
+
+                {onCyclePalette ? (
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      onCyclePalette();
+                    }}
+                  >
+                    <Palette className="mr-2 size-4 opacity-70" />
+                    {shellMenu.cyclePalette}
+                  </DropdownMenuItem>
+                ) : null}
+
+                {onCycleStylePack ? (
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      onCycleStylePack();
+                    }}
+                  >
+                    <LayoutTemplate className="mr-2 size-4 opacity-70" />
+                    {shellMenu.cycleStylePack}
+                  </DropdownMenuItem>
+                ) : null}
+
+                {onToggleAudio ? (
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      onToggleAudio();
+                    }}
+                  >
+                    {audioEnabled ? (
+                      <VolumeX className="mr-2 size-4 opacity-70" />
+                    ) : (
+                      <Volume2 className="mr-2 size-4 opacity-70" />
+                    )}
+                    {audioEnabled ? shellMenu.muteAudio : shellMenu.enableAudio}
+                  </DropdownMenuItem>
+                ) : null}
+
+                <DropdownMenuSeparator />
+
+                <DropdownMenuItem
+                  onSelect={() => {
+                    desktopGate(() => desktopShell!.openAddModuleFlow());
+                  }}
+                >
+                  <Plus className="mr-2 size-4 opacity-70" />
+                  {shellMenu.spawnWidget}
+                </DropdownMenuItem>
+
+                <DropdownMenuItem
+                  disabled={!isDashboardRoute || !desktopShell || hiddenCount === 0}
+                  onSelect={() => {
+                    desktopGate(() => desktopShell!.revealAllHiddenWidgets());
+                  }}
+                >
+                  <Eye className="mr-2 size-4 opacity-70" />
+                  <span className="flex flex-1 items-center justify-between gap-3">
+                    <span>{em.layoutRestoreAll}</span>
+                    {hiddenCount > 0 ? (
+                      <Badge variant="secondary" className="shrink-0 rounded-md">
+                        {hiddenCount}
+                      </Badge>
+                    ) : null}
+                  </span>
+                </DropdownMenuItem>
+
+                <DropdownMenuItem
+                  disabled={!isDashboardRoute || !desktopShell}
+                  onSelect={() => {
+                    desktopGate(() => desktopShell!.resetLayout());
+                  }}
+                >
+                  <RotateCcw className="mr-2 size-4 opacity-70" />
+                  {shellMenu.resetDesktop}
+                </DropdownMenuItem>
+
+                {onSummonGoblin || onAppeaseHamster ? (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onSelect={() => {
+                        runChaosPulse();
+                      }}
+                    >
+                      <Sparkles className="mr-2 size-4 opacity-70" />
+                      {shellMenu.chaosPulse}
+                    </DropdownMenuItem>
+                  </>
+                ) : null}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <span className="hub-dock-led size-2 rounded-full bg-primary/70" aria-hidden />
+          )}
+        </div>
       </HubShellObject>
     </div>
   );

@@ -26,8 +26,360 @@
   animation: hub-live-ticker-marquee 52s linear infinite;
 }
 
+@keyframes hub-dock-led-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.95);
+  }
+
+  50% {
+    opacity: 0.92;
+    transform: scale(1.12);
+  }
+}
+
+.hub-dock-led {
+  animation: hub-dock-led-pulse 2.8s ease-in-out infinite;
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--primary) 26%, transparent),
+    0 0 16px color-mix(in oklab, var(--primary) 18%, transparent);
+}
+
+@keyframes hub-gateway-heartbeat {
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: scale(0.92);
+  }
+
+  45% {
+    opacity: 0.92;
+    transform: scale(1.15);
+  }
+
+  65% {
+    opacity: 0.55;
+    transform: scale(1.02);
+  }
+}
+
+.hub-gateway-heartbeat-dot {
+  animation: hub-gateway-heartbeat 1.65s ease-in-out infinite;
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--primary) 24%, transparent),
+    0 0 18px color-mix(in oklab, var(--primary) 16%, transparent);
+}
+
+@keyframes hub-radio-progress-sheen {
+  from {
+    background-position: 0% 0%;
+  }
+
+  to {
+    background-position: 200% 0%;
+  }
+}
+
+.hub-radio-progress {
+  background-image: linear-gradient(
+    90deg,
+    color-mix(in oklab, var(--primary) 68%, transparent),
+    color-mix(in oklab, var(--primary) 86%, transparent),
+    color-mix(in oklab, var(--primary) 62%, transparent)
+  );
+  background-size: 200% 100%;
+  animation: hub-radio-progress-sheen 3.8s linear infinite;
+}
+
+@keyframes hub-radio-static {
+  from {
+    background-position: 0 0;
+  }
+
+  to {
+    background-position: 80px 140px;
+  }
+}
+
+.hub-radio-static {
+  background-image:
+    repeating-linear-gradient(
+      180deg,
+      transparent 0px,
+      transparent 6px,
+      color-mix(in oklab, var(--primary) 8%, transparent) 6px,
+      color-mix(in oklab, var(--primary) 8%, transparent) 7px
+    ),
+    radial-gradient(circle at 30% 20%, color-mix(in oklab, var(--accent) 10%, transparent), transparent 55%),
+    radial-gradient(circle at 80% 70%, color-mix(in oklab, var(--primary) 12%, transparent), transparent 60%);
+  opacity: 0.14;
+  mix-blend-mode: overlay;
+  animation: hub-radio-static 7.4s linear infinite;
+}
+
+@keyframes hub-voice-orbit-spin {
+  from {
+    transform: translate(-50%, -50%) rotate(0deg) translateX(var(--hub-orbit-radius, 22px)) rotate(0deg);
+  }
+
+  to {
+    transform: translate(-50%, -50%) rotate(360deg) translateX(var(--hub-orbit-radius, 22px)) rotate(-360deg);
+  }
+}
+
+.hub-voice-orbit {
+  background-image:
+    radial-gradient(circle at center, color-mix(in oklab, var(--primary) 10%, transparent), transparent 55%),
+    radial-gradient(circle at top left, color-mix(in oklab, var(--accent) 8%, transparent), transparent 62%);
+}
+
+.hub-voice-orbit-dot {
+  animation: hub-voice-orbit-spin var(--hub-orbit-duration, 7s) linear infinite;
+  animation-delay: var(--hub-orbit-delay, 0s);
+  box-shadow:
+    0 0 0 2px color-mix(in oklab, var(--background) 80%, transparent),
+    0 0 12px color-mix(in oklab, var(--foreground) 16%, transparent);
+}
+
+@keyframes hub-wiretap-sweep {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.hub-wiretap-radar {
+  background-image:
+    radial-gradient(circle at center, color-mix(in oklab, var(--primary) 10%, transparent), transparent 58%),
+    repeating-linear-gradient(
+      180deg,
+      transparent 0px,
+      transparent 7px,
+      color-mix(in oklab, var(--foreground) 8%, transparent) 7px,
+      color-mix(in oklab, var(--foreground) 8%, transparent) 8px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0px,
+      transparent 10px,
+      color-mix(in oklab, var(--foreground) 6%, transparent) 10px,
+      color-mix(in oklab, var(--foreground) 6%, transparent) 11px
+    );
+  opacity: 0.14;
+  mix-blend-mode: overlay;
+}
+
+.hub-wiretap-radar-sweep {
+  background-image: conic-gradient(
+    from 90deg at 50% 50%,
+    transparent 0deg,
+    color-mix(in oklab, var(--primary) 22%, transparent) 32deg,
+    transparent 68deg,
+    transparent 360deg
+  );
+  opacity: 0.26;
+  mix-blend-mode: screen;
+  animation: hub-wiretap-sweep 4.8s linear infinite;
+}
+
+@keyframes hub-signal-scanlines {
+  from {
+    background-position: 0 0;
+  }
+
+  to {
+    background-position: 0 120px;
+  }
+}
+
+.hub-signal-scanlines {
+  background-image: repeating-linear-gradient(
+    180deg,
+    transparent 0px,
+    transparent 7px,
+    color-mix(in oklab, var(--primary) 10%, transparent) 7px,
+    color-mix(in oklab, var(--primary) 10%, transparent) 8px
+  );
+  opacity: 0.22;
+  mix-blend-mode: overlay;
+  animation: hub-signal-scanlines 6.2s linear infinite;
+}
+
+@keyframes hub-paper-grain-drift {
+  from {
+    transform: translate3d(0, 0, 0) scale(1.08);
+  }
+
+  to {
+    transform: translate3d(-3%, 2%, 0) scale(1.08);
+  }
+}
+
+.hub-paper-grain {
+  background-image:
+    radial-gradient(circle at 18% 14%, color-mix(in oklab, var(--foreground) 7%, transparent), transparent 52%),
+    radial-gradient(circle at 82% 76%, color-mix(in oklab, var(--foreground) 6%, transparent), transparent 55%),
+    repeating-linear-gradient(
+      180deg,
+      transparent 0px,
+      transparent 5px,
+      color-mix(in oklab, var(--foreground) 4%, transparent) 5px,
+      color-mix(in oklab, var(--foreground) 4%, transparent) 6px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0px,
+      transparent 7px,
+      color-mix(in oklab, var(--foreground) 3%, transparent) 7px,
+      color-mix(in oklab, var(--foreground) 3%, transparent) 8px
+    );
+  opacity: 0.12;
+  mix-blend-mode: overlay;
+  animation: hub-paper-grain-drift 10.5s linear infinite;
+}
+
+@keyframes hub-midnight-stars-drift {
+  from {
+    transform: translate3d(0, 0, 0) scale(1.1);
+  }
+
+  to {
+    transform: translate3d(3%, -2%, 0) scale(1.1);
+  }
+}
+
+.hub-midnight-stars {
+  background-image:
+    radial-gradient(circle at 12% 18%, color-mix(in oklab, var(--primary) 14%, transparent), transparent 42%),
+    radial-gradient(circle at 78% 22%, color-mix(in oklab, var(--accent) 12%, transparent), transparent 48%),
+    radial-gradient(circle at 68% 82%, color-mix(in oklab, var(--primary) 10%, transparent), transparent 52%),
+    radial-gradient(circle at 22% 76%, color-mix(in oklab, var(--accent) 9%, transparent), transparent 58%),
+    radial-gradient(circle at 10% 30%, color-mix(in oklab, var(--foreground) 9%, transparent) 0.7px, transparent 1.4px),
+    radial-gradient(circle at 32% 12%, color-mix(in oklab, var(--foreground) 10%, transparent) 0.7px, transparent 1.4px),
+    radial-gradient(circle at 44% 66%, color-mix(in oklab, var(--foreground) 9%, transparent) 0.6px, transparent 1.3px),
+    radial-gradient(circle at 58% 34%, color-mix(in oklab, var(--foreground) 10%, transparent) 0.6px, transparent 1.3px),
+    radial-gradient(circle at 70% 58%, color-mix(in oklab, var(--foreground) 9%, transparent) 0.6px, transparent 1.3px),
+    radial-gradient(circle at 86% 46%, color-mix(in oklab, var(--foreground) 10%, transparent) 0.7px, transparent 1.4px);
+  opacity: 0.22;
+  mix-blend-mode: screen;
+  animation: hub-midnight-stars-drift 18s linear infinite;
+}
+
+@keyframes hub-campfire-embers-drift {
+  from {
+    transform: translate3d(0, 0, 0) scale(1.06);
+    background-position: 0 0, 0 0, 0 0, 0 0, 0 0, 0 0;
+  }
+
+  to {
+    transform: translate3d(-2%, 2%, 0) scale(1.06);
+    background-position: 140px -240px, -120px 220px, 0 0, 0 0, 0 0, 0 0;
+  }
+}
+
+.hub-campfire-embers {
+  background-image:
+    radial-gradient(circle at 22% 78%, color-mix(in oklab, #fb923c 18%, transparent), transparent 56%),
+    radial-gradient(circle at 78% 26%, color-mix(in oklab, #f472b6 12%, transparent), transparent 62%),
+    radial-gradient(circle at 12% 30%, color-mix(in oklab, var(--foreground) 11%, transparent) 0.7px, transparent 1.5px),
+    radial-gradient(circle at 38% 16%, color-mix(in oklab, var(--foreground) 10%, transparent) 0.6px, transparent 1.4px),
+    radial-gradient(circle at 62% 72%, color-mix(in oklab, var(--foreground) 10%, transparent) 0.6px, transparent 1.4px),
+    radial-gradient(circle at 84% 46%, color-mix(in oklab, var(--foreground) 11%, transparent) 0.7px, transparent 1.5px);
+  opacity: 0.18;
+  mix-blend-mode: screen;
+  animation: hub-campfire-embers-drift 14s linear infinite;
+}
+
+@keyframes hub-chaos-pulse-flash {
+  0% {
+    opacity: 0;
+  }
+
+  12% {
+    opacity: 0.92;
+  }
+
+  40% {
+    opacity: 0.34;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+.hub-chaos-pulse-overlay {
+  background-image:
+    radial-gradient(circle at 50% 30%, color-mix(in oklab, var(--accent) 18%, transparent), transparent 46%),
+    radial-gradient(circle at 30% 70%, color-mix(in oklab, var(--primary) 16%, transparent), transparent 52%),
+    repeating-linear-gradient(
+      180deg,
+      transparent 0px,
+      transparent 6px,
+      color-mix(in oklab, var(--primary) 10%, transparent) 6px,
+      color-mix(in oklab, var(--primary) 10%, transparent) 7px
+    );
+  opacity: 0;
+  mix-blend-mode: overlay;
+  animation: hub-chaos-pulse-flash 820ms ease-out 1;
+}
+
+@keyframes hub-chaos-pulse-shake {
+  0% {
+    transform: translate3d(0, 0, 0);
+    filter: none;
+  }
+
+  10% {
+    transform: translate3d(1px, -1px, 0);
+    filter: saturate(1.08) contrast(1.03);
+  }
+
+  20% {
+    transform: translate3d(-1px, 1px, 0);
+  }
+
+  35% {
+    transform: translate3d(1px, 0, 0);
+  }
+
+  60% {
+    transform: translate3d(0, 0, 0);
+    filter: saturate(1.04);
+  }
+
+  100% {
+    transform: translate3d(0, 0, 0);
+    filter: none;
+  }
+}
+
+.hub-chaos-pulse-shake {
+  animation: hub-chaos-pulse-shake 620ms ease-out 1;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .hub-live-ticker-track {
+    animation: none;
+    transform: none;
+  }
+
+  .hub-dock-led,
+  .hub-gateway-heartbeat-dot,
+  .hub-radio-progress,
+  .hub-radio-static,
+  .hub-voice-orbit-dot,
+  .hub-wiretap-radar-sweep,
+  .hub-signal-scanlines,
+  .hub-paper-grain,
+  .hub-midnight-stars,
+  .hub-campfire-embers,
+  .hub-chaos-pulse-overlay,
+  .hub-chaos-pulse-shake {
     animation: none;
     transform: none;
   }
@@ -137,6 +489,12 @@ code {
   --hub-shell-tint-1: color-mix(in oklab, #f5f0e8 55%, transparent);
   --hub-shell-tint-2: color-mix(in oklab, #e8d5b7 35%, transparent);
   --hub-shell-tint-3: color-mix(in oklab, var(--primary) 10%, transparent);
+}
+
+.hub-os-select-root[data-style-pack="campfire"] {
+  --hub-shell-tint-1: color-mix(in oklab, #fb923c 18%, transparent);
+  --hub-shell-tint-2: color-mix(in oklab, #f472b6 14%, transparent);
+  --hub-shell-tint-3: color-mix(in oklab, var(--primary) 12%, transparent);
 }
 
 .hub-os-select-root[data-style-pack="signal"] {

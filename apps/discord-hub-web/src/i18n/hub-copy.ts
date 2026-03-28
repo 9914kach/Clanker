@@ -40,6 +40,8 @@ export type HubCopy = {
   chrome: {
     brandTitle: string;
     brandTagline: string;
+    bootToastTitle: string;
+    bootToastMessage: string;
     toolDesktop: string;
     navDesktop: string;
     myProfile: string;
@@ -176,6 +178,7 @@ export type HubCopy = {
     neutralenOs: string;
     openCommandBar: string;
     cyclePalette: string;
+    cycleStylePack: string;
     muteAudio: string;
     enableAudio: string;
     spawnWidget: string;
@@ -252,7 +255,7 @@ export type HubCopy = {
     toastRemoved: string;
     validationBoth: string;
   };
-  /** PrimÃ¤rnav: toppmeny-knappar (Skrivbord, Profil, InstÃ¤llningar, Hjul). */
+  /** Primärnav: toppmeny-knappar (Skrivbord, Profil, Inställningar, Hjul). */
   primaryNav: {
     editLabel: string;
     dialogEditTitle: string;
@@ -279,9 +282,35 @@ export type HubCopy = {
     networkLive: string;
     widgetWelcome: { label: string; description: string };
     widgetServerPulse: { label: string; description: string };
+    widgetWiretap: { label: string; description: string };
     widgetWheel: { label: string; description: string };
     widgetPresence: { label: string; description: string };
     widgetRitual: { label: string; description: string };
+    widgetChaosMeter: { label: string; description: string };
+    widgetVoiceOrbit: { label: string; description: string };
+    widgetRadio: { label: string; description: string };
+    widgetMoodClock: { label: string; description: string };
+    widgetLoreQuote: { label: string; description: string };
+    widgetCustomModules: { label: string; description: string };
+    loreQuoteBlurb: string;
+    loreQuoteNowServingLabel: string;
+    loreQuoteDailyBadge: string;
+    loreQuoteCopy: string;
+    loreQuoteShuffle: string;
+    loreQuoteToastTitle: string;
+    loreQuoteToastMessage: (speaker: string) => string;
+    moodClockBlurb: string;
+    moodClockApply: string;
+    moodClockApplied: string;
+    moodClockChime: string;
+    moodClockToastAppliedTitle: string;
+    moodClockToastChimeTitle: string;
+    moodClockChimeMessage: (vibe: string) => string;
+    moodClockProgressLabel: (pct: number) => string;
+    moodClockVibeMorning: string;
+    moodClockVibeDay: string;
+    moodClockVibeEvening: string;
+    moodClockVibeNight: string;
     welcomeAudioOnline: string;
     welcomeAudioMuted: string;
     welcomeBack: (name: string) => string;
@@ -294,6 +323,25 @@ export type HubCopy = {
     gateway: string;
     gatewayConnected: string;
     gatewayDisconnected: string;
+    wiretapBlurb: string;
+    wiretapBootLine: string;
+    wiretapGatewayDegraded: string;
+    wiretapGatewayStable: string;
+    wiretapGatewayUnknown: string;
+    wiretapGatewayDegradedShort: string;
+    wiretapOnlineNow: (n: number) => string;
+    wiretapLogLabel: string;
+    wiretapLeak: string;
+    wiretapClear: string;
+    wiretapLeakToastTitle: string;
+    wiretapLeakToastMessage: string;
+    wiretapVoiceLabel: string;
+    wiretapOnlineLabel: string;
+    wiretapVoicePulse: string;
+    wiretapOnlinePulse: string;
+    gatewayLastEventLabel: string;
+    gatewayLastEventUnknown: string;
+    gatewayStaleBadge: string;
     voiceNow: (n: number) => string;
     guildIdHint: string;
     wheelBlurb: string;
@@ -310,6 +358,33 @@ export type HubCopy = {
     ritualToastTitle: string;
     ritualToastMessage: string;
     ritualPolicy: string;
+    voiceOrbitBlurb: string;
+    voiceOrbitUnknownGuild: string;
+    voiceOrbitSoulsLine: (souls: number, channels: number) => string;
+    voiceOrbitNoSignal: string;
+    voiceOrbitGatewayOk: string;
+    voiceOrbitGatewayNope: string;
+    voiceOrbitAction: string;
+    voiceOrbitToastTitle: string;
+    voiceOrbitToastMessage: string;
+    radioBlurb: string;
+    radioNowPlayingLabel: string;
+    radioBadge: string;
+    radioShuffle: string;
+    radioRequest: string;
+    radioToastTitle: string;
+    radioToastMessage: (track: string) => string;
+    radioRequestToastTitle: string;
+    radioRequestToastMessage: string;
+    chaosMeterBlurb: string;
+    chaosMeterLevelLabel: string;
+    chaosMeterTierCalm: string;
+    chaosMeterTierSpicy: string;
+    chaosMeterTierFeral: string;
+    chaosMeterTierMeltdown: string;
+    chaosMeterSignal: (value: number) => string;
+    chaosMeterAction: string;
+    chaosMeterToastTitle: string;
     toastWidgetOnline: string;
     toastWidgetHidden: string;
     toastDesktopReset: string;
@@ -626,6 +701,7 @@ export type HubCopy = {
       stylePackMidnight: string;
       stylePackPaper: string;
       stylePackSignal: string;
+      stylePackCampfire: string;
       gridDensity: string;
       gridCompact: string;
       gridCozy: string;
@@ -720,6 +796,8 @@ const SV: HubCopy = {
   chrome: {
     brandTitle: "Neutralen OS",
     brandTagline: "community shell",
+    bootToastTitle: "Boot klar",
+    bootToastMessage: "Skalet är uppe. Vänligen behandla vibbarna varsamt.",
     toolDesktop: "Skrivbord",
     navDesktop: "Skrivbord",
     myProfile: "Min profil",
@@ -954,6 +1032,7 @@ const SV: HubCopy = {
     neutralenOs: "Neutralen OS",
     openCommandBar: "Öppna kommandorad",
     cyclePalette: "Byt palett",
+    cycleStylePack: "Byt stilpaket",
     muteAudio: "Stäng av ljudeffekter",
     enableAudio: "Slå på ljudeffekter",
     spawnWidget: "Visa widget",
@@ -1097,6 +1176,10 @@ const SV: HubCopy = {
       label: "Serverpuls",
       description: "Guild-sammanfattning, voice och gateway-hälsa.",
     },
+    widgetWiretap: {
+      label: "Discord-wiretap",
+      description: "En liten portal: radar, logg och signalspår.",
+    },
     widgetWheel: {
       label: "Hjul-start",
       description: "Snabbväg till slump, delat kaos och seeds.",
@@ -1109,6 +1192,49 @@ const SV: HubCopy = {
       label: "Ritualkonsol",
       description: "Låg risk: palett, kommandorad och små systemscener.",
     },
+    widgetChaosMeter: {
+      label: "Kaosmätare",
+      description: "Ambient signal om hur mycket systemet vill bråka.",
+    },
+    widgetVoiceOrbit: {
+      label: "Voice-orbit",
+      description: "Social puls: prickar som låtsas vara närvaro.",
+    },
+    widgetRadio: {
+      label: "Neutralen FM",
+      description: "Fejkad radio för att ge skalet lite liv.",
+    },
+    widgetMoodClock: {
+      label: "Stämningsklocka",
+      description: "Tid, vibe och små OS-knep.",
+    },
+    widgetLoreQuote: {
+      label: "Lore-citat",
+      description: "Dagens citat. Inte alltid sant, alltid relevant.",
+    },
+    widgetCustomModules: {
+      label: "Modulverkstad",
+      description: "Bygg egna moduler och skruva på storlek + innehåll.",
+    },
+    loreQuoteBlurb: "En liten lore-krok. Bra för att känna att platsen minns saker.",
+    loreQuoteNowServingLabel: "Dagens utdrag",
+    loreQuoteDailyBadge: "daily",
+    loreQuoteCopy: "Kopiera",
+    loreQuoteShuffle: "Nytt utdrag",
+    loreQuoteToastTitle: "Citat kopierat",
+    loreQuoteToastMessage: (speaker) => `Signerad: ${speaker}. Nu är den på urklipp.`,
+    moodClockBlurb: "En klocka som inte bara visar tid — den föreslår vilket humör skrivbordet borde ha.",
+    moodClockApply: "Synka vibe",
+    moodClockApplied: "Redan synkat",
+    moodClockChime: "Plinga",
+    moodClockToastAppliedTitle: "Vibe synkad",
+    moodClockToastChimeTitle: "Systemet plingade",
+    moodClockChimeMessage: (vibe) => `Vibe: ${vibe}. Skrivbordet nickade.`,
+    moodClockProgressLabel: (pct) => `Dagens progress: ${pct}%`,
+    moodClockVibeMorning: "Morgon-boot",
+    moodClockVibeDay: "Dagsljus-signal",
+    moodClockVibeEvening: "Kvälls-lounge",
+    moodClockVibeNight: "Natt-ritual",
     welcomeAudioOnline: "ljud på",
     welcomeAudioMuted: "tyst",
     welcomeBack: (name) => `Välkommen tillbaka, ${name}.`,
@@ -1121,6 +1247,25 @@ const SV: HubCopy = {
     gateway: "Gateway",
     gatewayConnected: "ansluten",
     gatewayDisconnected: "frånkopplad",
+    wiretapBlurb: "En liten portal mot Discord. Den sniffar signaler och hittar på resten.",
+    wiretapBootLine: "Wiretap online. Lyssnar på kablarna…",
+    wiretapGatewayDegraded: "Gateway degraderad (systemet hostar).",
+    wiretapGatewayStable: "Gateway stabil igen.",
+    wiretapGatewayUnknown: "okänd",
+    wiretapGatewayDegradedShort: "degraderad",
+    wiretapOnlineNow: (n) => `Online just nu: ${n}`,
+    wiretapLogLabel: "Logg",
+    wiretapLeak: "Läcka rykte",
+    wiretapClear: "Rensa logg",
+    wiretapLeakToastTitle: "Wiretap läckte något",
+    wiretapLeakToastMessage: "Det var säkert ingenting. Eller allt.",
+    wiretapVoiceLabel: "voice",
+    wiretapOnlineLabel: "online",
+    wiretapVoicePulse: "Voice-puls",
+    wiretapOnlinePulse: "Online-puls",
+    gatewayLastEventLabel: "Senast blink:",
+    gatewayLastEventUnknown: "Senast blink: okänt (systemet sov).",
+    gatewayStaleBadge: "seg",
     voiceNow: (n) => `I voice just nu: ${n}`,
     guildIdHint:
       "Sätt VITE_DISCORD_HUB_GUILD_ID för att visa guild-puls här.",
@@ -1141,6 +1286,33 @@ const SV: HubCopy = {
     ritualToastMessage: "Dashboarden låtsas att det här var nödvändigt.",
     ritualPolicy:
       "Sällan-händelse-policy: subtil charm alltid, konstigheter ibland, nonsens sparsamt.",
+    voiceOrbitBlurb: "Skrivbordet vill kännas multiplayer, så vi låtsas att voice är en liten stjärnhimmel.",
+    voiceOrbitUnknownGuild: "Okänd guild",
+    voiceOrbitSoulsLine: (souls, channels) => `Souls i voice: ${souls} · kanaler: ${channels}`,
+    voiceOrbitNoSignal: "Inga signaler än. Skalet lyssnar ändå.",
+    voiceOrbitGatewayOk: "puls",
+    voiceOrbitGatewayNope: "tyst",
+    voiceOrbitAction: "Pinga voice",
+    voiceOrbitToastTitle: "Signal skickad",
+    voiceOrbitToastMessage: "Om någon är där ute så blinkar det nog till.",
+    radioBlurb: "En liten radio som inte gör något viktigt. Perfekt.",
+    radioNowPlayingLabel: "Nu spelas",
+    radioBadge: "live-ish",
+    radioShuffle: "Shuffle",
+    radioRequest: "Begär låt",
+    radioToastTitle: "Stationen bytte spår",
+    radioToastMessage: (track) => `Nu: ${track}`,
+    radioRequestToastTitle: "Begäran registrerad",
+    radioRequestToastMessage: "Vi skickade den till kabelgudarna. Ingen svarstid utlovas.",
+    chaosMeterBlurb: "Ett litet instrument som läser av dagens kaosflöde. Ingen vet hur. Alla accepterar det.",
+    chaosMeterLevelLabel: "Kaosnivå",
+    chaosMeterTierCalm: "lugn",
+    chaosMeterTierSpicy: "spicy",
+    chaosMeterTierFeral: "vild",
+    chaosMeterTierMeltdown: "meltdown",
+    chaosMeterSignal: (value) => `Signal: ${value}/100`,
+    chaosMeterAction: "Peta på OS:et",
+    chaosMeterToastTitle: "Signal uppsnappad",
     toastWidgetOnline: "Widget online",
     toastWidgetHidden: "Widget dold",
     toastDesktopReset: "Skrivbord återställt",
@@ -1476,6 +1648,7 @@ const SV: HubCopy = {
       stylePackMidnight: "Midnight",
       stylePackPaper: "Paper",
       stylePackSignal: "Signal",
+      stylePackCampfire: "Lägereld",
       gridDensity: "Rutnätsdensitet",
       gridCompact: "Kompakt",
       gridCozy: "Normal",
@@ -1571,6 +1744,8 @@ const EN: HubCopy = {
   chrome: {
     brandTitle: "Neutralen OS",
     brandTagline: "community shell",
+    bootToastTitle: "Boot complete",
+    bootToastMessage: "Shell online. Please handle the vibes gently.",
     toolDesktop: "Desktop",
     navDesktop: "Desktop",
     myProfile: "My profile",
@@ -1805,6 +1980,7 @@ const EN: HubCopy = {
     neutralenOs: "Neutralen OS",
     openCommandBar: "Open command bar",
     cyclePalette: "Cycle palette",
+    cycleStylePack: "Cycle style pack",
     muteAudio: "Mute audio feedback",
     enableAudio: "Enable audio feedback",
     spawnWidget: "Spawn widget",
@@ -1948,6 +2124,10 @@ const EN: HubCopy = {
       label: "Server pulse",
       description: "Guild summary, voice presence and gateway health.",
     },
+    widgetWiretap: {
+      label: "Discord wiretap",
+      description: "A tiny portal: radar, logs, and signal traces.",
+    },
     widgetWheel: {
       label: "Wheel launchpad",
       description: "Fast path to random teams, shared chaos and repeatable seeds.",
@@ -1960,6 +2140,49 @@ const EN: HubCopy = {
       label: "Ritual console",
       description: "Low-stakes toggles, palette vibes and little system rituals.",
     },
+    widgetChaosMeter: {
+      label: "Chaos meter",
+      description: "Ambient readout of how much trouble the shell wants today.",
+    },
+    widgetVoiceOrbit: {
+      label: "Voice orbit",
+      description: "Social pulse: dots pretending to be presence.",
+    },
+    widgetRadio: {
+      label: "Neutralen FM",
+      description: "Fake radio to keep the shell feeling alive.",
+    },
+    widgetMoodClock: {
+      label: "Mood clock",
+      description: "Time, vibe, and tiny OS tricks.",
+    },
+    widgetLoreQuote: {
+      label: "Lore quote",
+      description: "Quote of the day. Not always true, always relevant.",
+    },
+    widgetCustomModules: {
+      label: "Module forge",
+      description: "Build custom modules and tweak size + content.",
+    },
+    loreQuoteBlurb: "A small lore hook. Helps the place feel like it remembers.",
+    loreQuoteNowServingLabel: "Now serving",
+    loreQuoteDailyBadge: "daily",
+    loreQuoteCopy: "Copy",
+    loreQuoteShuffle: "New excerpt",
+    loreQuoteToastTitle: "Quote copied",
+    loreQuoteToastMessage: (speaker) => `Signed: ${speaker}. It’s on your clipboard.`,
+    moodClockBlurb: "A clock that does more than tell time — it suggests what mood the desktop should wear.",
+    moodClockApply: "Sync vibe",
+    moodClockApplied: "Already synced",
+    moodClockChime: "Chime",
+    moodClockToastAppliedTitle: "Vibe synced",
+    moodClockToastChimeTitle: "System chimed",
+    moodClockChimeMessage: (vibe) => `Vibe: ${vibe}. The desktop nodded.`,
+    moodClockProgressLabel: (pct) => `Day progress: ${pct}%`,
+    moodClockVibeMorning: "Morning boot",
+    moodClockVibeDay: "Daylight signal",
+    moodClockVibeEvening: "Evening lounge",
+    moodClockVibeNight: "Night ritual",
     welcomeAudioOnline: "audio online",
     welcomeAudioMuted: "muted",
     welcomeBack: (name) => `Welcome back, ${name}.`,
@@ -1972,6 +2195,25 @@ const EN: HubCopy = {
     gateway: "Gateway",
     gatewayConnected: "connected",
     gatewayDisconnected: "disconnected",
+    wiretapBlurb: "A tiny portal into Discord. It sniffs packets and invents vibes.",
+    wiretapBootLine: "Wiretap online. Listening to the wiring…",
+    wiretapGatewayDegraded: "Gateway degraded (the system is coughing).",
+    wiretapGatewayStable: "Gateway stable again.",
+    wiretapGatewayUnknown: "unknown",
+    wiretapGatewayDegradedShort: "degraded",
+    wiretapOnlineNow: (n) => `Online right now: ${n}`,
+    wiretapLogLabel: "Log",
+    wiretapLeak: "Leak rumor",
+    wiretapClear: "Clear log",
+    wiretapLeakToastTitle: "Wiretap leaked something",
+    wiretapLeakToastMessage: "Probably fine. Or everything.",
+    wiretapVoiceLabel: "voice",
+    wiretapOnlineLabel: "online",
+    wiretapVoicePulse: "Voice pulse",
+    wiretapOnlinePulse: "Online pulse",
+    gatewayLastEventLabel: "Last blink:",
+    gatewayLastEventUnknown: "Last blink: unknown (system is sulking).",
+    gatewayStaleBadge: "stale",
     voiceNow: (n) => `In voice right now: ${n}`,
     guildIdHint: "Set VITE_DISCORD_HUB_GUILD_ID to show guild pulse here.",
     wheelBlurb: "The wheel is still the best place to let randomness carry legal liability.",
@@ -1989,6 +2231,33 @@ const EN: HubCopy = {
     ritualToastTitle: "Ceremony accepted",
     ritualToastMessage: "The dashboard pretends this was necessary.",
     ritualPolicy: "Rare event policy: subtle charm always on, weirdness sometimes, nonsense sparingly.",
+    voiceOrbitBlurb: "The desktop wants to feel multiplayer, so we pretend voice is a tiny starfield.",
+    voiceOrbitUnknownGuild: "Unknown guild",
+    voiceOrbitSoulsLine: (souls, channels) => `Souls in voice: ${souls} · channels: ${channels}`,
+    voiceOrbitNoSignal: "No signal yet. The shell keeps listening anyway.",
+    voiceOrbitGatewayOk: "pulse",
+    voiceOrbitGatewayNope: "silent",
+    voiceOrbitAction: "Ping voice",
+    voiceOrbitToastTitle: "Signal sent",
+    voiceOrbitToastMessage: "If someone is out there, it probably blinked.",
+    radioBlurb: "A tiny radio that does nothing important. Perfect.",
+    radioNowPlayingLabel: "Now playing",
+    radioBadge: "live-ish",
+    radioShuffle: "Shuffle",
+    radioRequest: "Request track",
+    radioToastTitle: "Station switched tracks",
+    radioToastMessage: (track) => `Now: ${track}`,
+    radioRequestToastTitle: "Request logged",
+    radioRequestToastMessage: "Forwarded to the cable gods. No ETA promised.",
+    chaosMeterBlurb: "A tiny instrument that reads today's chaos flow. No one knows how. Everyone accepts it.",
+    chaosMeterLevelLabel: "Chaos level",
+    chaosMeterTierCalm: "calm",
+    chaosMeterTierSpicy: "spicy",
+    chaosMeterTierFeral: "feral",
+    chaosMeterTierMeltdown: "meltdown",
+    chaosMeterSignal: (value) => `Signal: ${value}/100`,
+    chaosMeterAction: "Poke the OS",
+    chaosMeterToastTitle: "Signal acquired",
     toastWidgetOnline: "Widget online",
     toastWidgetHidden: "Widget hidden",
     toastDesktopReset: "Desktop reset",
@@ -2315,6 +2584,7 @@ const EN: HubCopy = {
       stylePackMidnight: "Midnight",
       stylePackPaper: "Paper",
       stylePackSignal: "Signal",
+      stylePackCampfire: "Campfire",
       gridDensity: "Grid density",
       gridCompact: "Compact",
       gridCozy: "Cozy",

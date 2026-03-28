@@ -182,6 +182,9 @@ export function HubToastProvider({ children }: { children: React.ReactNode }) {
         createdAt: now,
         ttlMs,
       };
+      if (kind === "chaos") {
+        window.dispatchEvent(new CustomEvent("hub:chaos-pulse"));
+      }
       setToasts((prev) => [item, ...prev].slice(0, 5));
       const handle = window.setTimeout(() => dismiss(id), ttlMs);
       timeoutsRef.current.set(id, handle);

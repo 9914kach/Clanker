@@ -308,6 +308,7 @@ function DesktopTab() {
     { value: "midnight", label: p.stylePackMidnight },
     { value: "paper", label: p.stylePackPaper },
     { value: "signal", label: p.stylePackSignal },
+    { value: "campfire", label: p.stylePackCampfire },
   ];
 
   const densityOptions: HubSegmentOption<HubGridDensity>[] = [

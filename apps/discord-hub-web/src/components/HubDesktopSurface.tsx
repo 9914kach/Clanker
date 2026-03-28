@@ -82,6 +82,9 @@ function stylePackBackground(stylePackId: HubDesktopStylePackId): string {
   if (stylePackId === "signal") {
     return "radial-gradient(circle at top left, color-mix(in oklab, #00ff88 10%, transparent), transparent 25%), radial-gradient(circle at bottom right, color-mix(in oklab, #ff3366 8%, transparent), transparent 28%)";
   }
+  if (stylePackId === "campfire") {
+    return "radial-gradient(circle at top left, color-mix(in oklab, #fb923c 16%, transparent), transparent 32%), radial-gradient(circle at bottom right, color-mix(in oklab, #f472b6 10%, transparent), transparent 36%), radial-gradient(circle at 50% 120%, color-mix(in oklab, #fbbf24 12%, transparent), transparent 46%)";
+  }
   return "";
 }
 
@@ -134,6 +137,8 @@ function DesktopWidgetCard({
       <Card
         className={cn(
           "relative h-full rounded-[1.4rem] border-border/70 shadow-sm transition",
+          !layoutEditMode &&
+            "hover:-translate-y-0.5 hover:border-border/90 hover:shadow-md motion-reduce:hover:translate-y-0",
           blurClass(visualPrefs.blurStrength),
           toneAccentClass(effectiveTone),
           layoutEditMode && itemCapabilities.movable && "cursor-grab active:cursor-grabbing",
