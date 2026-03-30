@@ -1,3 +1,4 @@
+import './media-env.js';
 import {
   AudioPlayerStatus,
   VoiceConnectionStatus,
@@ -12,22 +13,12 @@ import {
   type VoiceConnection,
 } from '@discordjs/voice';
 import { existsSync } from 'node:fs';
-import { createRequire } from 'node:module';
+import path from 'node:path';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { type Client } from 'discord.js';
 import playdl from 'play-dl';
+import { FFMPEG_STATIC_BIN, resolveYtDlpSpawnPath } from './media-env.js';
 import { getPool } from './db.js';
-
-const nodeRequire = createRequire(import.meta.url);
-const FFMPEG_STATIC_BIN = nodeRequire('ffmpeg-static') as string | null;
-
-/**
- * prism-media (used by @discordjs/voice for `createAudioResource`) only looks at PATH / FFMPEG_PATH,
- * not the ffmpeg-static package. On Windows, „FFmpeg/avconv not found” is common without this.
- */
-if (FFMPEG_STATIC_BIN && existsSync(FFMPEG_STATIC_BIN) && !process.env.FFMPEG_PATH?.trim()) {
-  process.env.FFMPEG_PATH = FFMPEG_STATIC_BIN;
-}
 
 /** yt-dlp `--download-sections` start timestamp, e.g. *1:30-inf (from 90s to end). */
 function ytdlpDownloadSectionFromStartSec(startSec: number): string {
@@ -42,11 +33,15 @@ function ytdlpDownloadSectionFromStartSec(startSec: number): string {
 
 /** yt-dlp needs a real ffmpeg binary for partial downloads (`--download-sections`), not only Opus encoding. */
 function ytdlpFfmpegLocationArgs(): string[] {
-  if (FFMPEG_STATIC_BIN != null && FFMPEG_STATIC_BIN !== '') {
-    return ['--ffmpeg-location', FFMPEG_STATIC_BIN];
-  }
   const fromEnv = process.env.FFMPEG_PATH?.trim();
-  if (fromEnv) return ['--ffmpeg-location', fromEnv];
+  if (fromEnv) {
+    const n = path.normalize(fromEnv);
+    if (existsSync(n)) return ['--ffmpeg-location', n];
+  }
+  if (FFMPEG_STATIC_BIN) {
+    const n = path.normalize(FFMPEG_STATIC_BIN);
+    if (existsSync(n)) return ['--ffmpeg-location', n];
+  }
   return [];
 }
 
@@ -1006,9 +1001,7 @@ async function startStream(player: AudioPlayer, track: Track, guildId: string, s
     const gp = players.get(gid);
     if (!gp) throw new Error(`No guild player for ${gid}`);
 
-    const requireMod = createRequire(import.meta.url);
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { YOUTUBE_DL_PATH } = requireMod('youtube-dl-exec').constants as { YOUTUBE_DL_PATH: string };
+    const ytdlpBin = resolveYtDlpSpawnPath();
     const baseArgs = [
       url,
       '--format', 'bestaudio/best',
@@ -1027,7 +1020,7 @@ async function startStream(player: AudioPlayer, track: Track, guildId: string, s
         '[music] Seek: no ffmpeg binary (ffmpeg-static or FFMPEG_PATH). yt-dlp may fail partial download; install ffmpeg or set FFMPEG_PATH.',
       );
     }
-    const proc = spawn(YOUTUBE_DL_PATH, [...baseArgs, ...seekArgs], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const proc = spawn(ytdlpBin, [...baseArgs, ...seekArgs], { stdio: ['ignore', 'pipe', 'pipe'] });
 
     gp.ytdlpProc = proc;
 

@@ -11,6 +11,7 @@
     "dev": "tsx watch src/index.ts",
     "prebuild": "npm run build --prefix ../../packages/hub-pg-migrate",
     "build": "tsc -p tsconfig.json",
+    "rebuild:ytdlp": "node scripts/rebuild-ytdlp.mjs",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
