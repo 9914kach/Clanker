@@ -400,6 +400,14 @@ export type HubCopy = {
     musicPlayFailedTitle: string;
     musicPlayFailedGeneric: string;
     musicSpotifyPlaylistUnavailable: string;
+    /** Music player page: drag-and-drop links onto the page. */
+    musicPlayerDropHint: string;
+    musicPlayerDropActive: string;
+    musicPlayerDropInvalid: string;
+    musicPreviousTitle: string;
+    musicPreviousNone: string;
+    /** Music player: shuffle queue order. */
+    musicShuffleQueue: string;
   };
   desktopSurface: {
     spawnApp: string;
@@ -1353,6 +1361,14 @@ const SV: HubCopy = {
     musicPlayFailedGeneric: "Länken gick inte att spela upp. Prova en annan källa eller sökterm.",
     musicSpotifyPlaylistUnavailable:
       "Den här Spotify-spellistan gick inte att läsa eller fick inga spår som botten kan spela. Personliga listor (t.ex. Discover Weekly) fungerar ofta inte med app-läge — använd en publik spellista. Tips: sätt SPOTIFY_DEFAULT_MARKET=SE i bot-miljön om spår saknar region.",
+    musicPlayerDropHint:
+      "Dra en länk från Spotify, YouTube eller SoundCloud hit och släpp för att köa (samma som att klistra in i fältet).",
+    musicPlayerDropActive: "Släpp för att lägga till i kön",
+    musicPlayerDropInvalid:
+      "Hittade ingen spelbar länk. Droppa en Spotify-, YouTube- eller SoundCloud-URL (eller dra från Spotify till sidan).",
+    musicPreviousTitle: "Föregående låt",
+    musicPreviousNone: "Ingen tidigare låt finns i den här sessionen.",
+    musicShuffleQueue: "Blanda kön",
   },
   desktopSurface: {
     spawnApp: "Visa app",
@@ -2324,6 +2340,14 @@ const EN: HubCopy = {
     musicPlayFailedGeneric: "That link or search could not be played. Try another source.",
     musicSpotifyPlaylistUnavailable:
       "This Spotify playlist could not be read or yielded no tracks the bot can play. Personalized lists (e.g. Discover Weekly) often fail with app-only access — use a public playlist. Tip: set SPOTIFY_DEFAULT_MARKET=US (or your country) on the bot if tracks are region-blocked.",
+    musicPlayerDropHint:
+      "Drag a link from Spotify, YouTube, or SoundCloud here and release to queue it (same as pasting into the field).",
+    musicPlayerDropActive: "Release to add to queue",
+    musicPlayerDropInvalid:
+      "No playable link found. Drop a Spotify, YouTube, or SoundCloud URL (or drag from Spotify onto the page).",
+    musicPreviousTitle: "Previous track",
+    musicPreviousNone: "No previous track in this session.",
+    musicShuffleQueue: "Shuffle queue",
   },
   desktopSurface: {
     spawnApp: "Spawn app",

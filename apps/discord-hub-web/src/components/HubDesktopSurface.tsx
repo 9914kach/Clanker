@@ -27,7 +27,13 @@ import { useTheme } from "@/components/theme-provider";
 import { hubEnterMotion, hubPopMotion } from "@/lib/hub-motion";
 import { hubContextData } from "@/lib/hub-shell-context";
 import { classifyTarget, getCapabilities, type HubEntityCapabilities } from "@/lib/hub-shell-classification";
-import { HUB_DESKTOP_LAYOUT_GRID, effectiveSnapStep, type HubDesktopWidgetLayout, type HubSnapStrength } from "@/lib/hub-desktop-layout";
+import {
+  HUB_DESKTOP_LAYOUT_GRID,
+  HUB_GRIDSTACK_WIDGET_MARGIN_PX,
+  effectiveSnapStep,
+  type HubDesktopWidgetLayout,
+  type HubSnapStrength,
+} from "@/lib/hub-desktop-layout";
 import {
   DEFAULT_WIDGET_VISUAL_PREFS,
   effectiveWidgetTone,
@@ -676,7 +682,7 @@ export default function HubDesktopSurface({
       {
         column: pxCols,
         cellHeight: 1,
-        margin: 0,
+        margin: HUB_GRIDSTACK_WIDGET_MARGIN_PX,
         float: gridCompaction === "none",
         overlap: true,
         draggable: { handle: ".hub-widget-drag-surface" },

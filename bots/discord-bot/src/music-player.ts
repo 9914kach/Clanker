@@ -78,12 +78,16 @@ export type Track = {
   channelId: string;
 };
 
+const PLAYBACK_HISTORY_MAX = 50;
+
 type GuildPlayer = {
   player: AudioPlayer;
   connection: VoiceConnection;
   currentTrack: Track | null;
   /** yt-dlp child for the current YouTube stream; must be killed on skip/stop before the player tears down the pipe. */
   ytdlpProc: ChildProcess | null;
+  /** Recent tracks for `/previous` (in-memory, cleared on full stop / voice teardown). */
+  playbackHistory: Track[];
   /** Set before `player.stop()` so Idle can log why playback ended (`natural` if unset). */
   idlePlaybackCause: 'natural' | 'skip' | 'stop' | null;
   /** Seek uses `stop(true)`; skip Idle queue pop / teardown so the same track can restart. */
@@ -91,6 +95,15 @@ type GuildPlayer = {
   /** Merged into `playback_ended` meta (e.g. queue_items_cleared on stop). */
   pendingPlaybackMeta: Record<string, unknown> | null;
 };
+
+function pushPlaybackHistory(gp: GuildPlayer, track: Track): void {
+  const last = gp.playbackHistory[gp.playbackHistory.length - 1];
+  if (last?.url === track.url) return;
+  gp.playbackHistory.push({ ...track });
+  if (gp.playbackHistory.length > PLAYBACK_HISTORY_MAX) {
+    gp.playbackHistory.splice(0, gp.playbackHistory.length - PLAYBACK_HISTORY_MAX);
+  }
+}
 
 type MusicPlaybackLogEvent =
   | 'queued'
@@ -779,8 +792,47 @@ async function addToQueue(guildId: string, track: Track): Promise<void> {
   void recordMusicPlaybackLog({ guildId, event: 'queued', track });
 }
 
+/** Insert at front of queue (earlier `added_at` than existing rows). */
+async function addToQueueFront(guildId: string, track: Track): Promise<void> {
+  await getPool().query(
+    `INSERT INTO bot.music_queue
+       (guild_id, track_url, title, artist, thumbnail, duration_sec, source, requested_by, added_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,
+       COALESCE(
+         (SELECT MIN(added_at) - interval '1 millisecond' FROM bot.music_queue WHERE guild_id = $1),
+         now()
+       ))`,
+    [guildId, track.url, track.title, track.artist, track.thumbnail,
+     track.durationSec, track.source, track.requestedBy],
+  );
+  void recordMusicPlaybackLog({
+    guildId,
+    event: 'queued',
+    track,
+    meta: { queue_position: 'front' },
+  });
+}
+
 async function clearQueue(guildId: string): Promise<void> {
   await getPool().query('DELETE FROM bot.music_queue WHERE guild_id = $1', [guildId]);
+}
+
+/** Randomize queue order by reassigning `added_at` (earliest plays first). */
+export async function shuffleQueue(guildId: string): Promise<number> {
+  const gid = voiceSnowflake(guildId);
+  const res = await getPool().query(
+    `WITH shuffled AS (
+       SELECT id, row_number() OVER (ORDER BY random()) AS rn
+       FROM bot.music_queue
+       WHERE guild_id = $1
+     )
+     UPDATE bot.music_queue q
+     SET added_at = now() + ((s.rn - 1) * interval '1 microsecond')
+     FROM shuffled s
+     WHERE q.id = s.id AND q.guild_id = $1`,
+    [gid],
+  );
+  return res.rowCount ?? 0;
 }
 
 async function playTrack(client: Client, guildId: string, track: Track): Promise<void> {
@@ -880,6 +932,7 @@ async function playTrack(client: Client, guildId: string, track: Track): Promise
 
       const nextRaw = await popNextFromQueue(gid);
       if (nextRaw) {
+        if (ended) pushPlaybackHistory(guildPlayer, ended);
         const voiceCh = String(guildPlayer.connection.joinConfig.channelId);
         const next: Track = {
           ...nextRaw,
@@ -910,12 +963,15 @@ async function playTrack(client: Client, guildId: string, track: Track): Promise
       connection,
       currentTrack: tr,
       ytdlpProc: null,
+      playbackHistory: [],
       idlePlaybackCause: null,
       suppressNextIdleQueueAdvance: false,
       pendingPlaybackMeta: null,
     };
     players.set(gid, gp);
   } else {
+    const old = gp.currentTrack;
+    if (old) pushPlaybackHistory(gp, old);
     gp.currentTrack = tr;
   }
 
@@ -1053,6 +1109,29 @@ export async function skip(guildId: string): Promise<void> {
   gp.player.stop(); // triggers Idle → plays next from queue
 }
 
+/**
+ * Play the last track from in-session history; current track is prepended to the queue.
+ * @returns true if playback was rewound, false if there is no history.
+ */
+export async function previous(guildId: string): Promise<boolean> {
+  const gid = voiceSnowflake(guildId);
+  const gp = players.get(gid);
+  if (!gp || gp.playbackHistory.length === 0) return false;
+  const prevTrack = gp.playbackHistory.pop()!;
+  const cur = gp.currentTrack;
+  if (cur) {
+    await addToQueueFront(gid, cur);
+  }
+  gp.suppressNextIdleQueueAdvance = true;
+  killActiveYtdlp(gid);
+  gp.player.stop(true);
+  gp.player.unpause();
+  gp.currentTrack = prevTrack;
+  await saveNowPlaying(gid, prevTrack);
+  await startStream(gp.player, prevTrack, gid);
+  return true;
+}
+
 export async function pause(guildId: string): Promise<void> {
   const gid = voiceSnowflake(guildId);
   const gp = players.get(gid);
@@ -1119,6 +1198,7 @@ export async function stop(guildId: string): Promise<void> {
   const gp = players.get(gid);
   let queueItemsCleared = 0;
   if (gp) {
+    gp.playbackHistory = [];
     const qc = await getPool().query<{ c: string }>(
       'SELECT COUNT(*)::text AS c FROM bot.music_queue WHERE guild_id = $1',
       [gid],

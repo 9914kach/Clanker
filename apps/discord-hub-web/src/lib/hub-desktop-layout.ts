@@ -9,6 +9,16 @@ export type HubDesktopWidgetLayout = {
 
 export const HUB_DESKTOP_LAYOUT_GRID = 192;
 
+/** Synligt avstånd mellan widget-kort (horisontellt/vertikalt mellan grannar). */
+export const HUB_DESKTOP_WIDGET_GAP_PX = 16;
+
+/**
+ * GridStack `margin` är inset på item-innehåll per sida; gap mellan två kort = 2× detta.
+ * Sätts till hälften av {@link HUB_DESKTOP_WIDGET_GAP_PX}.
+ * Kortet blir alltså visuellt mindre än layoutens w×h-ruta; ytan i data = “fotavtryck”, inte kant-till-kant UI.
+ */
+export const HUB_GRIDSTACK_WIDGET_MARGIN_PX = HUB_DESKTOP_WIDGET_GAP_PX / 2;
+
 export type HubSnapStrength = "relaxed" | "standard" | "firm";
 
 export function effectiveSnapStep(baseGrid: number, snapStrength: HubSnapStrength): number {

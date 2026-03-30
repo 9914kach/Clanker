@@ -87,7 +87,7 @@ Alla exempel finns i `.env.example` i repots rot.
 
 När `DATABASE_URL` är satt:
 - Profiler, League‑koppling och snapshots lagras i Postgres.
-- Migrationer i `apps/discord-hub-api/migrations/` körs via:
+- Migrationer i `apps/discord-hub-api/migrations/` körs **automatiskt vid start** av **discord-hub-api** och **discord-bot** (redan applicerade versioner hoppas över via `public.schema_migrations`). Du kan fortfarande köra manuellt:
 
 ```bash
 npm run migrate -w discord-hub-api

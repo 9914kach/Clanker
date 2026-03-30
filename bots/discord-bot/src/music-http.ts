@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
 import { type Client } from 'discord.js';
 import {
-  enqueue, skip, pause, resume, stop, seek,
+  enqueue, skip, previous, pause, resume, stop, seek, shuffleQueue,
   addTrackToPlaylist, playPlaylist,
 } from './music-player.js';
 
@@ -74,6 +74,18 @@ export function startMusicHttpServer(client: Client, port: number): void {
     const { guildId } = await c.req.json<GuildBody>();
     await skip(guildId);
     return c.json({ ok: true });
+  });
+
+  app.post('/previous', async (c) => {
+    const { guildId } = await c.req.json<GuildBody>();
+    const wentBack = await previous(guildId);
+    return c.json({ ok: true, wentBack });
+  });
+
+  app.post('/shuffle', async (c) => {
+    const { guildId } = await c.req.json<GuildBody>();
+    const shuffled = await shuffleQueue(guildId);
+    return c.json({ ok: true, shuffled });
   });
 
   app.post('/pause', async (c) => {

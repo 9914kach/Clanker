@@ -157,7 +157,7 @@ När en synkad Riot-snapshot finns i minnet för användaren är `stats.league` 
 
 Profilidentitet/visibilitet, League-koppling och senaste Riot-snapshot lagras i **PostgreSQL** när `DATABASE_URL` är satt.
 
-Migrationer ligger under `apps/discord-hub-api/migrations/` och körs med:
+Migrationer ligger under `apps/discord-hub-api/migrations/`. **discord-hub-api** kör saknade migrationer automatiskt vid uppstart (redan körda hoppas över). Manuellt:
 
 ```bash
 npm run migrate -w discord-hub-api

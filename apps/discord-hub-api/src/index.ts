@@ -33,6 +33,7 @@ import {
   type LeagueRankPreference,
   type LeagueRegion,
 } from "./riot-lol.js";
+import { runSqlMigrations } from "@clanker/hub-pg-migrate";
 import { closeDb, getPool, initDb, verifyDbConnection } from "./db.js";
 import {
   createWheelGroup,
@@ -1125,7 +1126,7 @@ function createApp(env: AppEnv) {
     });
   });
 
-  for (const action of ["skip", "pause", "resume", "stop"] as const) {
+  for (const action of ["skip", "previous", "shuffle", "pause", "resume", "stop"] as const) {
     app.post(`/api/bot/guild/:id/music/${action}`, async (c) => {
       const token = getCookie(c, COOKIE_NAME);
       if (!token) return c.json({ error: "Unauthorized" }, 401);
@@ -1392,7 +1393,8 @@ async function shutdownAndExit(code: number): Promise<void> {
 async function main(): Promise<void> {
   const env = loadEnv();
   initDb(env);
-  if (env.dbConfig) {
+  const pool = getPool();
+  if (env.dbConfig && pool) {
     try {
       await verifyDbConnection();
       console.log("discord-hub-api: Postgres connection OK");
@@ -1400,6 +1402,15 @@ async function main(): Promise<void> {
       console.error(
         "discord-hub-api: DB config is set but Postgres is not reachable. Check network, firewall, and credentials.",
       );
+      throw e;
+    }
+    try {
+      const migrationsDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "migrations");
+      await runSqlMigrations(pool, migrationsDir, (line) =>
+        console.log(`discord-hub-api: ${line}`),
+      );
+    } catch (e) {
+      console.error("discord-hub-api: migrations failed:", e);
       throw e;
     }
   }

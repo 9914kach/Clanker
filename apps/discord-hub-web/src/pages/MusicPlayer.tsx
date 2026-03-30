@@ -5,6 +5,8 @@ import {
   Music,
   Pause,
   Play,
+  Shuffle,
+  SkipBack,
   SkipForward,
   Square,
   Trash2,
@@ -15,6 +17,7 @@ import { cn } from "@clanker/ui/lib/utils";
 import { apiUrl } from "@/config";
 import { discordAvatarUrl } from "@/lib/discordCdn";
 import { useHubLayout } from "@/hooks/use-hub-layout";
+import { useHubLocale } from "@/components/locale-provider";
 
 const GUILD_ID = import.meta.env.VITE_DISCORD_HUB_GUILD_ID?.trim() ?? "";
 const POLL_MS = 3_000;
@@ -75,6 +78,54 @@ function fmtDuration(sec: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+/** Spotify app may supply `spotify:track:…`; bot expects https://open.spotify.com/… */
+function normalizeSpotifyUriToHttp(s: string): string {
+  const t = s.trim();
+  const m = t.match(/^spotify:(track|playlist|album|episode):([A-Za-z0-9]+)/i);
+  if (m) return `https://open.spotify.com/${m[1].toLowerCase()}/${m[2]}`;
+  return t;
+}
+
+function extractDroppedPlayableUrl(dt: DataTransfer): string | null {
+  const uriList = dt.getData("text/uri-list");
+  if (uriList) {
+    const line = uriList.split(/\r?\n/).find((l) => l.length > 0 && !l.startsWith("#"));
+    if (line) return normalizeSpotifyUriToHttp(line.trim());
+  }
+  const plain = dt.getData("text/plain");
+  if (plain) {
+    const trimmed = plain.trim();
+    if (/^spotify:/i.test(trimmed)) return normalizeSpotifyUriToHttp(trimmed);
+    const urlMatch = trimmed.match(/https?:\/\/[^\s<>"']+/i);
+    if (urlMatch) return urlMatch[0];
+  }
+  const html = dt.getData("text/html");
+  if (html) {
+    const link = html.match(
+      /https:\/\/open\.spotify\.com\/(?:intl-[a-z]{2}\/)?(?:track|playlist|album|episode)\/[A-Za-z0-9?=&\-._]+/i,
+    );
+    if (link) {
+      const u = link[0];
+      const q = u.indexOf("?");
+      return q === -1 ? u : u.slice(0, q);
+    }
+  }
+  return null;
+}
+
+function isPlayableDroppedUrl(s: string): boolean {
+  const t = s.trim();
+  if (!t) return false;
+  if (/^spotify:(track|playlist|album|episode):/i.test(t)) return true;
+  if (!/^https?:\/\//i.test(t)) return false;
+  return (
+    /spotify\.com\//i.test(t) ||
+    /youtube\.com\//i.test(t) ||
+    /youtu\.be\//i.test(t) ||
+    /soundcloud\.com\//i.test(t)
+  );
+}
+
 function SourceBadge({ source }: { source: MusicSource }) {
   const labels: Record<MusicSource, string> = {
     youtube: "YT",
@@ -124,6 +175,8 @@ function RequesterAvatar({
 
 export default function MusicPlayerPage() {
   const { me } = useHubLayout();
+  const { copy } = useHubLocale();
+  const d = copy.dashboard;
 
   const [music, setMusic] = useState<MusicState | null>(null);
   const [voiceStates, setVoiceStates] = useState<VoiceStatesResponse | null>(null);
@@ -131,8 +184,10 @@ export default function MusicPlayerPage() {
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [removingIds, setRemovingIds] = useState<Set<number>>(new Set());
+  const [dropHover, setDropHover] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
+  const dropDepthRef = useRef(0);
 
   // Clock tick for progress bar
   useEffect(() => {
@@ -184,7 +239,7 @@ export default function MusicPlayerPage() {
       if (!GUILD_ID) return;
       setBusy(true);
       try {
-        await fetch(
+        const res = await fetch(
           apiUrl(`/api/bot/guild/${encodeURIComponent(GUILD_ID)}/music/${action}`),
           {
             method: "POST",
@@ -193,12 +248,22 @@ export default function MusicPlayerPage() {
             body: JSON.stringify(body ?? {}),
           },
         );
+        if (action === "previous" && res.ok) {
+          try {
+            const j = (await res.json()) as { wentBack?: boolean };
+            if (j.wentBack === false) {
+              alert(d.musicPreviousNone);
+            }
+          } catch {
+            /* ignore */
+          }
+        }
         await fetchMusic();
       } finally {
         setBusy(false);
       }
     },
-    [fetchMusic],
+    [fetchMusic, d.musicPreviousNone],
   );
 
   const removeFromQueue = useCallback(
@@ -231,17 +296,60 @@ export default function MusicPlayerPage() {
     return null;
   };
 
-  const handlePlay = async () => {
-    const q = query.trim();
-    if (!q || busy) return;
+  const enqueueQuery = async (raw: string): Promise<boolean> => {
+    const q = raw.trim();
+    if (!q || busy) return false;
     const channelId = resolveChannelId();
     if (!channelId) {
-      alert("Gå med i en röstkanal på Discord för att spela musik.");
-      return;
+      alert(d.musicNeedVoiceChannel);
+      return false;
     }
     await cmd("play", { query: q, channelId });
-    setQuery("");
-    inputRef.current?.focus();
+    return true;
+  };
+
+  const handlePlay = async () => {
+    const ok = await enqueueQuery(query);
+    if (ok) {
+      setQuery("");
+      inputRef.current?.focus();
+    }
+  };
+
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    dropDepthRef.current += 1;
+    if (e.dataTransfer.types.includes("text/uri-list") || e.dataTransfer.types.includes("text/plain")) {
+      setDropHover(true);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    dropDepthRef.current = Math.max(0, dropDepthRef.current - 1);
+    if (dropDepthRef.current === 0) setDropHover(false);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    dropDepthRef.current = 0;
+    setDropHover(false);
+    const url = extractDroppedPlayableUrl(e.dataTransfer);
+    if (!url || !isPlayableDroppedUrl(url)) {
+      alert(d.musicPlayerDropInvalid);
+      return;
+    }
+    void enqueueQuery(url).then((ok) => {
+      if (ok) {
+        setQuery("");
+        inputRef.current?.focus();
+      }
+    });
   };
 
   if (me.status === "guest") return <Navigate to="/login" replace />;
@@ -255,9 +363,32 @@ export default function MusicPlayerPage() {
 
   const np = music?.now_playing ?? null;
   const queue = music?.queue ?? [];
+  const queueTotal = music?.total_in_queue ?? queue.length;
+  const canShuffleQueue = queueTotal >= 2;
 
   return (
-    <div className="mx-auto flex max-w-2xl flex-col gap-6 px-4 py-8">
+    <div
+      role="region"
+      aria-label={d.musicPlayerDropHint}
+      className={cn(
+        "relative mx-auto flex max-w-2xl flex-col gap-6 px-4 py-8 transition-[box-shadow,border-color] rounded-2xl",
+        dropHover && "ring-2 ring-primary/60 ring-offset-2 ring-offset-background bg-primary/5",
+      )}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      {dropHover ? (
+        <div
+          className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-2xl border-2 border-dashed border-primary/50 bg-background/80 backdrop-blur-sm"
+          aria-hidden
+        >
+          <p className="rounded-lg bg-card px-4 py-2 text-sm font-medium text-foreground shadow-sm">
+            {d.musicPlayerDropActive}
+          </p>
+        </div>
+      ) : null}
       {/* ── Now Playing ────────────────────────────────────────────────── */}
       <section>
         <div className="mb-3 flex items-center gap-2">
@@ -319,6 +450,16 @@ export default function MusicPlayerPage() {
                 variant="ghost"
                 className="size-11 rounded-full"
                 disabled={busy}
+                onClick={() => void cmd("previous")}
+                title={d.musicPreviousTitle}
+              >
+                <SkipBack className="size-5" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="size-11 rounded-full"
+                disabled={busy}
                 onClick={() => void cmd(np.is_paused ? "resume" : "pause")}
                 title={np.is_paused ? "Återuppta" : "Pausa"}
               >
@@ -361,6 +502,7 @@ export default function MusicPlayerPage() {
             Lägg till i kö
           </h2>
         </div>
+        <p className="mb-2 text-xs text-muted-foreground">{d.musicPlayerDropHint}</p>
         <div className="flex gap-2">
           <Input
             ref={inputRef}
@@ -382,15 +524,27 @@ export default function MusicPlayerPage() {
 
       {/* ── Queue ──────────────────────────────────────────────────────── */}
       <section>
-          <div className="mb-3 flex items-center justify-between">
-            <div className="flex items-center gap-2">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
               <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
                 Kö
               </h2>
               <span className="rounded-full bg-muted px-2 py-0.5 text-xs tabular-nums text-muted-foreground">
-                {music?.total_in_queue ?? queue.length}
+                {queueTotal}
               </span>
             </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="shrink-0 gap-1.5 rounded-xl"
+              disabled={busy || !canShuffleQueue}
+              onClick={() => void cmd("shuffle")}
+              title={d.musicShuffleQueue}
+            >
+              <Shuffle className="size-4" aria-hidden />
+              {d.musicShuffleQueue}
+            </Button>
           </div>
 
           {queue.length === 0 ? (

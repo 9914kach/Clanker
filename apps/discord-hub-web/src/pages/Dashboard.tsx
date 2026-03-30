@@ -1716,17 +1716,31 @@ function HubMusicWidget({
     async (action: string, body?: Record<string, unknown>) => {
       setLoading(true);
       try {
-        await fetch(apiUrl(`/api/bot/guild/${encodeURIComponent(guildId)}/music/${action}`), {
+        const res = await fetch(apiUrl(`/api/bot/guild/${encodeURIComponent(guildId)}/music/${action}`), {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body ?? {}),
         });
+        if (action === "previous" && res.ok) {
+          try {
+            const j = (await res.json()) as { wentBack?: boolean };
+            if (j.wentBack === false) {
+              toasts.push({
+                kind: "info",
+                title: d.musicPreviousTitle,
+                message: d.musicPreviousNone,
+              });
+            }
+          } catch {
+            /* ignore */
+          }
+        }
       } finally {
         setLoading(false);
       }
     },
-    [guildId],
+    [guildId, d.musicPreviousTitle, d.musicPreviousNone, toasts],
   );
 
   const resolveChannelId = (): string | null => {
@@ -1839,6 +1853,16 @@ function HubMusicWidget({
 
           {/* Controls */}
           <div className="mt-3 flex items-center justify-center gap-2">
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={loading}
+              className="size-9 rounded-full p-0 text-base"
+              onClick={() => void cmd("previous")}
+              title={d.musicPreviousTitle}
+            >
+              ⏮
+            </Button>
             <Button
               size="sm"
               variant="ghost"

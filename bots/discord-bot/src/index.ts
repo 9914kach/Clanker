@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { runSqlMigrations } from '@clanker/hub-pg-migrate';
 import { setDefaultResultOrder } from 'node:dns';
 import { existsSync } from 'node:fs';
 
@@ -23,12 +24,13 @@ import { registerVoiceTracker } from './voice-tracker.js';
 import { registerGuildTracker } from './guild-tracker.js';
 import { registerMessageTracker } from './message-tracker.js';
 import {
-  enqueue, skip, pause, resume, stop, initPlayDl, getLastChannelId,
+  enqueue, skip, previous, pause, resume, stop, initPlayDl, getLastChannelId,
   createPlaylist, deletePlaylist, listPlaylists, getPlaylistTracks,
   addTrackToPlaylist, removeTrackFromPlaylist, playPlaylist,
 } from './music-player.js';
 import { startMusicHttpServer } from './music-http.js';
 import { getPool } from './db.js';
+import { resolveHubMigrationsDir } from './resolve-hub-migrations-dir.js';
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -68,6 +70,10 @@ const commands = [
     .toJSON(),
 
   new SlashCommandBuilder().setName('skip').setDescription('Hoppa till nästa låt i kön.').toJSON(),
+  new SlashCommandBuilder()
+    .setName('previous')
+    .setDescription('Spela föregående låt (senast spelade i denna session).')
+    .toJSON(),
   new SlashCommandBuilder().setName('pause').setDescription('Pausa uppspelningen.').toJSON(),
   new SlashCommandBuilder().setName('resume').setDescription('Återuppta uppspelningen.').toJSON(),
   new SlashCommandBuilder().setName('stop').setDescription('Stoppa musiken och töm kön.').toJSON(),
@@ -325,6 +331,16 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       await skip(interaction.guildId!);
       await interaction.reply({ content: '⏭ Hoppade till nästa låt.', flags: 64 });
       break;
+    case 'previous': {
+      const wentBack = await previous(interaction.guildId!);
+      await interaction.reply({
+        content: wentBack
+          ? '⏮️ Spelar föregående låt.'
+          : 'ℹ️ Ingen tidigare låt i den här sessionen.',
+        flags: 64,
+      });
+      break;
+    }
     case 'pause':
       await pause(interaction.guildId!);
       await interaction.reply({ content: '⏸ Pausad.', flags: 64 });
@@ -355,6 +371,14 @@ process.on('SIGTERM', async () => {
 async function main(): Promise<void> {
   await prepareDiscordVoiceCrypto();
   initDb(databaseUrl);
+  try {
+    await runSqlMigrations(getPool(), resolveHubMigrationsDir(), (line) =>
+      console.log(`[migrations] ${line}`),
+    );
+  } catch (e) {
+    console.error('[migrations] failed:', e);
+    throw e;
+  }
   await initPlayDl();
   registerVoiceTracker(client);
   registerGuildTracker(client);

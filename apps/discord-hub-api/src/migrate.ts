@@ -1,7 +1,7 @@
+import { runSqlMigrations } from "@clanker/hub-pg-migrate";
 import { config as loadDotenv } from "dotenv";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import fs from "node:fs";
 import pg from "pg";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -40,51 +40,10 @@ function buildPgPoolConfig(): pg.PoolConfig {
 
 async function run(): Promise<void> {
   const pool = new pg.Pool(buildPgPoolConfig());
-
-  const migrationsDir = path.join(repoRoot, "apps/discord-hub-api/migrations");
-  const files = fs
-    .readdirSync(migrationsDir)
-    .filter((f) => f.endsWith(".sql"))
-    .sort();
-
-  const client = await pool.connect();
+  const migrationsDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "migrations");
   try {
-    await client.query("select 1 as ok");
-
-    // Ensure schema_migrations exists before we query it
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS public.schema_migrations (
-        version TEXT PRIMARY KEY,
-        applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
-      )
-    `);
-
-    const appliedRes = await client.query<{ version: string }>(
-      "SELECT version FROM public.schema_migrations",
-    );
-    const applied = new Set(appliedRes.rows.map((r) => r.version));
-
-    for (const f of files) {
-      // Derive the version key from the filename (strip .sql)
-      const version = f.replace(/\.sql$/, "");
-      if (applied.has(version)) {
-        process.stdout.write(`Skipped ${f} (already applied)\n`);
-        continue;
-      }
-      await client.query("BEGIN");
-      try {
-        const filePath = path.join(migrationsDir, f);
-        const sql = fs.readFileSync(filePath, "utf8");
-        await client.query(sql);
-        await client.query("COMMIT");
-        process.stdout.write(`Applied ${f}\n`);
-      } catch (e) {
-        await client.query("ROLLBACK");
-        throw e;
-      }
-    }
+    await runSqlMigrations(pool, migrationsDir, (line) => process.stdout.write(`${line}\n`));
   } finally {
-    client.release();
     await pool.end();
   }
 }
