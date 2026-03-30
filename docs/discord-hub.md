@@ -83,6 +83,54 @@ Webb‑appen har två praktiska lägen:
 
 Alla exempel finns i `.env.example` i repots rot.
 
+## Felsökning: efter Discord-inloggning („gateway”, 502, OAuth dog)
+
+Många ser **502 Bad Gateway** eller en tom/felande sida **efter** att de klickat „Godkänn” hos Discord. Det är i nästan alla fall **inte** Discord Gateway (WebSocket) utan att **webbläsarens anrop till hub-API:t misslyckas**.
+
+1. **Kör API samtidigt som Vite**  
+   I dev proxar Vite `/api` → `http://127.0.0.1:3001` (eller port från `DISCORD_HUB_API_DEV_PORT` / `PORT` i **repots** `.env`). Om **discord-hub-api** inte är igång får du **502** på callback-URL:en (`/api/auth/discord/callback`).  
+   Använd t.ex. `npm run dev:discord-stack:local` från roten, eller två terminaler: `npm run dev:discord-api` + `npm run dev -w discord-hub-web`.
+
+2. **Samma port i hela kedjan**  
+   Om du ändrat `PORT` för API måste **samma** värde ligga i rot-`.env` som `DISCORD_HUB_API_DEV_PORT` (så Vite proxyn pekar rätt). Annars: 502 trots att API kör.
+
+3. **`DISCORD_REDIRECT_URI` och `FRONTEND_URL` måste stämma med hur ni öppnar sidan**  
+   Kopiera inte någon annans `.env` rakt av: **localhost vs 127.0.0.1**, **port** (standard Vite 5173, men **5175** i `--mode direct`), och ev. **Caddy** (`http://dev.clanker.discord`) måste vara **identiska** i tre ställen: din `.env`, **Discord Developer Portal → OAuth2 → Redirects**, och adressfältet i webbläsaren. Fel redirect ger Discords eget fel; fel host/port kan ge 502 om inget lyssnar där.
+
+4. **`COOKIE_SECURE` och HTTP**  
+   Kör du API med `NODE_ENV=production` över **http://** kan säkra cookies strippas och du landar på `/login?error=oauth` („inloggningen dog”). Sätt `COOKIE_SECURE=0` i den miljön eller använd HTTPS.
+
+---
+
+**„Gateway” på dashboarden** (badge „frånkopplad” / varningstext) är **Discord WebSocket** för live röst m.m.: kräver `DISCORD_BOT_TOKEN` och `DISCORD_GATEWAY_GUILD_IDS` som innehåller **samma guild** som `VITE_DISCORD_HUB_GUILD_ID`. Det är **ortogonalt** mot OAuth.
+
+**Viktigt:** bara **en** process åt gången får köra **Gateway** med samma bot-token (t.ex. inte både din maskin och polarens med samma `DISCORD_BOT_TOKEN` + gateway-guilds — då konkurrerar de och anslutningen blir ostadig).
+
+## Musikbot (`discord-hub` + musik i webben)
+
+Webb + **discord-hub-api** räcker **inte** för kö/playback. Då behövs även **`discord-bot`** (samma repo, egen Node-process) som pratar med Discord-röst och exponerar HTTP på port **3012** (standard).
+
+1. **`MUSIC_BOT_HTTP_URL` i API-miljön** (t.ex. repots `.env` eller `apps/discord-hub-api/.env`):  
+   `http://127.0.0.1:3012` när bot och API körs lokalt på samma dator. Utan denna variabel svarar API med **503** / „Music bot not configured”.
+
+2. **Starta botten:** från roten `npm run dev:discord-bot` (eller `npm run bot:dev` / Docker enligt `docs/docker.md`). I terminalen ska den bli **Ready** och lyssna på musik-HTTP-porten.
+
+3. **`DATABASE_URL`** för **både** hub-api och discord-bot mot **samma** Postgres (kö + `now_playing` ligger i DB). Kör migrationer om det saknas tabeller.
+
+4. **`bots/discord-bot/.env`:** `DISCORD_BOT_TOKEN`, `DISCORD_APPLICATION_ID`, `DATABASE_URL` (samma som hubben). Valfritt: Spotify-nycklar om ni använder Spotify.
+
+5. **Röst i Discord:** användaren som köar musik ska vara **i en röstkanal**; bot-rollen behöver **Connect** + **Speak** (och ev. **Use Voice Activity**). På **Windows** med bot i **Docker Desktop** fungerar röst ofta **inte** (UDP/bridge) — kör botten med **`npm run dev:discord-bot` på värden** i stället, eller `discord-bot-host` på Linux/Pi (`docs/docker.md`).
+
+6. **`VITE_DISCORD_HUB_GUILD_ID`** i webbens `.env` måste vara er servers guild-id om musiksidan/widgeten ska veta vilken server det gäller.
+
+### Flera hubbar, en musikbot, olika Postgres på hub-api
+
+Kommandon (play/skip/…) går alltid till **discord-bot**. **Kö och nu spelas** läses också från **botens** databas när `MUSIC_BOT_HTTP_URL` är satt — då behöver hub-api **inte** dela `DATABASE_URL` med botten bara för att visa musik. Spellistor, voice-snapshot i DB m.m. följer fortfarande **respektive** hub-api:s Postgres om ni inte synkar den.
+
+**Discord Gateway** (live voice i hubben) tillåter **inte** två samtidiga anslutningar med **samma bot-token**. Låt bara **en** `discord-hub-api` köra med `DISCORD_GATEWAY_GUILD_IDS` satt; på övriga instanser: lämna gateway-listan tom (voice-widgeten blir begränsad men OAuth/musik via delad musikbot kan fungera).
+
+För att en **annan dator** ska nå musik-HTTP: sätt `MUSIC_BOT_HTTP_BIND=0.0.0.0` på bot-värden, öppna brandvägg till `MUSIC_BOT_HTTP_PORT`, och sätt polarens `MUSIC_BOT_HTTP_URL` till `http://<din-lan-ip>:3012` (byt port om ni ändrat den).
+
 ## Data & persistens
 
 När `DATABASE_URL` är satt:

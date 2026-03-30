@@ -31,6 +31,7 @@ Kopiera [`.env.example`](./.env.example) till **repo-roten** `.env` och/eller `a
 | `DISCORD_GATEWAY_INTENTS` | Valfritt. `minimal` (bara GUILDS), `voice` (GUILDS + GUILD_VOICE_STATES, standard), `presence` (inkl. GUILD_PRESENCES, **privileged**), eller decimalt bitmask. Se [Gateway intents](https://discord.com/developers/docs/topics/gateway#gateway-intents). |
 | `DISCORD_TOKEN_ENCRYPTION_KEY` | Valfritt. Minst 32 UTF-8 byte; dedikerad nyckel för krypterad OAuth-cookie (`discord_oauth_tokens`). |
 | `PORT` | Valfritt, standard `3001` (ska matcha Vite-proxyn i `discord-hub-web`). |
+| `MUSIC_BOT_HTTP_URL` | **Krävs för musik** i hubben (t.ex. `http://127.0.0.1:3012`). Bas-URL till `discord-bot`:s HTTP-server (`MUSIC_BOT_HTTP_PORT`, standard **3012**). Utan denna returnerar musik-endpoints 503 („Music bot not configured”). Bot-processen måste köra parallellt med API:t. |
 | `DATABASE_URL` | `postgresql://…` eller `postgres://…`. Krävs för Postgres-persistens. API:t verifierar anslutningen vid start. Se rot-`.env.example` och [docker.md](../../docs/docker.md#postgresql-på-workstation-lan). |
 
 ## Discord-applikation och bot (Fas 0 — drift)

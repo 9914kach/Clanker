@@ -1041,12 +1041,16 @@ function createApp(env: AppEnv) {
 
   // --- Music endpoints ---
 
+  function musicBotBaseUrl(): string {
+    return (env.musicBotHttpUrl ?? "").trim().replace(/\/$/, "");
+  }
+
   async function requireMusicBotUrl(c: Context): Promise<string | null> {
     if (!env.musicBotHttpUrl) {
       c.json({ error: "Music bot not configured" }, 503);
       return null;
     }
-    return env.musicBotHttpUrl;
+    return musicBotBaseUrl();
   }
 
   app.get("/api/bot/guild/:id/music", async (c) => {
@@ -1060,6 +1064,23 @@ function createApp(env: AppEnv) {
     }
     const access = await assertBotGuildAccess(env, session.sub, guildId);
     if (!access.ok) return c.json(access.body, access.status);
+
+    const botBase = musicBotBaseUrl();
+    if (botBase) {
+      try {
+        const res = await fetch(
+          `${botBase}/music/state?guildId=${encodeURIComponent(guildId)}`,
+        );
+        const json = (await res.json()) as Record<string, unknown>;
+        if (!res.ok) {
+          return c.json(json, res.status as 400 | 404 | 503);
+        }
+        return c.json(json);
+      } catch {
+        return c.json({ error: "Music bot unreachable" }, 503);
+      }
+    }
+
     const pool = getPool();
     if (!pool) return c.json({ error: "Database not available" }, 503);
 
@@ -1338,12 +1359,30 @@ function createApp(env: AppEnv) {
     }
     const access = await assertBotGuildAccess(env, session.sub, guildId);
     if (!access.ok) return c.json(access.body, access.status);
-    const pool = getPool();
-    if (!pool) return c.json({ error: "Database not available" }, 503);
     const itemId = Number(c.req.param("itemId"));
     if (!Number.isInteger(itemId) || itemId <= 0) {
       return c.json({ error: "Invalid item id" }, 400);
     }
+
+    const botBase = musicBotBaseUrl();
+    if (botBase) {
+      try {
+        const res = await fetch(
+          `${botBase}/music/queue/${itemId}?guildId=${encodeURIComponent(guildId)}`,
+          { method: "DELETE" },
+        );
+        const json = (await res.json()) as Record<string, unknown>;
+        if (!res.ok) {
+          return c.json(json, res.status as 400 | 404 | 503);
+        }
+        return c.json(json);
+      } catch {
+        return c.json({ error: "Music bot unreachable" }, 503);
+      }
+    }
+
+    const pool = getPool();
+    if (!pool) return c.json({ error: "Database not available" }, 503);
     const result = await pool.query(
       `DELETE FROM bot.music_queue WHERE id = $1 AND guild_id = $2`,
       [itemId, guildId],

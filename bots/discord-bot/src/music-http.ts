@@ -1,10 +1,13 @@
 import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
 import { type Client } from 'discord.js';
+import { getPool } from './db.js';
 import {
   enqueue, skip, previous, pause, resume, stop, seek, shuffleQueue,
   addTrackToPlaylist, playPlaylist,
 } from './music-player.js';
+
+const GUILD_SNOWFLAKE_RE = /^\d{5,32}$/;
 
 type PlayBody = { guildId: string; channelId: string; userId: string; query: string };
 
@@ -112,10 +115,60 @@ export function startMusicHttpServer(client: Client, port: number): void {
     return c.json({ ok: true });
   });
 
+  /** Hub-api proxies here so multiple hubs can show the same queue without sharing their own Postgres. */
+  app.get('/music/state', async (c) => {
+    const guildId = c.req.query('guildId')?.trim() ?? '';
+    if (!GUILD_SNOWFLAKE_RE.test(guildId)) {
+      return c.json({ error: 'Invalid guild id' }, 400);
+    }
+    const pool = getPool();
+    const [nowRes, queueRes] = await Promise.all([
+      pool.query(
+        `SELECT guild_id, track_url, title, artist, thumbnail, duration_sec, source,
+                requested_by, channel_id, is_paused, started_at, updated_at
+         FROM bot.music_now_playing WHERE guild_id = $1`,
+        [guildId],
+      ),
+      pool.query(
+        `SELECT id, track_url, title, artist, thumbnail, duration_sec, source,
+                requested_by, added_at
+         FROM bot.music_queue WHERE guild_id = $1 ORDER BY added_at`,
+        [guildId],
+      ),
+    ]);
+    return c.json({
+      now_playing: nowRes.rows[0] ?? null,
+      queue: queueRes.rows,
+      total_in_queue: queueRes.rowCount ?? 0,
+    });
+  });
+
+  app.delete('/music/queue/:itemId', async (c) => {
+    const guildId = c.req.query('guildId')?.trim() ?? '';
+    if (!GUILD_SNOWFLAKE_RE.test(guildId)) {
+      return c.json({ error: 'Invalid guild id' }, 400);
+    }
+    const itemId = Number(c.req.param('itemId'));
+    if (!Number.isInteger(itemId) || itemId <= 0) {
+      return c.json({ error: 'Invalid item id' }, 400);
+    }
+    const result = await getPool().query(
+      `DELETE FROM bot.music_queue WHERE id = $1 AND guild_id = $2`,
+      [itemId, guildId],
+    );
+    if ((result.rowCount ?? 0) === 0) {
+      return c.json({ error: 'Item not found' }, 404);
+    }
+    return c.json({ ok: true });
+  });
+
+  const bind =
+    process.env.MUSIC_BOT_HTTP_BIND?.trim() === '0.0.0.0' ? '0.0.0.0' : '127.0.0.1';
+
   const server = serve(
-    { fetch: app.fetch, port, hostname: '127.0.0.1' },
+    { fetch: app.fetch, port, hostname: bind },
     (info) => {
-      console.log(`[music-http] Listening on 127.0.0.1:${info.port}`);
+      console.log(`[music-http] Listening on ${bind}:${info.port}`);
     },
   );
 

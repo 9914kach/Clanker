@@ -21,6 +21,14 @@ import { getPool } from './db.js';
 const nodeRequire = createRequire(import.meta.url);
 const FFMPEG_STATIC_BIN = nodeRequire('ffmpeg-static') as string | null;
 
+/**
+ * prism-media (used by @discordjs/voice for `createAudioResource`) only looks at PATH / FFMPEG_PATH,
+ * not the ffmpeg-static package. On Windows, „FFmpeg/avconv not found” is common without this.
+ */
+if (FFMPEG_STATIC_BIN && existsSync(FFMPEG_STATIC_BIN) && !process.env.FFMPEG_PATH?.trim()) {
+  process.env.FFMPEG_PATH = FFMPEG_STATIC_BIN;
+}
+
 /** yt-dlp `--download-sections` start timestamp, e.g. *1:30-inf (from 90s to end). */
 function ytdlpDownloadSectionFromStartSec(startSec: number): string {
   const s = Math.max(0, Math.floor(startSec));
