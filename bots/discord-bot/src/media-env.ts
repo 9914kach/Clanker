@@ -1,5 +1,6 @@
 /**
- * Must load before `@discordjs/voice` so prism-media sees `FFMPEG_PATH` on first use.
+ * Load before `@discordjs/voice`: sets `FFMPEG_PATH` from env or `ffmpeg-static`.
+ * prism-media normally ignores env; `postinstall` patches it to honour `FFMPEG_PATH` first.
  * Also centralises yt-dlp path resolution (youtube-dl-exec postinstall often skipped / blocked).
  */
 import { existsSync } from 'node:fs';

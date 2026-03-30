@@ -121,7 +121,7 @@ Webb + **discord-hub-api** räcker **inte** för kö/playback. Då behövs även
 
 5. **Röst i Discord:** användaren som köar musik ska vara **i en röstkanal**; bot-rollen behöver **Connect** + **Speak** (och ev. **Use Voice Activity**). På **Windows** med bot i **Docker Desktop** fungerar röst ofta **inte** (UDP/bridge) — kör botten med **`npm run dev:discord-bot` på värden** i stället, eller `discord-bot-host` på Linux/Pi (`docs/docker.md`).
 
-6. **Windows / ny klon:** om du får **FFmpeg/avconv not found** eller **yt-dlp.exe ENOENT**: kör `npm install` i **monorepo-roten** (inte `--ignore-scripts`), dra senaste koden (modulen `media-env` sätter `FFMPEG_PATH` före voice), och vid behov `npm run rebuild:ytdlp -w discord-bot` för att ladda ner `yt-dlp`. Annars `winget install Gyan.FFmpeg` / `winget install yt-dlp` och sätt `FFMPEG_PATH` / `YTDLP_PATH` i `bots/discord-bot/.env`.
+6. **Windows / ny klon:** om du får **FFmpeg/avconv not found** eller **yt-dlp.exe ENOENT**: kör `npm install` i **monorepo-roten** (inte `--ignore-scripts`). Discord-bot kör då `scripts/patch-prism-ffmpeg-env.mjs` så att prism-media **använder** `FFMPEG_PATH` som `media-env` sätter från `ffmpeg-static` eller `.env`. Vid behov `npm run rebuild:ytdlp -w discord-bot` för `yt-dlp`. Om du måste använda `--ignore-scripts`: kör manuellt `node bots/discord-bot/scripts/patch-prism-ffmpeg-env.mjs` efter install. Alternativ: `winget install Gyan.FFmpeg` / `winget install yt-dlp` och sätt `FFMPEG_PATH` / `YTDLP_PATH` i `bots/discord-bot/.env`.
 
 7. **`VITE_DISCORD_HUB_GUILD_ID`** i webbens `.env` måste vara er servers guild-id om musiksidan/widgeten ska veta vilken server det gäller.
 

@@ -7,6 +7,7 @@
     "node": ">=22.12.0"
   },
   "scripts": {
+    "postinstall": "node scripts/patch-prism-ffmpeg-env.mjs",
     "predev": "npm run build --prefix ../../packages/hub-pg-migrate",
     "dev": "tsx watch src/index.ts",
     "prebuild": "npm run build --prefix ../../packages/hub-pg-migrate",

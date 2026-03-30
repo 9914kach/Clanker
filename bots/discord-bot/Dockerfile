@@ -6,6 +6,8 @@ WORKDIR /repo
 # Kopiera bara package-filer först — npm ci cachas så länge de inte ändras.
 COPY package.json package-lock.json ./
 COPY bots/discord-bot/package.json ./bots/discord-bot/
+# postinstall kör patch-prism-ffmpeg-env.mjs — måste finnas före npm ci.
+COPY bots/discord-bot/scripts ./bots/discord-bot/scripts
 COPY apps/discord-hub-api/package.json ./apps/discord-hub-api/
 COPY apps/discord-hub-web/package.json ./apps/discord-hub-web/
 COPY apps/dev-tools-web/package.json ./apps/dev-tools-web/
