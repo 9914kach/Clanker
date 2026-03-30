@@ -42,7 +42,7 @@ Det här repot håller på att flytta dashboard + route-paneler till en gemensam
 
 ## Miljövariabler
 
-Kopiera `.env.example` till `.env` i denna mapp vid behov. `VITE_API_URL` används när backend ligger på annan bas-URL; annars lämna tom och använd `/api` (Vite proxar till `127.0.0.1:3001` i utveckling). **`VITE_DISCORD_HUB_GUILD_ID`** (guild snowflake) aktiverar bot-/gateway-widgeten på dashboard; API måste ha `DISCORD_BOT_TOKEN` och ev. `DISCORD_HUB_ALLOWED_GUILD_IDS` / `DISCORD_GATEWAY_GUILD_IDS` — se [apps/discord-hub-api/README.md](../discord-hub-api/README.md).
+Kopiera `.env.example` till `.env` i denna mapp vid behov. `VITE_API_URL` används när backend ligger på annan bas-URL; annars lämna tom och använd `/api` (Vite proxar till `127.0.0.1:3001` i utveckling). **`VITE_DISCORD_HUB_GUILD_ID`** (guild snowflake) aktiverar bot-/gateway-widgeten på dashboard och live-röstkanaler på **Snurra hjulet** (`/tools/spin-the-wheel`); API måste ha `DISCORD_BOT_TOKEN`, Postgres med bot-snapshot (`guild_voice_states`) och ev. `DISCORD_HUB_ALLOWED_GUILD_IDS` / `DISCORD_GATEWAY_GUILD_IDS` — se [apps/discord-hub-api/README.md](../discord-hub-api/README.md).
 
 ## Produktion på Pi
 

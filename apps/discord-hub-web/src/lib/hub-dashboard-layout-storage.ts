@@ -1,4 +1,5 @@
 import { HUB_DESKTOP_LAYOUT_GRID, type HubDesktopWidgetLayout } from "@/lib/hub-desktop-layout";
+import { clampWidgetDimensions } from "@/lib/hub-widget-size-bounds";
 
 export const DASHBOARD_LAYOUT_KEY = "hub.dashboard.layout.v4";
 const LEGACY_DASHBOARD_LAYOUT_KEY = "hub.dashboard.layout.v3";
@@ -17,6 +18,7 @@ const DEFAULT_WIDGET_ORDER = [
   "chaos-meter",
   "voice-orbit",
   "neutralen-radio",
+  "music-player",
   "presence-radar",
   "ritual-console",
   "custom-modules",
@@ -30,6 +32,7 @@ const DEFAULT_HIDDEN_WIDGETS = [
   "chaos-meter",
   "voice-orbit",
   "neutralen-radio",
+  "music-player",
   "presence-radar",
   "ritual-console",
   "custom-modules",
@@ -42,12 +45,13 @@ export const DEFAULT_WIDGET_LAYOUTS: Record<string, HubDesktopWidgetLayout> = {
   "chaos-meter": { x: 0, y: HUB_DESKTOP_LAYOUT_GRID, w: HUB_DESKTOP_LAYOUT_GRID, h: HUB_DESKTOP_LAYOUT_GRID, z: 4, hidden: true },
   "voice-orbit": { x: HUB_DESKTOP_LAYOUT_GRID, y: HUB_DESKTOP_LAYOUT_GRID, w: HUB_DESKTOP_LAYOUT_GRID, h: HUB_DESKTOP_LAYOUT_GRID, z: 5, hidden: true },
   "neutralen-radio": { x: 2 * HUB_DESKTOP_LAYOUT_GRID, y: HUB_DESKTOP_LAYOUT_GRID, w: HUB_DESKTOP_LAYOUT_GRID, h: HUB_DESKTOP_LAYOUT_GRID, z: 6, hidden: true },
-  "mood-clock": { x: 0, y: 2 * HUB_DESKTOP_LAYOUT_GRID, w: HUB_DESKTOP_LAYOUT_GRID, h: HUB_DESKTOP_LAYOUT_GRID, z: 7, hidden: true },
-  "lore-quote": { x: HUB_DESKTOP_LAYOUT_GRID, y: 2 * HUB_DESKTOP_LAYOUT_GRID, w: HUB_DESKTOP_LAYOUT_GRID, h: HUB_DESKTOP_LAYOUT_GRID, z: 8, hidden: true },
-  "discord-wiretap": { x: 2 * HUB_DESKTOP_LAYOUT_GRID, y: 2 * HUB_DESKTOP_LAYOUT_GRID, w: HUB_DESKTOP_LAYOUT_GRID, h: HUB_DESKTOP_LAYOUT_GRID, z: 9, hidden: true },
-  "presence-radar": { x: 0, y: 3 * HUB_DESKTOP_LAYOUT_GRID, w: HUB_DESKTOP_LAYOUT_GRID, h: HUB_DESKTOP_LAYOUT_GRID, z: 10, hidden: true },
-  "ritual-console": { x: HUB_DESKTOP_LAYOUT_GRID, y: 3 * HUB_DESKTOP_LAYOUT_GRID, w: HUB_DESKTOP_LAYOUT_GRID, h: HUB_DESKTOP_LAYOUT_GRID, z: 11, hidden: true },
-  "custom-modules": { x: 2 * HUB_DESKTOP_LAYOUT_GRID, y: 3 * HUB_DESKTOP_LAYOUT_GRID, w: HUB_DESKTOP_LAYOUT_GRID, h: HUB_DESKTOP_LAYOUT_GRID, z: 12, hidden: true },
+  "music-player": { x: 0, y: 2 * HUB_DESKTOP_LAYOUT_GRID, w: HUB_DESKTOP_LAYOUT_GRID, h: HUB_DESKTOP_LAYOUT_GRID, z: 7, hidden: true },
+  "mood-clock": { x: HUB_DESKTOP_LAYOUT_GRID, y: 2 * HUB_DESKTOP_LAYOUT_GRID, w: HUB_DESKTOP_LAYOUT_GRID, h: HUB_DESKTOP_LAYOUT_GRID, z: 8, hidden: true },
+  "lore-quote": { x: 2 * HUB_DESKTOP_LAYOUT_GRID, y: 2 * HUB_DESKTOP_LAYOUT_GRID, w: HUB_DESKTOP_LAYOUT_GRID, h: HUB_DESKTOP_LAYOUT_GRID, z: 9, hidden: true },
+  "discord-wiretap": { x: 0, y: 3 * HUB_DESKTOP_LAYOUT_GRID, w: HUB_DESKTOP_LAYOUT_GRID, h: HUB_DESKTOP_LAYOUT_GRID, z: 10, hidden: true },
+  "presence-radar": { x: HUB_DESKTOP_LAYOUT_GRID, y: 3 * HUB_DESKTOP_LAYOUT_GRID, w: HUB_DESKTOP_LAYOUT_GRID, h: HUB_DESKTOP_LAYOUT_GRID, z: 11, hidden: true },
+  "ritual-console": { x: 2 * HUB_DESKTOP_LAYOUT_GRID, y: 3 * HUB_DESKTOP_LAYOUT_GRID, w: HUB_DESKTOP_LAYOUT_GRID, h: HUB_DESKTOP_LAYOUT_GRID, z: 12, hidden: true },
+  "custom-modules": { x: 0, y: 4 * HUB_DESKTOP_LAYOUT_GRID, w: HUB_DESKTOP_LAYOUT_GRID, h: HUB_DESKTOP_LAYOUT_GRID, z: 13, hidden: true },
 };
 
 type HubDashboardLayoutV4 = {
@@ -164,11 +168,14 @@ export function normalizeDesktopLayoutRecord(
         continue;
       }
       const value = normalizePossiblyOverscaledValueSet(candidate as Partial<HubDesktopWidgetLayout>);
+      const wRaw = clampPx(value.w, defaults.w, 120);
+      const hRaw = clampPx(value.h, defaults.h, 100);
+      const { w, h } = clampWidgetDimensions(id, wRaw, hRaw);
       result[id] = {
         x: clampPx(value.x, defaults.x, 0),
         y: clampPx(value.y, defaults.y, 0),
-        w: clampPx(value.w, defaults.w, 120),
-        h: clampPx(value.h, defaults.h, 100),
+        w,
+        h,
         z: Number.isFinite(value.z) ? Number(value.z) : defaults.z,
         hidden: typeof value.hidden === "boolean" ? value.hidden : defaults.hidden,
       };
@@ -181,11 +188,14 @@ export function normalizeDesktopLayoutRecord(
       }
       const value = normalizePossiblyOverscaledValueSet(candidate as Partial<HubDesktopWidgetLayout>);
       if (Number.isFinite(value.x) && Number.isFinite(value.y) && Number.isFinite(value.w) && Number.isFinite(value.h)) {
+        const wRaw = clampPx(value.w, 120, 120);
+        const hRaw = clampPx(value.h, 100, 100);
+        const { w, h } = clampWidgetDimensions(id, wRaw, hRaw);
         result[id] = {
           x: clampPx(value.x, 0, 0),
           y: clampPx(value.y, 0, 0),
-          w: clampPx(value.w, 120, 120),
-          h: clampPx(value.h, 100, 100),
+          w,
+          h,
           z: Number.isFinite(value.z) ? Number(value.z) : 1,
           hidden: typeof value.hidden === "boolean" ? value.hidden : false,
         };

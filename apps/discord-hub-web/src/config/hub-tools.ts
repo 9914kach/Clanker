@@ -1,5 +1,5 @@
 import type { ComponentType } from "react";
-import { Dices, Home, Settings, UserRound } from "lucide-react";
+import { Dices, Home, Music, Settings, UserRound } from "lucide-react";
 import type { HubCopy } from "@/i18n/hub-copy";
 
 export type HubToolTone = "useful" | "social" | "chaos";
@@ -31,6 +31,14 @@ export const HUB_TOOLS: readonly HubTool[] = [
     icon: Dices,
   },
   {
+    id: "music",
+    label: "Music",
+    description: "Queue manager for the Discord music bot.",
+    path: "/tools/music",
+    tone: ["social", "useful"],
+    icon: Music,
+  },
+  {
     id: "profile-settings",
     label: "Settings",
     description: "Tweak your vibe and integrations.",
@@ -59,7 +67,9 @@ export function localizeHubTools(copy: HubCopy): HubTool[] {
         ? copy.tools.dashboard
         : tool.id === "spin-the-wheel"
           ? copy.tools.spinTheWheel
-          : copy.tools.profileSettings;
+          : tool.id === "music"
+            ? copy.tools.music
+            : copy.tools.profileSettings;
     return {
       ...tool,
       label: localized.label,

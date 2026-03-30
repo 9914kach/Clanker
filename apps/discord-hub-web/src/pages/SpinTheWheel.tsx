@@ -1,6 +1,8 @@
-import { type ComponentType, useCallback, useEffect, useMemo, useState } from "react";
+import { type ComponentType, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import confetti from "canvas-confetti";
+import { motion, useReducedMotion } from "framer-motion";
 import { Navigate } from "react-router-dom";
-import { ChevronDown, ChevronRight, History, Radio, Settings2, Users } from "lucide-react";
+import { ChevronDown, ChevronRight, History, MicVocal, Radio, Settings2, SlidersHorizontal, Users } from "lucide-react";
 import { Badge } from "@clanker/ui/components/badge";
 import { Button } from "@clanker/ui/components/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@clanker/ui/components/card";
@@ -15,6 +17,14 @@ import {
 import { Input } from "@clanker/ui/components/input";
 import { Switch } from "@clanker/ui/components/switch";
 import { Textarea } from "@clanker/ui/components/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@clanker/ui/components/dialog";
 import { useHubAudio } from "@/components/HubAudioProvider";
 import SpinWheel from "@/components/SpinWheel";
 import { useHubToasts } from "@/components/HubToastProvider";
@@ -35,6 +45,43 @@ type ApiWheelGroup = {
 };
 
 const DRAFT_KEY = "hub.spinTheWheel.draft.v1";
+
+const HUB_GUILD_ID = import.meta.env.VITE_DISCORD_HUB_GUILD_ID?.trim() ?? "";
+
+const VOICE_MEMBER_PREVIEW = 5;
+
+type VoiceStateMember = {
+  user_id: string;
+  channel_id: string;
+  channel_name: string | null;
+  username: string;
+  global_name: string | null;
+};
+
+type VoiceStateChannel = {
+  channel_id: string;
+  channel_name: string | null;
+  members: VoiceStateMember[];
+};
+
+type VoiceStatesResponse = {
+  guild_id: string;
+  channels: VoiceStateChannel[];
+  total_users: number;
+};
+
+function voiceMemberDisplayName(m: VoiceStateMember): string {
+  const g = m.global_name?.trim();
+  if (g) return g;
+  const u = m.username?.trim();
+  if (u) return u;
+  return m.user_id;
+}
+
+function voiceChannelLabel(ch: VoiceStateChannel, unnamed: string): string {
+  const n = ch.channel_name?.trim();
+  return n || unnamed;
+}
 
 type ApiWheelSession = {
   id: string;
@@ -80,11 +127,23 @@ function computeRotationForWinner(
   }
 
   const sliceDeg = 360 / participantCount;
-  const normalizedTarget = (((-(winnerIndex + 0.5) * sliceDeg) % 360) + 360) % 360;
+  /* Pointer sits at 3 o'clock (90° CW from top); slice centers are (i+0.5)*sliceDeg from top */
+  const normalizedTarget = (((90 - (winnerIndex + 0.5) * sliceDeg) % 360) + 360) % 360;
   const currentNorm = (((currentRotation % 360) + 360) % 360) % 360;
   let delta = normalizedTarget - currentNorm;
   if (delta < 0) delta += 360;
   return currentRotation + extraSpins * 360 + delta;
+}
+
+const MIN_SLICES_FOR_TEASE = 4;
+const TEASE_CHANCE = 0.12;
+const WOBBLE_CHANCE = 0.18;
+const VICTORY_CHANCE = 0.13;
+
+function pickTeaseDisplayIndex(winnerIndex: number, count: number, rng: () => number): number {
+  const maxSpan = Math.max(1, count - 1);
+  const span = 1 + Math.floor(rng() * maxSpan);
+  return (winnerIndex + span) % count;
 }
 
 function SectionToggle(props: {
@@ -126,6 +185,7 @@ export default function SpinTheWheelPage() {
   const { me } = useHubLayout();
   const toasts = useHubToasts();
   const { play } = useHubAudio();
+  const reducedMotion = useReducedMotion() ?? false;
 
   const [rawParticipants, setRawParticipants] = useState("");
   const participants = useMemo(() => normalizeParticipants(rawParticipants), [rawParticipants]);
@@ -141,7 +201,6 @@ export default function SpinTheWheelPage() {
   const [rotationDeg, setRotationDeg] = useState(0);
   const [spinning, setSpinning] = useState(false);
   const [highlightIndex, setHighlightIndex] = useState<number | null>(null);
-  const [winnerName, setWinnerName] = useState<string | null>(null);
   const [teams, setTeams] = useState<string[][]>([]);
 
   const [groups, setGroups] = useState<ApiWheelGroup[]>([]);
@@ -160,6 +219,23 @@ export default function SpinTheWheelPage() {
   const [isSavedGroupsOpen, setIsSavedGroupsOpen] = useState(false);
   const [isSessionsOpen, setIsSessionsOpen] = useState(false);
   const [isRealtimeOpen, setIsRealtimeOpen] = useState(false);
+  const [isRulesOpen, setIsRulesOpen] = useState(false);
+  const [celebrationWinner, setCelebrationWinner] = useState<string | null>(null);
+
+  const [voiceStates, setVoiceStates] = useState<VoiceStatesResponse | null>(null);
+  const [voiceFetchPending, setVoiceFetchPending] = useState(false);
+  const [voiceFetchError, setVoiceFetchError] = useState<string | null>(null);
+  const voiceFirstFetchDoneRef = useRef(false);
+
+  /** Set when a spin starts; read on wheel animation end (avoids stale participants / highlightIndex). */
+  const spinResultRef = useRef<{ index: number; names: readonly string[] } | null>(null);
+
+  /** Two-leg “fake stop then roll back” (local spins only). */
+  const spinTeaseLegRef = useRef<"idle" | "tease_main" | "wobble_main" | "victory_main" | "resolve">("idle");
+  const spinTeasePayloadRef = useRef<{ rFinal: number; rFake?: number; backDeg?: number } | null>(null);
+  const [spinResolveKeyframes, setSpinResolveKeyframes] = useState<number[] | null>(null);
+  const [spinResolveKeyframeTimes, setSpinResolveKeyframeTimes] = useState<number[] | null>(null);
+  const [spinResolveKeyframeDuration, setSpinResolveKeyframeDuration] = useState<number | null>(null);
 
   const collabDraft = useMemo(
     () =>
@@ -188,7 +264,7 @@ export default function SpinTheWheelPage() {
         action.winner !== null ? action.participants.indexOf(action.winner) : -1;
 
       if (action.kind === "spin" && winnerIndex >= 0) {
-        setWinnerName(null);
+        spinResultRef.current = { index: winnerIndex, names: [...action.participants] };
         setHighlightIndex(winnerIndex);
         setSpinning(true);
         setRotationDeg((prev) =>
@@ -197,7 +273,6 @@ export default function SpinTheWheelPage() {
       } else {
         setSpinning(false);
         setHighlightIndex(winnerIndex >= 0 ? winnerIndex : null);
-        setWinnerName(action.winner);
       }
 
       if (me.status === "user" && action.triggeredById !== me.profile.id) {
@@ -287,6 +362,52 @@ export default function SpinTheWheelPage() {
   }, [me.status, refreshGroups, refreshSessions]);
 
   useEffect(() => {
+    if (me.status !== "user" || !HUB_GUILD_ID) return;
+
+    let cancelled = false;
+
+    async function fetchVoiceStates() {
+      if (!voiceFirstFetchDoneRef.current) setVoiceFetchPending(true);
+      try {
+        const res = await fetch(
+          apiUrl(`/api/bot/guild/${encodeURIComponent(HUB_GUILD_ID)}/voice-states`),
+          { credentials: "include" },
+        );
+        if (!res.ok) {
+          const msg = await readApiError(res);
+          if (!cancelled) {
+            setVoiceFetchError(msg);
+            if (!voiceFirstFetchDoneRef.current) setVoiceStates(null);
+          }
+          return;
+        }
+        const data = (await res.json()) as VoiceStatesResponse;
+        if (!cancelled) {
+          setVoiceStates(data);
+          setVoiceFetchError(null);
+        }
+      } catch {
+        if (!cancelled) {
+          setVoiceFetchError(w.voiceChannelsError);
+          if (!voiceFirstFetchDoneRef.current) setVoiceStates(null);
+        }
+      } finally {
+        if (!cancelled && !voiceFirstFetchDoneRef.current) {
+          voiceFirstFetchDoneRef.current = true;
+          setVoiceFetchPending(false);
+        }
+      }
+    }
+
+    void fetchVoiceStates();
+    const timer = window.setInterval(() => void fetchVoiceStates(), 5_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [me.status, w.voiceChannelsError]);
+
+  useEffect(() => {
     localStorage.setItem(
       DRAFT_KEY,
       JSON.stringify({ rawParticipants, teamCount, teamMode, seed }),
@@ -306,6 +427,12 @@ export default function SpinTheWheelPage() {
     (opts: { alsoMakeTeams: boolean }) => {
       if (!isReady || spinning) return;
 
+      setSpinResolveKeyframes(null);
+      setSpinResolveKeyframeTimes(null);
+      setSpinResolveKeyframeDuration(null);
+      spinTeaseLegRef.current = "idle";
+      spinTeasePayloadRef.current = null;
+
       const seedForAction = seed.trim() ? seed.trim() : makeSeed();
       const nextSpinSalt = spinSalt + 1;
       const nextShuffleSalt = shuffleSalt;
@@ -316,20 +443,43 @@ export default function SpinTheWheelPage() {
       const winnerIndex = pickIndex(participants.length, rng);
       setHighlightIndex(winnerIndex);
       const extraSpins = 6 + Math.floor(rng() * 4);
-      const finalRotation = computeRotationForWinner(
+      const rFinal = computeRotationForWinner(
         rotationDeg,
         winnerIndex,
         participants.length,
         extraSpins,
       );
 
+      const n = participants.length;
+      const tryTease = n >= MIN_SLICES_FOR_TEASE && rng() < TEASE_CHANCE;
+      const tryWobble = !tryTease && rng() < WOBBLE_CHANCE;
+      const tryVictory = !tryTease && !tryWobble && rng() < VICTORY_CHANCE;
+      let firstLegRotation = rFinal;
+      if (tryTease) {
+        const teaseIdx = pickTeaseDisplayIndex(winnerIndex, n, rng);
+        if (teaseIdx !== winnerIndex) {
+          const rFake = computeRotationForWinner(rotationDeg, teaseIdx, n, extraSpins);
+          const sliceDeg = 360 / n;
+          const backSteps = 1 + Math.floor(rng() * 3);
+          spinTeaseLegRef.current = "tease_main";
+          spinTeasePayloadRef.current = { rFinal, rFake, backDeg: backSteps * sliceDeg };
+          firstLegRotation = rFake;
+        }
+      } else if (tryWobble) {
+        spinTeaseLegRef.current = "wobble_main";
+        spinTeasePayloadRef.current = { rFinal };
+      } else if (tryVictory) {
+        spinTeaseLegRef.current = "victory_main";
+        spinTeasePayloadRef.current = { rFinal };
+      }
+
       let actionTeams: string[][] = [];
       let actionSeedUsed = seedForAction;
       const winner = participants[winnerIndex] ?? null;
 
-      setWinnerName(null);
+      spinResultRef.current = { index: winnerIndex, names: [...participants] };
       setSpinning(true);
-      setRotationDeg(finalRotation);
+      setRotationDeg(firstLegRotation);
 
       if (opts.alsoMakeTeams) {
         const { seedUsed: used, teams: nextTeams } = buildTeams({
@@ -419,13 +569,65 @@ export default function SpinTheWheelPage() {
     ],
   );
 
-  const onWheelAnimationComplete = useCallback(() => {
-    if (!spinning) return;
+  const celebrate = useCallback(() => {
+    setSpinResolveKeyframes(null);
+    setSpinResolveKeyframeTimes(null);
+    setSpinResolveKeyframeDuration(null);
+    const snap = spinResultRef.current;
+    if (!snap) return;
+    const picked = snap.names[snap.index];
+    spinResultRef.current = null;
     setSpinning(false);
-    if (highlightIndex !== null && participants[highlightIndex]) {
-      setWinnerName(participants[highlightIndex]!);
+    if (typeof picked === "string" && picked.trim().length > 0) {
+      setCelebrationWinner(picked);
     }
-  }, [highlightIndex, participants, spinning]);
+  }, []);
+
+  const onWheelAnimationComplete = useCallback(() => {
+    const state = spinTeaseLegRef.current;
+    const p = spinTeasePayloadRef.current;
+
+    if (state === "tease_main" && p?.rFake !== undefined && p.backDeg !== undefined) {
+      spinTeasePayloadRef.current = null;
+      spinTeaseLegRef.current = "resolve";
+      play("chaos");
+      setSpinResolveKeyframes([p.rFake, p.rFake - p.backDeg, p.rFinal]);
+      setSpinResolveKeyframeTimes([0, 0.44, 1]);
+      setSpinResolveKeyframeDuration(1.12);
+      setRotationDeg(p.rFinal);
+      return;
+    }
+
+    if (state === "wobble_main" && p) {
+      spinTeasePayloadRef.current = null;
+      spinTeaseLegRef.current = "resolve";
+      play("chaos");
+      const w = 28;
+      setSpinResolveKeyframes([p.rFinal + w, p.rFinal - w * 0.65, p.rFinal + w * 0.28, p.rFinal - w * 0.10, p.rFinal]);
+      setSpinResolveKeyframeTimes([0, 0.22, 0.50, 0.76, 1.0]);
+      setSpinResolveKeyframeDuration(1.9);
+      return;
+    }
+
+    if (state === "victory_main" && p) {
+      spinTeasePayloadRef.current = null;
+      spinTeaseLegRef.current = "resolve";
+      play("confirm");
+      setSpinResolveKeyframes([p.rFinal, p.rFinal + 360]);
+      setSpinResolveKeyframeTimes([0, 1]);
+      setSpinResolveKeyframeDuration(1.5);
+      setRotationDeg(p.rFinal + 360);
+      return;
+    }
+
+    if (state === "resolve") {
+      spinTeaseLegRef.current = "idle";
+      celebrate();
+      return;
+    }
+
+    celebrate();
+  }, [play, celebrate]);
 
   const reshuffleTeams = useCallback(() => {
     if (participants.length === 0) return;
@@ -599,6 +801,51 @@ export default function SpinTheWheelPage() {
     [participants],
   );
 
+  const dismissCelebration = useCallback(() => setCelebrationWinner(null), []);
+
+  const celebrationRemoveWinner = useCallback(() => {
+    if (!celebrationWinner) return;
+    const name = celebrationWinner;
+    removeParticipant(name);
+    setHighlightIndex(null);
+    setCelebrationWinner(null);
+  }, [celebrationWinner, removeParticipant]);
+
+  useEffect(() => {
+    if (!celebrationWinner) return;
+    if (reducedMotion) {
+      play("confirm");
+      return;
+    }
+    play("chaos");
+    const palette = ["#facc15", "#dc2626", "#2563eb", "#16a34a", "#a855f7"];
+    const t0 = window.setTimeout(() => {
+      void confetti({ particleCount: 115, spread: 84, origin: { y: 0.52 }, ticks: 320, colors: palette });
+    }, 40);
+    const t1 = window.setTimeout(() => {
+      void confetti({
+        particleCount: 48,
+        angle: 55,
+        spread: 52,
+        origin: { x: 0.06, y: 0.64 },
+        startVelocity: 40,
+        colors: palette,
+      });
+      void confetti({
+        particleCount: 48,
+        angle: 125,
+        spread: 52,
+        origin: { x: 0.94, y: 0.64 },
+        startVelocity: 40,
+        colors: palette,
+      });
+    }, 280);
+    return () => {
+      window.clearTimeout(t0);
+      window.clearTimeout(t1);
+    };
+  }, [celebrationWinner, play, reducedMotion]);
+
   const toggleCursed = useCallback(
     (name: string) => {
       setCursedNames((prev) => {
@@ -622,11 +869,51 @@ export default function SpinTheWheelPage() {
     setGroupName("");
   }, []);
 
+  const activeVoiceChannels = useMemo(() => {
+    if (!voiceStates?.channels.length) return [];
+    const withPeople = voiceStates.channels.filter((c) => c.members.length > 0);
+    return [...withPeople].sort((a, b) => {
+      const an = a.channel_name?.trim() || a.channel_id;
+      const bn = b.channel_name?.trim() || b.channel_id;
+      return an.localeCompare(bn, undefined, { sensitivity: "base" });
+    });
+  }, [voiceStates]);
+
+  const applyVoiceChannel = useCallback(
+    (ch: VoiceStateChannel, opts?: { silent?: boolean }) => {
+      const names = ch.members.map(voiceMemberDisplayName);
+      const label = voiceChannelLabel(ch, w.voiceChannelUnnamed);
+      setRawParticipants(names.join("\n"));
+      clearSelectedGroup();
+      setHighlightIndex(null);
+      setTeams([]);
+      if (!opts?.silent) {
+        toasts.push({
+          kind: "success",
+          title: tt.voiceFillTitle,
+          message: tt.voiceFillMessage(label, names.length),
+        });
+      }
+    },
+    [clearSelectedGroup, toasts, tt.voiceFillMessage, tt.voiceFillTitle, w.voiceChannelUnnamed],
+  );
+
+  useEffect(() => {
+    if (me.status !== "user") return;
+    if (!HUB_GUILD_ID) return;
+    if (normalizeParticipants(rawParticipants).length > 0) return;
+    if (activeVoiceChannels.length === 0) return;
+
+    const uid = me.profile.id;
+    const inChannel = activeVoiceChannels.find((ch) => ch.members.some((m) => m.user_id === uid));
+    const chosen = inChannel ?? activeVoiceChannels[0]!;
+    applyVoiceChannel(chosen, { silent: true });
+  }, [me, rawParticipants, activeVoiceChannels, applyVoiceChannel]);
+
   const loadGroup = useCallback((group: ApiWheelGroup) => {
     setSelectedGroupId(group.id);
     setGroupName(group.name);
     setRawParticipants(group.participants.join("\n"));
-    setWinnerName(null);
     setHighlightIndex(null);
     setTeams([]);
   }, []);
@@ -639,7 +926,6 @@ export default function SpinTheWheelPage() {
     setSeed(s.seed ?? "");
     setSeedUsed(s.seed ?? null);
     setTeams(s.teams);
-    setWinnerName(s.winner);
     if (s.winner) {
       const idx = s.participants.indexOf(s.winner);
       setHighlightIndex(idx >= 0 ? idx : null);
@@ -745,41 +1031,20 @@ export default function SpinTheWheelPage() {
     }
   }, [toasts, tt.backendUnreachable]);
 
-  const heroStatus = winnerName
-    ? winnerName
-    : highlightIndex !== null && spinning
-      ? w.spinning
-      : participants.length === 0
-        ? w.addParticipantsHint
-        : w.noneYet;
   const advancedSummary = seed.trim() ? `${w.seedLabel}: ${seed.trim()}` : w.seedEmptyHint;
   const realtimeSummary = collabEnabled
     ? `${w.presenceCount(collab.presence.length)}`
     : w.collabDesc;
 
-  if (me.status === "loading") return <div>{w.loading}</div>;
+  if (me.status === "loading") return <div className="pt-4 md:pt-6">{w.loading}</div>;
   if (me.status === "guest") return <Navigate to="/login" replace />;
-  if (me.status === "backend_error") return <div>{w.backendError}</div>;
+  if (me.status === "backend_error") return <div className="pt-4 md:pt-6">{w.backendError}</div>;
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-semibold tracking-tight">{w.pageTitle}</h1>
-          <p className="max-w-2xl text-sm text-muted-foreground">{w.wheelDesc}</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge variant={collab.connected ? "secondary" : "outline"}>
-            {w.collabTitle}: {collab.connected ? w.collabConnected : collab.status}
-          </Badge>
-          {collab.synced ? <Badge variant="outline">{w.collabSynced}</Badge> : null}
-          {selectedGroupId ? <Badge variant="outline">{w.selectedGroup} {groupName || selectedGroupId}</Badge> : null}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(22rem,0.82fr)_minmax(0,1.38fr)]">
-        <Card className="order-2 gap-4 border-border/70 bg-card/70 xl:order-1">
-          <CardHeader className="gap-3">
+    <div className="flex min-h-0 flex-col gap-4 pt-2 md:gap-5 md:pt-3">
+      <div className="grid grid-cols-1 gap-4 sm:gap-6 xl:grid-cols-[minmax(15rem,22rem)_minmax(0,1fr)] xl:items-start xl:gap-6">
+        <Card className="order-2 gap-3 border-border/70 bg-card/70 xl:order-1 xl:max-w-[22rem] xl:justify-self-stretch">
+          <CardHeader className="gap-2 pb-2">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <CardTitle>{w.participantsTitle}</CardTitle>
@@ -793,12 +1058,12 @@ export default function SpinTheWheelPage() {
               </div>
             ) : null}
           </CardHeader>
-          <CardContent className="flex flex-col gap-4">
+          <CardContent className="flex flex-col gap-3">
             <Textarea
               value={rawParticipants}
               onChange={(e) => setRawParticipants(e.target.value)}
-              rows={9}
-              className={[inputClassName(), "min-h-[14rem] bg-background/40"].join(" ")}
+              rows={5}
+              className={[inputClassName(), "min-h-[9rem] bg-background/40 text-sm xl:min-h-[8rem]"].join(" ")}
               placeholder={w.participantsTextareaPlaceholder}
             />
 
@@ -822,6 +1087,65 @@ export default function SpinTheWheelPage() {
               ) : null}
             </div>
 
+            {HUB_GUILD_ID ? (
+              <div className="rounded-xl border border-border/60 bg-background/25 p-3">
+                <div className="mb-2 flex items-start gap-2">
+                  <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border/50 bg-background/50">
+                    <MicVocal className="size-4 text-muted-foreground" aria-hidden />
+                  </span>
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium leading-tight">{w.voiceChannelsTitle}</div>
+                  </div>
+                </div>
+                {voiceFetchPending ? (
+                  <p className="text-xs text-muted-foreground">{w.voiceChannelsLoading}</p>
+                ) : voiceFetchError && !voiceStates ? (
+                  <p className="text-xs text-destructive">{voiceFetchError}</p>
+                ) : activeVoiceChannels.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">{w.voiceChannelsEmpty}</p>
+                ) : (
+                  <>
+                    {voiceFetchError ? (
+                      <p className="mb-2 text-xs text-warning">{voiceFetchError}</p>
+                    ) : null}
+                    <ul className="max-h-48 space-y-1.5 overflow-y-auto overscroll-contain pr-0.5">
+                      {activeVoiceChannels.map((ch) => {
+                        const label = voiceChannelLabel(ch, w.voiceChannelUnnamed);
+                        const previewNames = ch.members
+                          .slice(0, VOICE_MEMBER_PREVIEW)
+                          .map(voiceMemberDisplayName);
+                        const rest = ch.members.length - previewNames.length;
+                        const previewLine =
+                          rest > 0
+                            ? `${previewNames.join(", ")} ${w.voiceChannelMore(rest)}`
+                            : previewNames.join(", ");
+                        return (
+                          <li key={ch.channel_id}>
+                            <button
+                              type="button"
+                              onClick={() => applyVoiceChannel(ch)}
+                              className={[
+                                "w-full rounded-lg border border-border/50 bg-background/40 px-3 py-2 text-left transition",
+                                "hover:border-border hover:bg-muted/35 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                              ].join(" ")}
+                              aria-label={`${w.voiceChannelsTitle}: ${label}, ${ch.members.length}`}
+                            >
+                              <div className="truncate font-medium text-foreground">{label}</div>
+                              <div className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+                                {previewLine}
+                              </div>
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">{w.voiceChannelsGuildHint}</p>
+            )}
+
             {participants.length > 0 ? (
               <div className="flex flex-wrap gap-2">
                 {participants.map((p) => (
@@ -839,7 +1163,7 @@ export default function SpinTheWheelPage() {
                         ].join(" ")}
                         title={w.participantChipTitle}
                       >
-                        <span className="max-w-[16rem] truncate">{p}</span>
+                        <span className="max-w-[11rem] truncate">{p}</span>
                         <span className="text-muted-foreground">x</span>
                       </button>
                     </ContextMenuTrigger>
@@ -882,92 +1206,33 @@ export default function SpinTheWheelPage() {
           </CardContent>
         </Card>
 
-        <section className="order-1 xl:order-2">
-          <div className="relative overflow-hidden rounded-[2rem] border border-sky-200/15 bg-[radial-gradient(circle_at_top,rgba(96,165,250,0.26),transparent_36%),radial-gradient(circle_at_bottom,rgba(251,191,36,0.18),transparent_32%),linear-gradient(180deg,#050b16_0%,#081120_55%,#060b14_100%)] p-5 shadow-[0_26px_80px_rgba(2,6,23,0.55)] sm:p-7 xl:min-h-[52rem]">
-            <div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-[radial-gradient(circle_at_top,rgba(191,219,254,0.22),transparent_70%)]" />
-            <div className="relative flex h-full flex-col gap-6">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <div className="text-xs font-semibold uppercase tracking-[0.24em] text-sky-100/60">{w.wheelTitle}</div>
-                  <div className="mt-2 text-sm text-slate-300/82">{w.pageSubtitle}</div>
-                </div>
-                <Badge className="border-sky-200/20 bg-slate-950/40 text-sky-50 hover:bg-slate-950/40" variant="outline">
-                  {participants.length === 0 ? w.noParticipants : w.participantCount(participants.length)}
-                </Badge>
+        <section className="order-1 min-w-0 self-start xl:order-2">
+          <div className="flex w-full min-w-0 flex-col gap-3 rounded-[2rem] p-1 sm:gap-4 sm:p-2">
+            <div className="flex justify-center rounded-[1.75rem] px-1 pt-1 pb-0 sm:px-2 sm:pt-2 xl:px-3 xl:pt-3">
+              <div className="aspect-square w-full max-w-[min(100%,52rem,calc(100dvh-10.5rem))] shrink-0 sm:max-w-[min(100%,54rem,calc(100dvh-11rem))] xl:max-w-[min(100%,56rem,calc(100dvh-11.5rem))]">
+                <SpinWheel
+                  participants={participants}
+                  emptySliceLabel={w.wheelEmptySliceLabel}
+                  rotationDeg={rotationDeg}
+                  spinning={spinning}
+                  highlightIndex={highlightIndex}
+                  resolveKeyframes={spinResolveKeyframes}
+                  resolveKeyframeTimes={spinResolveKeyframeTimes}
+                  resolveKeyframeDuration={spinResolveKeyframeDuration}
+                  onAnimationComplete={onWheelAnimationComplete}
+                  onSpinRequest={() => runSpin({ alsoMakeTeams: false })}
+                  spinDisabled={!isReady || spinning}
+                  spinAriaLabel={w.wheelSpinAria}
+                  className="size-full max-w-none"
+                />
               </div>
+            </div>
 
-              <div className="flex flex-1 items-center justify-center rounded-[1.75rem] border border-white/8 bg-[radial-gradient(circle_at_top,rgba(148,163,184,0.12),transparent_50%)] px-4 py-6 sm:px-6 xl:px-10">
-                {participants.length === 0 ? (
-                  <div className="flex min-h-[24rem] w-full items-center justify-center rounded-[1.5rem] border border-dashed border-white/10 bg-slate-950/25 px-6 text-center text-sm text-slate-300/72">
-                    {w.addParticipantsHint}
-                  </div>
-                ) : (
-                  <SpinWheel
-                    participants={participants}
-                    rotationDeg={rotationDeg}
-                    spinning={spinning}
-                    highlightIndex={highlightIndex}
-                    onAnimationComplete={onWheelAnimationComplete}
-                    className="max-w-[34rem] sm:max-w-[38rem] xl:max-w-[46rem]"
-                  />
-                )}
-              </div>
-
-              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
-                <div className="rounded-[1.25rem] border border-white/10 bg-slate-950/46 px-5 py-4">
-                  <div className="text-xs uppercase tracking-[0.18em] text-slate-400">{w.selectedPlayer}</div>
-                  <div className="mt-2 text-2xl font-semibold tracking-tight text-slate-50 sm:text-3xl">
-                    {heroStatus}
-                  </div>
-                </div>
-                <div className="grid gap-2 sm:grid-cols-2 lg:min-w-[19rem]">
-                  <Button
-                    type="button"
-                    size="lg"
-                    onClick={() => runSpin({ alsoMakeTeams: false })}
-                    disabled={!isReady || spinning}
-                    className="h-12 rounded-xl bg-sky-400 text-slate-950 hover:bg-sky-300"
-                  >
-                    {w.spinOnly}
-                  </Button>
-                  <Button
-                    type="button"
-                    size="lg"
-                    variant="outline"
-                    onClick={() => {
-                      setIsTeamSetupOpen(true);
-                      runSpin({ alsoMakeTeams: true });
-                    }}
-                    disabled={!isReady || spinning}
-                    className="h-12 rounded-xl border-white/15 bg-white/6 text-slate-50 hover:bg-white/10"
-                  >
-                    {w.spinAndTeams}
-                  </Button>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setIsTeamSetupOpen((prev) => !prev)}
-                  className="rounded-full px-4 text-slate-200 hover:bg-white/10 hover:text-white"
-                >
-                  <Settings2 className="size-4" />
-                  {w.teamsTitle}
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setIsAdvancedOpen((prev) => !prev)}
-                  className="rounded-full px-4 text-slate-200 hover:bg-white/10 hover:text-white"
-                >
-                  <ChevronDown className={`size-4 transition-transform ${isAdvancedOpen ? "rotate-180" : ""}`} />
-                  Advanced
-                </Button>
-              </div>
+            <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
+              <Button type="button" variant="ghost" size="sm" onClick={() => setIsRulesOpen(true)} className="rounded-full px-4">
+                <SlidersHorizontal className="size-4" />
+                Inställningar
+              </Button>
             </div>
           </div>
         </section>
@@ -1014,7 +1279,14 @@ export default function SpinTheWheelPage() {
         </Card>
       ) : null}
 
-      <div className="grid grid-cols-1 gap-4">
+      <Dialog open={isRulesOpen} onOpenChange={setIsRulesOpen}>
+        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Inställningar</DialogTitle>
+            <DialogDescription>Konfigurera lag, avancerade alternativ, sparade grupper och mer.</DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-col gap-3 py-2">
         <div>
           <SectionToggle
             open={isTeamSetupOpen}
@@ -1304,7 +1576,62 @@ export default function SpinTheWheelPage() {
             </Card>
           ) : null}
         </div>
-      </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={celebrationWinner !== null}
+        onOpenChange={(open) => {
+          if (!open) setCelebrationWinner(null);
+        }}
+      >
+        <DialogContent
+          showCloseButton={false}
+          className="gap-5 border-primary/20 bg-card/95 px-5 pt-7 pb-5 text-center shadow-2xl sm:max-w-md md:max-w-lg"
+        >
+          <DialogHeader className="gap-0 space-y-0 text-center sm:text-center">
+            <DialogTitle className="sr-only">{w.celebrateEyebrow}</DialogTitle>
+            <DialogDescription className="sr-only">
+              {w.celebrateDesc} {celebrationWinner ?? ""}
+            </DialogDescription>
+          </DialogHeader>
+          {celebrationWinner ? (
+            <motion.div
+              initial={reducedMotion ? false : { opacity: 0, y: 14, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ type: "spring", stiffness: 420, damping: 30 }}
+              className="relative overflow-hidden rounded-xl border border-primary/30 bg-gradient-to-r from-primary/20 via-secondary/15 to-primary/20 px-4 py-7 shadow-[inset_0_1px_0_0_color-mix(in_oklab,var(--foreground)_8%,transparent)] sm:px-6 sm:py-9"
+            >
+              <div
+                className="pointer-events-none absolute inset-0 opacity-[0.12]"
+                style={{
+                  backgroundImage:
+                    "repeating-linear-gradient(-12deg, transparent, transparent 12px, color-mix(in oklab, var(--foreground) 35%, transparent) 12px, color-mix(in oklab, var(--foreground) 35%, transparent) 13px)",
+                }}
+                aria-hidden
+              />
+              <p className="relative text-[0.68rem] font-semibold uppercase tracking-[0.38em] text-muted-foreground">
+                {w.celebrateEyebrow}
+              </p>
+              <p className="relative mt-3 break-words text-3xl font-black tracking-tight text-foreground sm:text-4xl md:text-5xl">
+                {celebrationWinner}
+              </p>
+            </motion.div>
+          ) : null}
+          <DialogFooter
+            showCloseButton={false}
+            className="mt-1 flex-col gap-2 border-0 bg-transparent p-0 sm:flex-row sm:justify-center"
+          >
+            <Button type="button" variant="outline" className="w-full sm:w-auto sm:min-w-[8rem]" onClick={dismissCelebration}>
+              {w.celebrateClose}
+            </Button>
+            <Button type="button" className="w-full sm:w-auto sm:min-w-[8rem]" onClick={celebrationRemoveWinner}>
+              {w.celebrateRemove}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

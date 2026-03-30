@@ -1,5 +1,5 @@
 import { getPool } from "./db.js";
-import type { LeaguePlayerSnapshot } from "./riot-lol.js";
+import type { LeaguePlayerSnapshot, LeagueRecentMatch, LeagueRankedEntry } from "./riot-lol.js";
 import type { SessionPayload } from "./session.js";
 
 export type ProfileRow = {
@@ -139,6 +139,31 @@ export async function getLeagueConnection(
   };
 }
 
+export async function getAllLeagueConnections(): Promise<LeagueConnectionRow[]> {
+  const pool = getPool();
+  if (!pool) return [];
+  const r = await pool.query<LeagueConnectionRow>(
+    `SELECT user_id, riot_id, tag_line, region, auto_sync, rank_preference,
+            status_message, linked_at::text, last_sync_requested_at::text
+     FROM profile.league_connections`,
+  );
+  return r.rows;
+}
+
+export async function getKnownMatchIds(
+  userId: string,
+  candidateIds: string[],
+): Promise<Set<string>> {
+  const pool = getPool();
+  if (!pool || candidateIds.length === 0) return new Set();
+  const r = await pool.query<{ match_id: string }>(
+    `SELECT match_id FROM stats.league_matches
+     WHERE user_id = $1 AND match_id = ANY($2::text[])`,
+    [userId, candidateIds],
+  );
+  return new Set(r.rows.map((row) => row.match_id));
+}
+
 export async function deleteLeagueConnection(userId: string): Promise<void> {
   const pool = getPool();
   if (!pool) {
@@ -193,6 +218,51 @@ export async function deleteLeagueSnapshot(userId: string): Promise<void> {
   await pool.query(`DELETE FROM profile.league_snapshots WHERE user_id = $1`, [
     userId,
   ]);
+}
+
+/** Upsert individual match rows into stats.league_matches (ignores duplicates). */
+export async function saveLeagueMatches(
+  userId: string,
+  puuid: string,
+  matches: LeagueRecentMatch[],
+): Promise<void> {
+  const pool = getPool();
+  if (!pool || matches.length === 0) return;
+
+  for (const m of matches) {
+    await pool.query(
+      `INSERT INTO stats.league_matches
+         (user_id, puuid, match_id, queue_id, champion, kills, deaths, assists,
+          cs, gold_earned, champion_level, win, duration_sec, lane, role, played_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15, to_timestamp($16::double precision / 1000))
+       ON CONFLICT (user_id, match_id) DO NOTHING`,
+      [
+        userId, puuid, m.matchId, m.queueId, m.championName,
+        m.kills, m.deaths, m.assists, m.totalCs, m.goldEarned,
+        m.championLevel, m.win, m.gameDurationSeconds,
+        m.lane, m.role, m.gameCreation,
+      ],
+    );
+  }
+}
+
+/** Insert a rank snapshot for each queue entry (RANKED_SOLO_5x5, RANKED_FLEX_SR). */
+export async function saveLeagueRankHistory(
+  userId: string,
+  puuid: string,
+  entries: LeagueRankedEntry[],
+): Promise<void> {
+  const pool = getPool();
+  if (!pool || entries.length === 0) return;
+
+  for (const e of entries) {
+    await pool.query(
+      `INSERT INTO stats.league_rank_history
+         (user_id, puuid, queue_type, tier, rank, lp, wins, losses)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [userId, puuid, e.queueType, e.tier, e.rank, e.leaguePoints, e.wins, e.losses],
+    );
+  }
 }
 
 export type WheelGroupRow = {

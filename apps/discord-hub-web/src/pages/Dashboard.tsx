@@ -10,6 +10,7 @@ import {
   Orbit,
   Quote,
   Radio,
+  RotateCcw,
   Search,
   Sparkles,
   UserRound,
@@ -19,7 +20,10 @@ import { Link, Navigate } from "react-router-dom";
 import { Button } from "@clanker/ui/components/button";
 import { Badge } from "@clanker/ui/components/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@clanker/ui/components/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@clanker/ui/components/dialog";
+import { Separator } from "@clanker/ui/components/separator";
 import { apiUrl } from "@/config";
+import { MusicSeekProgressBar } from "@/components/MusicSeekProgressBar";
 import HubDesktopSurface, { type HubDesktopWidget } from "@/components/HubDesktopSurface";
 import HubCustomModuleBuilder from "@/components/HubCustomModuleBuilder";
 import HubLoreQuoteWidget from "@/components/HubLoreQuoteWidget";
@@ -33,7 +37,19 @@ import { useHubSurfaceEngine } from "@/hooks/use-hub-surface-engine";
 import { toBcp47, type HubLocale } from "@/i18n/hub-copy";
 import { pickHubChaosLine, rollHubChaos } from "@/lib/hub-chaos";
 import { useHubPrefs } from "@/components/HubPrefsProvider";
-import { gridStepForDensity } from "@/lib/hub-prefs";
+import {
+  HubPrefRow,
+  HubPrefSliderRow,
+  HubPrefToggleRow,
+  HubSegmentControl,
+  type HubSegmentOption,
+} from "@/components/HubPrefsControls";
+import {
+  DEFAULT_WIDGET_VISUAL_PREFS,
+  gridStepForDensity,
+  type HubWidgetSizePreset,
+  type HubToneOverride,
+} from "@/lib/hub-prefs";
 import { HUB_WIDGET_TIERS } from "@/lib/hub-widget-tiers";
 
 const HUB_GUILD_ID = import.meta.env.VITE_DISCORD_HUB_GUILD_ID?.trim() ?? "";
@@ -116,6 +132,7 @@ type MusicState = {
   total_in_queue: number;
 };
 
+
 type GuildWidgetData = {
   summary: GuildSummaryResponse | null;
   live: GuildLiveResponse | null;
@@ -159,6 +176,125 @@ function HubPulseBars({
   );
 }
 
+function HubWidgetQuickEditDialog({
+  widgetId,
+  widgetLabel,
+  onClose,
+}: {
+  widgetId: string;
+  widgetLabel: string;
+  onClose: () => void;
+}) {
+  const { copy } = useHubLocale();
+  const p = copy.hubPrefsPanel;
+  const { prefs, updateWidgetVisualPrefs, patchPrefs } = useHubPrefs();
+  const wprefs = { ...DEFAULT_WIDGET_VISUAL_PREFS, ...prefs.widgetVisualById[widgetId] };
+
+  const patch = (field: Parameters<typeof updateWidgetVisualPrefs>[1]) =>
+    updateWidgetVisualPrefs(widgetId, field);
+
+  const resetWidget = () =>
+    patchPrefs({
+      widgetVisualById: {
+        ...prefs.widgetVisualById,
+        [widgetId]: { ...DEFAULT_WIDGET_VISUAL_PREFS },
+      },
+    });
+
+  const sizeOptions: HubSegmentOption<HubWidgetSizePreset>[] = [
+    { value: "compact", label: p.widget.sizeCompact },
+    { value: "cozy", label: p.widget.sizeCozy },
+    { value: "expanded", label: p.widget.sizeExpanded },
+  ];
+
+  const toneOptions: HubSegmentOption<HubToneOverride>[] = [
+    { value: "inherit", label: p.widget.toneInherit },
+    { value: "useful", label: p.widget.toneUseful },
+    { value: "social", label: p.widget.toneSocial },
+    { value: "chaos", label: p.widget.toneChaos },
+  ];
+
+  const blurOptions: HubSegmentOption<"0" | "1" | "2" | "3">[] = [
+    { value: "0", label: p.widget.blurNone },
+    { value: "1", label: p.widget.blurLight },
+    { value: "2", label: p.widget.blurMedium },
+    { value: "3", label: p.widget.blurStrong },
+  ];
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>{copy.desktopSurface.widgetQuickEditTitle(widgetLabel)}</DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-col gap-4">
+          <HubPrefRow label={p.widget.sizePreset}>
+            <HubSegmentControl
+              options={sizeOptions}
+              value={wprefs.sizePreset}
+              onChange={(v) => patch({ sizePreset: v })}
+            />
+          </HubPrefRow>
+
+          <HubPrefRow label={p.widget.toneOverride}>
+            <HubSegmentControl
+              options={toneOptions}
+              value={wprefs.toneOverride}
+              onChange={(v) => patch({ toneOverride: v })}
+            />
+          </HubPrefRow>
+
+          <HubPrefSliderRow
+            label={p.widget.glassOpacity}
+            hint={p.widget.glassOpacityHint}
+            min={0}
+            max={100}
+            step={5}
+            value={wprefs.glassOpacity}
+            onChange={(v) => patch({ glassOpacity: v })}
+          />
+
+          <HubPrefRow label={p.widget.blurStrength}>
+            <HubSegmentControl
+              options={blurOptions}
+              value={String(wprefs.blurStrength) as "0" | "1" | "2" | "3"}
+              onChange={(v) => patch({ blurStrength: Number(v) as 0 | 1 | 2 | 3 })}
+            />
+          </HubPrefRow>
+
+          <Separator />
+
+          <HubPrefToggleRow
+            id={`quick-edit-subtitle-${widgetId}`}
+            label={p.widget.showSubtitle}
+            description={p.widget.showSubtitleDesc}
+            checked={wprefs.showSubtitle}
+            onCheckedChange={(v) => patch({ showSubtitle: v })}
+          />
+          <HubPrefToggleRow
+            id={`quick-edit-tone-badge-${widgetId}`}
+            label={p.widget.showToneBadge}
+            description={p.widget.showToneBadgeDesc}
+            checked={wprefs.showToneBadge}
+            onCheckedChange={(v) => patch({ showToneBadge: v })}
+          />
+
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="w-full rounded-xl text-muted-foreground"
+            onClick={resetWidget}
+          >
+            <RotateCcw className="size-3.5" />
+            {p.widget.resetWidget}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function DashboardPage() {
   const { copy } = useHubLocale();
   const d = copy.dashboard;
@@ -189,6 +325,7 @@ export default function DashboardPage() {
     online: [],
   }));
   const seedPreview = useMemo(() => `hub-${new Date().toISOString().slice(0, 10)}`, []);
+  const [editingWidgetId, setEditingWidgetId] = useState<string | null>(null);
 
   const surface = useHubSurfaceEngine({
     layoutEditMode,
@@ -657,7 +794,7 @@ export default function DashboardPage() {
       description: "Styr uppspelning och kön direkt från dashboarden.",
       tone: "social",
       icon: Radio,
-      content: <HubMusicWidget music={guildWidget.music} guildId={HUB_GUILD_ID} />,
+      content: <HubMusicWidget music={guildWidget.music} guildId={HUB_GUILD_ID} voiceStates={guildWidget.voiceStates} userId={profile.id} />,
     };
 
     const customModuleWidget: HubDesktopWidget = {
@@ -960,28 +1097,43 @@ export default function DashboardPage() {
     );
   }
 
+  const editingWidget = editingWidgetId
+    ? orderedWidgets.find((w) => w.id === editingWidgetId) ?? null
+    : null;
+
   return (
-    <HubDesktopSurface
-      widgets={orderedWidgets}
-      layouts={activeLayout}
-      hiddenWidgetIds={hiddenWidgetIds}
-      widgetVisualPrefsById={prefs.widgetVisualById}
-      stylePackId={prefs.desktop.stylePackId}
-      animationIntensity={prefs.motion.animationIntensity}
-      onMoveWidget={moveWidget}
-      onResizeWidget={resizeWidget}
-      onFocusWidget={focusWidget}
-      onOpenWidget={revealWidget}
-      onHideWidget={hideWidget}
-      layoutEditMode={layoutEditMode}
-      gridStep={gridStepForDensity(prefs.desktop.gridDensity)}
-      snapStrength={prefs.desktop.snapStrength}
-      gridSnapEnabled={gridSnapEnabled}
-      gridCompaction={prefs.desktop.gridCompaction}
-      showGrid={gridVisible}
-      selectedWidgetIds={selectedWidgetIds}
-      onSelectWidget={toggleWidgetInSelection}
-    />
+    <>
+      <HubDesktopSurface
+        widgets={orderedWidgets}
+        layouts={activeLayout}
+        hiddenWidgetIds={hiddenWidgetIds}
+        widgetVisualPrefsById={prefs.widgetVisualById}
+        stylePackId={prefs.desktop.stylePackId}
+        showWidgetBorder={prefs.desktop.showWidgetBorder}
+        animationIntensity={prefs.motion.animationIntensity}
+        onMoveWidget={moveWidget}
+        onResizeWidget={resizeWidget}
+        onFocusWidget={focusWidget}
+        onOpenWidget={revealWidget}
+        onHideWidget={hideWidget}
+        layoutEditMode={layoutEditMode}
+        gridStep={gridStepForDensity(prefs.desktop.gridDensity)}
+        snapStrength={prefs.desktop.snapStrength}
+        gridSnapEnabled={gridSnapEnabled}
+        gridCompaction={prefs.desktop.gridCompaction}
+        showGrid={gridVisible}
+        onSelectWidget={toggleWidgetInSelection}
+        onEditWidget={setEditingWidgetId}
+        onResetWidgetPosition={resetWidgetPosition}
+      />
+      {editingWidget ? (
+        <HubWidgetQuickEditDialog
+          widgetId={editingWidget.id}
+          widgetLabel={editingWidget.label}
+          onClose={() => setEditingWidgetId(null)}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -1529,25 +1681,28 @@ function SourceIcon({ source }: { source: MusicNowPlaying["source"] }) {
   );
 }
 
-function MusicProgress({ track, nowMs }: { track: MusicNowPlaying; nowMs: number }) {
-  if (!track.duration_sec || track.is_paused) return null;
-  const elapsed = Math.min((nowMs - new Date(track.started_at).getTime()) / 1000, track.duration_sec);
-  const pct = Math.round((elapsed / track.duration_sec) * 100);
-  const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
-  return (
-    <div className="mt-2 space-y-1">
-      <div className="h-1 w-full overflow-hidden rounded-full bg-muted">
-        <div className="h-full rounded-full bg-primary/70 transition-all duration-1000" style={{ width: `${pct}%` }} />
-      </div>
-      <div className="flex justify-between text-[10px] text-muted-foreground">
-        <span>{fmt(elapsed)}</span>
-        <span>{fmt(track.duration_sec)}</span>
-      </div>
-    </div>
-  );
+function MusicRequesterAvatar({ userId, voiceStates }: { userId: string; voiceStates: VoiceStatesResponse | null }) {
+  const member = voiceStates?.channels.flatMap((ch) => ch.members).find((m) => m.user_id === userId);
+  const defaultAvatar = `https://cdn.discordapp.com/embed/avatars/${Number(BigInt(userId) % 6n)}.png`;
+  const src = member?.avatar ? discordAvatarUrl(member.user_id, member.avatar) : defaultAvatar;
+  const name = member ? (member.global_name ?? member.username) : userId;
+  return <img src={src} alt={name} title={name} className="size-4 rounded-full object-cover shrink-0 opacity-80" />;
 }
 
-function HubMusicWidget({ music, guildId }: { music: MusicState | null; guildId: string }) {
+function HubMusicWidget({
+  music,
+  guildId,
+  voiceStates,
+  userId,
+}: {
+  music: MusicState | null;
+  guildId: string;
+  voiceStates: VoiceStatesResponse | null;
+  userId: string;
+}) {
+  const { copy } = useHubLocale();
+  const d = copy.dashboard;
+  const toasts = useHubToasts();
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -1574,52 +1729,160 @@ function HubMusicWidget({ music, guildId }: { music: MusicState | null; guildId:
     [guildId],
   );
 
+  const resolveChannelId = (): string | null => {
+    if (music?.now_playing?.channel_id) return music.now_playing.channel_id;
+    for (const ch of voiceStates?.channels ?? []) {
+      if (ch.members.some((m) => m.user_id === userId)) return ch.channel_id;
+    }
+    return null;
+  };
+
   const handlePlay = async () => {
     if (!query.trim()) return;
-    await cmd("play", { query: query.trim() });
-    setQuery("");
+    const channelId = resolveChannelId();
+    if (!channelId) {
+      toasts.push({
+        kind: "error",
+        title: d.musicPlayFailedTitle,
+        message: d.musicNeedVoiceChannel,
+      });
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch(
+        apiUrl(`/api/bot/guild/${encodeURIComponent(guildId)}/music/play`),
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query: query.trim(), channelId }),
+        },
+      );
+      let payload: { error?: string; code?: string } = {};
+      try {
+        payload = (await res.json()) as { error?: string; code?: string };
+      } catch {
+        /* ignore */
+      }
+      if (!res.ok) {
+        let message = d.musicPlayFailedGeneric;
+        if (payload.code === "spotify_playlist") {
+          message = d.musicSpotifyPlaylistUnavailable;
+        } else if (typeof payload.error === "string" && payload.error.trim()) {
+          if (payload.error === "Could not resolve track") {
+            message = d.musicPlayFailedGeneric;
+          } else {
+            message = payload.error;
+          }
+        }
+        toasts.push({
+          kind: "error",
+          title: d.musicPlayFailedTitle,
+          message,
+        });
+        return;
+      }
+      setQuery("");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const np = music?.now_playing ?? null;
 
   return (
     <div className="flex flex-col gap-3 text-sm">
-      {/* Now playing */}
+      {/* Player card */}
       {np ? (
-        <div className="flex gap-3 rounded-xl border border-border/60 bg-background/60 p-3">
-          {np.thumbnail && (
-            <img src={np.thumbnail} alt="" className="size-14 shrink-0 rounded-lg object-cover" />
-          )}
-          <div className="min-w-0 flex-1">
-            <div className="flex items-start gap-1.5">
-              <SourceIcon source={np.source} />
-              <p className="truncate text-sm font-medium text-foreground leading-tight">{np.title}</p>
+        <div>
+          {/* Art + track info */}
+          <div className="flex gap-4">
+            <div className="shrink-0">
+              {np.thumbnail ? (
+                <img
+                  src={np.thumbnail}
+                  alt=""
+                  className="size-20 rounded-xl object-cover shadow-md"
+                />
+              ) : (
+                <div className="size-20 rounded-xl bg-muted flex items-center justify-center text-2xl">
+                  🎵
+                </div>
+              )}
             </div>
-            {np.artist && <p className="mt-0.5 truncate text-xs text-muted-foreground">{np.artist}</p>}
-            <MusicProgress track={np} nowMs={nowMs} />
+            <div className="min-w-0 flex-1 flex flex-col justify-center gap-1">
+              <p className="truncate font-semibold text-base text-foreground leading-tight">{np.title}</p>
+              {np.artist && (
+                <p className="truncate text-xs text-muted-foreground">{np.artist}</p>
+              )}
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <SourceIcon source={np.source} />
+                {np.is_paused && (
+                  <span className="rounded px-1 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-yellow-500/20 text-yellow-500">
+                    Pausad
+                  </span>
+                )}
+                <MusicRequesterAvatar userId={np.requested_by} voiceStates={voiceStates} />
+              </div>
+            </div>
+          </div>
+
+          {/* Progress */}
+          <div className="mt-4">
+            <MusicSeekProgressBar
+              track={np}
+              nowMs={nowMs}
+              onSeek={(sec) => void cmd("seek", { seekSec: sec })}
+            />
+          </div>
+
+          {/* Controls */}
+          <div className="mt-3 flex items-center justify-center gap-2">
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={loading}
+              className="size-9 rounded-full p-0 text-base"
+              onClick={() => void cmd(np.is_paused ? "resume" : "pause")}
+              title={np.is_paused ? "Återuppta" : "Pausa"}
+            >
+              {np.is_paused ? "▶️" : "⏸"}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={loading}
+              className="size-9 rounded-full p-0 text-base"
+              onClick={() => void cmd("skip")}
+              title="Skippa"
+            >
+              ⏭
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={loading}
+              className="size-9 rounded-full p-0 text-base"
+              onClick={() => void cmd("stop")}
+              title="Stoppa"
+            >
+              ⏹
+            </Button>
           </div>
         </div>
       ) : (
-        <p className="text-xs text-muted-foreground">📭 Inget spelas just nu.</p>
+        <div className="flex flex-col items-center gap-2 py-4 text-center">
+          <span className="text-3xl">🎵</span>
+          <p className="text-xs text-muted-foreground">Inget spelas just nu</p>
+        </div>
       )}
-
-      {/* Controls */}
-      <div className="flex gap-1.5">
-        <Button
-          size="sm" variant="outline" disabled={!np || loading}
-          onClick={() => void cmd(np?.is_paused ? "resume" : "pause")}
-        >
-          {np?.is_paused ? "▶️" : "⏸"}
-        </Button>
-        <Button size="sm" variant="outline" disabled={!np || loading} onClick={() => void cmd("skip")}>⏭</Button>
-        <Button size="sm" variant="outline" disabled={!np || loading} onClick={() => void cmd("stop")}>⏹</Button>
-      </div>
 
       {/* Add to queue */}
       <div className="flex gap-1.5">
         <input
           className="min-w-0 flex-1 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs outline-none focus:ring-1 focus:ring-ring"
-          placeholder="YouTube, Spotify, SoundCloud eller sökterm…"
+          placeholder="YouTube, Spotify, SoundCloud, spellista eller sökterm…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") void handlePlay(); }}
@@ -1638,6 +1901,7 @@ function HubMusicWidget({ music, guildId }: { music: MusicState | null; guildId:
               <span className="shrink-0 text-xs text-muted-foreground">{i + 1}.</span>
               <SourceIcon source={item.source} />
               <span className="truncate text-xs text-foreground">{item.title}</span>
+              <MusicRequesterAvatar userId={item.requested_by} voiceStates={voiceStates} />
             </div>
           ))}
           {music.total_in_queue > 5 && (

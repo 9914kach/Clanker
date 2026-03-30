@@ -112,6 +112,7 @@ export type HubCopy = {
   tools: {
     dashboard: { label: string; description: string };
     spinTheWheel: { label: string; description: string };
+    music: { label: string; description: string };
     profileSettings: { label: string; description: string };
     me: { label: string; description: string };
   };
@@ -395,6 +396,10 @@ export type HubCopy = {
     backendDescription: string;
     backendHint1: string;
     backendHint2: string;
+    musicNeedVoiceChannel: string;
+    musicPlayFailedTitle: string;
+    musicPlayFailedGeneric: string;
+    musicSpotifyPlaylistUnavailable: string;
   };
   desktopSurface: {
     spawnApp: string;
@@ -413,6 +418,12 @@ export type HubCopy = {
     widgetPositionResetToast: string;
     editStickyHelp: string;
     resizeHandleAria: string;
+    /** Shown on dashboard when layout mode is off: hold still, then drag to reposition widgets. */
+    holdToDragOutsideLayoutHint: string;
+    widgetContextMenuEdit: string;
+    widgetContextMenuHide: string;
+    widgetContextMenuResetPos: string;
+    widgetQuickEditTitle: (label: string) => string;
   };
   profileSettings: {
     pageTitle: string;
@@ -548,12 +559,9 @@ export type HubCopy = {
   spinWheel: {
     loading: string;
     backendError: string;
-    pageTitle: string;
-    pageSubtitle: string;
     collabTitle: string;
     collabDesc: string;
     collabConnected: string;
-    collabSynced: string;
     defaultCollabRoom: string;
     roomLabel: string;
     presenceCount: (n: number) => string;
@@ -605,12 +613,13 @@ export type HubCopy = {
     noGroups: string;
     participantsUpdated: string;
     removeGroup: string;
-    wheelTitle: string;
-    wheelDesc: string;
     addParticipantsHint: string;
-    selectedPlayer: string;
-    spinning: string;
-    noneYet: string;
+    wheelEmptySliceLabel: string;
+    wheelSpinAria: string;
+    celebrateEyebrow: string;
+    celebrateDesc: string;
+    celebrateClose: string;
+    celebrateRemove: string;
     teamsResultTitle: string;
     teamsResultDesc: string;
     equalTeamsBanner: string;
@@ -627,6 +636,13 @@ export type HubCopy = {
     sessionSeedPrefix: string;
     load: string;
     participantChipTitle: string;
+    voiceChannelsTitle: string;
+    voiceChannelsLoading: string;
+    voiceChannelsError: string;
+    voiceChannelsEmpty: string;
+    voiceChannelsGuildHint: string;
+    voiceChannelUnnamed: string;
+    voiceChannelMore: (n: number) => string;
     toasts: {
       roomUpdate: string;
       roomUpdateMessage: (name: string) => string;
@@ -647,6 +663,8 @@ export type HubCopy = {
       groupDeletedMessage: string;
       roomCopied: string;
       seedCopied: string;
+      voiceFillTitle: string;
+      voiceFillMessage: (channelLabel: string, count: number) => string;
     };
   };
   backendCard: {
@@ -713,6 +731,8 @@ export type HubCopy = {
       snapRelaxed: string;
       snapStandard: string;
       snapFirm: string;
+      showWidgetBorder: string;
+      showWidgetBorderDesc: string;
       dockPosition: string;
       dockBottom: string;
       dockLeft: string;
@@ -889,6 +909,10 @@ const SV: HubCopy = {
     spinTheWheel: {
       label: "Hjul",
       description: "Ödessnurra + laglottning. Skyll på hjulet, inte på mig.",
+    },
+    music: {
+      label: "Musik",
+      description: "Köhanterare för Discord-musikbotten.",
     },
     profileSettings: {
       label: "Inställningar",
@@ -1324,6 +1348,11 @@ const SV: HubCopy = {
     backendHint1: "Starta API:t och ladda om.",
     backendHint2:
       "Lägg värden från apps/discord-hub-api/.env.example i repots .env och kör om npm run dev:discord-stack.",
+    musicNeedVoiceChannel: "Gå med i en röstkanal på Discord för att spela musik.",
+    musicPlayFailedTitle: "Kunde inte köa",
+    musicPlayFailedGeneric: "Länken gick inte att spela upp. Prova en annan källa eller sökterm.",
+    musicSpotifyPlaylistUnavailable:
+      "Den här Spotify-spellistan gick inte att läsa eller fick inga spår som botten kan spela. Personliga listor (t.ex. Discover Weekly) fungerar ofta inte med app-läge — använd en publik spellista. Tips: sätt SPOTIFY_DEFAULT_MARKET=SE i bot-miljön om spår saknar region.",
   },
   desktopSurface: {
     spawnApp: "Visa app",
@@ -1334,15 +1363,22 @@ const SV: HubCopy = {
     emptyBody:
       "Visa en modul, högerklicka ytan och bygg ditt eget skal från scratch.",
     dragButton: "Dra",
-    dragTooltip: "Greppa och placera var som helst på skrivbordet",
+    dragTooltip: "Tryck och dra var som helst på modulen för att flytta den",
     hideTooltip: "Dölj widget",
     hideAria: (label) => `Dölj ${label}`,
     dragAria: (label) => `Dra ${label}`,
     layoutEditBanner: "Layout-läge",
-    layoutEditHint: "Använd nedre verktygsraden. Dra moduler i titelfältet. Högerklick prioriterar layout.",
+    layoutEditHint:
+      "Använd nedre verktygsraden. Nyp tag i modulen (tryck och dra var som helst på kortet). Högerklick prioriterar layout.",
     widgetPositionResetToast: "Modulens plats är tillbaka till standard.",
-    editStickyHelp: "Dra · ändra storlek · högerklick · spara",
+    editStickyHelp: "Nyp och dra modul · ändra storlek · högerklick · spara",
     resizeHandleAria: "Ändra storlek",
+    holdToDragOutsideLayoutHint:
+      "Håll pekaren stilla en kort stund på en modul — då greppar du den och kan dra utan layoutläge (handen byter till grepp).",
+    widgetContextMenuEdit: "Redigera",
+    widgetContextMenuHide: "Dölj",
+    widgetContextMenuResetPos: "Återställ position",
+    widgetQuickEditTitle: (label) => `Redigera ${label}`,
   },
   profileSettings: {
     pageTitle: "Profilinställningar",
@@ -1489,14 +1525,10 @@ const SV: HubCopy = {
   spinWheel: {
     loading: "Laddar…",
     backendError: "Backend strular. Försök igen senare.",
-    pageTitle: "Snurra hjulet",
-    pageSubtitle:
-      "Snurra fram en spelare och skapa lag med (valfri) seed för repeterbara resultat.",
     collabTitle: "Delat hjul (beta)",
     collabDesc:
       "Realtime-rum med Yjs/y-websocket. Utkastet synkas live och spins/lag skickas till alla i rummet.",
     collabConnected: "ansluten",
-    collabSynced: "synkad",
     defaultCollabRoom: "neutralen-wheel",
     roomLabel: "Rum",
     presenceCount: (n) => `${n} närvarande i rummet`,
@@ -1549,12 +1581,13 @@ const SV: HubCopy = {
     noGroups: "Inga sparade grupper än.",
     participantsUpdated: "deltagare · uppdaterad",
     removeGroup: "Ta bort",
-    wheelTitle: "Hjulet",
-    wheelDesc: "Snurrar slumpmässigt fram en spelare.",
     addParticipantsHint: "Lägg till deltagare för att se hjulet.",
-    selectedPlayer: "Vald spelare",
-    spinning: "Snurrar…",
-    noneYet: "Ingen än.",
+    wheelEmptySliceLabel: "Tomt",
+    wheelSpinAria: "Snurra hjulet",
+    celebrateEyebrow: "Vinnare",
+    celebrateDesc: "Hjulet stannade på detta namn.",
+    celebrateClose: "Stäng",
+    celebrateRemove: "Ta bort",
     teamsResultTitle: "Lag",
     teamsResultDesc: "Resultatet från senaste lagbygget.",
     equalTeamsBanner:
@@ -1573,6 +1606,14 @@ const SV: HubCopy = {
     sessionSeedPrefix: "· seed",
     load: "Ladda",
     participantChipTitle: "Klicka för att ta bort. Högerklick för mer brott.",
+    voiceChannelsTitle: "Röstkanaler (live)",
+    voiceChannelsLoading: "Hämtar röstläge…",
+    voiceChannelsError: "Kunde inte hämta röstkanaler.",
+    voiceChannelsEmpty: "Ingen är i röst just nu.",
+    voiceChannelsGuildHint:
+      "Sätt VITE_DISCORD_HUB_GUILD_ID i discord-hub-web/.env för att se live-röst här (samma som dashboard).",
+    voiceChannelUnnamed: "Röstkanal",
+    voiceChannelMore: (n) => `+${n} till`,
     toasts: {
       roomUpdate: "Rumsuppdatering",
       roomUpdateMessage: (name) => `${name} uppdaterade det delade hjulet.`,
@@ -1593,6 +1634,9 @@ const SV: HubCopy = {
       groupDeletedMessage: "Borta. reducerad till atomer.",
       roomCopied: "Rum kopierat",
       seedCopied: "Seed kopierad",
+      voiceFillTitle: "Deltagare från röst",
+      voiceFillMessage: (channelLabel, count) =>
+        `${count} ${count === 1 ? "person" : "personer"} från ${channelLabel}`,
     },
   },
   backendCard: {
@@ -1660,6 +1704,8 @@ const SV: HubCopy = {
       snapRelaxed: "Avslappnad",
       snapStandard: "Standard",
       snapFirm: "Strikt",
+      showWidgetBorder: "Widget-kant",
+      showWidgetBorderDesc: "Ram runt modulkort på skrivbordet och i mobil-listan.",
       dockPosition: "Dock-position",
       dockBottom: "Nederkant",
       dockLeft: "Vänster",
@@ -1837,6 +1883,10 @@ const EN: HubCopy = {
     spinTheWheel: {
       label: "Wheel",
       description: "Fate spinner + team randomizer. Blame the wheel, not me.",
+    },
+    music: {
+      label: "Music",
+      description: "Queue manager for the Discord music bot.",
     },
     profileSettings: {
       label: "Settings",
@@ -2269,6 +2319,11 @@ const EN: HubCopy = {
     backendHint1: "Start the API and reload.",
     backendHint2:
       "Add values from apps/discord-hub-api/.env.example to the repo .env and restart npm run dev:discord-stack.",
+    musicNeedVoiceChannel: "Join a Discord voice channel to play music.",
+    musicPlayFailedTitle: "Could not queue",
+    musicPlayFailedGeneric: "That link or search could not be played. Try another source.",
+    musicSpotifyPlaylistUnavailable:
+      "This Spotify playlist could not be read or yielded no tracks the bot can play. Personalized lists (e.g. Discover Weekly) often fail with app-only access — use a public playlist. Tip: set SPOTIFY_DEFAULT_MARKET=US (or your country) on the bot if tracks are region-blocked.",
   },
   desktopSurface: {
     spawnApp: "Spawn app",
@@ -2278,15 +2333,22 @@ const EN: HubCopy = {
     emptyTitle: "Everything is hidden right now",
     emptyBody: "Spawn a module, right-click the surface, and build your own shell from scratch.",
     dragButton: "Drag",
-    dragTooltip: "Grab and place anywhere on the desktop",
+    dragTooltip: "Press and drag anywhere on the module to move it",
     hideTooltip: "Hide widget",
     hideAria: (label) => `Hide ${label}`,
     dragAria: (label) => `Drag ${label}`,
     layoutEditBanner: "Layout edit mode",
-    layoutEditHint: "Use the bottom toolbar. Drag from the title bar. Right-click prioritizes layout actions.",
+    layoutEditHint:
+      "Use the bottom toolbar. Pinch-grab a module (press and drag anywhere on the card). Right-click prioritizes layout actions.",
     widgetPositionResetToast: "Module position reset to default.",
-    editStickyHelp: "Drag · resize · right-click · save",
+    editStickyHelp: "Pinch-drag module · resize · right-click · save",
     resizeHandleAria: "Resize",
+    holdToDragOutsideLayoutHint:
+      "Hold still briefly on a module — then you’ve grabbed it and can drag without layout mode (cursor switches to a closed hand).",
+    widgetContextMenuEdit: "Edit",
+    widgetContextMenuHide: "Hide",
+    widgetContextMenuResetPos: "Reset position",
+    widgetQuickEditTitle: (label) => `Edit ${label}`,
   },
   profileSettings: {
     pageTitle: "Profile settings",
@@ -2427,13 +2489,10 @@ const EN: HubCopy = {
   spinWheel: {
     loading: "Loading…",
     backendError: "Backend trouble. Try again later.",
-    pageTitle: "Spin the wheel",
-    pageSubtitle: "Spin for a player and build teams with an optional seed for repeatable results.",
     collabTitle: "Shared wheel beta",
     collabDesc:
       "Realtime room with Yjs/y-websocket. Draft syncs live and spins/team results broadcast to everyone in the room.",
     collabConnected: "connected",
-    collabSynced: "synced",
     defaultCollabRoom: "neutralen-wheel",
     roomLabel: "Room",
     presenceCount: (n) => `${n} present in room`,
@@ -2486,12 +2545,13 @@ const EN: HubCopy = {
     noGroups: "No saved groups yet.",
     participantsUpdated: "participants · updated",
     removeGroup: "Remove",
-    wheelTitle: "The wheel",
-    wheelDesc: "Spins and picks a player at random.",
     addParticipantsHint: "Add participants to see the wheel.",
-    selectedPlayer: "Selected player",
-    spinning: "Spinning…",
-    noneYet: "None yet.",
+    wheelEmptySliceLabel: "Empty",
+    wheelSpinAria: "Spin the wheel",
+    celebrateEyebrow: "Winner",
+    celebrateDesc: "The wheel landed on this name.",
+    celebrateClose: "Close",
+    celebrateRemove: "Remove",
     teamsResultTitle: "Teams",
     teamsResultDesc: "Result from the latest team build.",
     equalTeamsBanner: "Exactly even teams need participant count divisible by team count.",
@@ -2509,6 +2569,14 @@ const EN: HubCopy = {
     sessionSeedPrefix: "· seed",
     load: "Load",
     participantChipTitle: "Click to remove. Right-click for more crimes.",
+    voiceChannelsTitle: "Voice channels (live)",
+    voiceChannelsLoading: "Fetching voice state…",
+    voiceChannelsError: "Couldn’t load voice channels.",
+    voiceChannelsEmpty: "Nobody is in voice right now.",
+    voiceChannelsGuildHint:
+      "Set VITE_DISCORD_HUB_GUILD_ID in discord-hub-web/.env to show live voice here (same as dashboard).",
+    voiceChannelUnnamed: "Voice channel",
+    voiceChannelMore: (n) => `+${n} more`,
     toasts: {
       roomUpdate: "Room update",
       roomUpdateMessage: (name) => `${name} updated the shared wheel.`,
@@ -2529,6 +2597,9 @@ const EN: HubCopy = {
       groupDeletedMessage: "Gone. Reduced to atoms.",
       roomCopied: "Room copied",
       seedCopied: "Seed copied",
+      voiceFillTitle: "Participants from voice",
+      voiceFillMessage: (channelLabel, count) =>
+        `${count} ${count === 1 ? "person" : "people"} from ${channelLabel}`,
     },
   },
   backendCard: {
@@ -2596,6 +2667,8 @@ const EN: HubCopy = {
       snapRelaxed: "Relaxed",
       snapStandard: "Standard",
       snapFirm: "Firm",
+      showWidgetBorder: "Widget border",
+      showWidgetBorderDesc: "Outline around module cards on the desktop and in the stacked mobile list.",
       dockPosition: "Dock position",
       dockBottom: "Bottom",
       dockLeft: "Left",

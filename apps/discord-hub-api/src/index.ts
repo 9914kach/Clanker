@@ -49,10 +49,13 @@ import {
   upsertHubUserSettings,
   upsertLeagueConnection,
   upsertLeagueSnapshot,
+  saveLeagueMatches,
+  saveLeagueRankHistory,
   updateWheelGroup,
 } from "./repo.js";
 import { COOKIE_NAME, verifySession, type SessionPayload } from "./session.js";
 import { startWheelCollabServer } from "./wheel-collab.js";
+import { startLeagueSyncScheduler } from "./league-auto-sync.js";
 
 const STATE_COOKIE = "discord_oauth_state";
 const STATE_MAX_AGE = 600;
@@ -805,6 +808,9 @@ function createApp(env: AppEnv) {
       });
 
       await upsertLeagueSnapshot(session.sub, sync);
+      // Persist historical data for charts/stats
+      await saveLeagueMatches(session.sub, sync.account.puuid, sync.recentMatches);
+      await saveLeagueRankHistory(session.sub, sync.account.puuid, sync.leagueEntries);
 
       return c.json({
         connected: true,
@@ -1137,6 +1143,216 @@ function createApp(env: AppEnv) {
     });
   }
 
+  app.post("/api/bot/guild/:id/music/seek", async (c) => {
+    const token = getCookie(c, COOKIE_NAME);
+    if (!token) return c.json({ error: "Unauthorized" }, 401);
+    const session = await verifySession(env.sessionSecret, token);
+    if (!session) return c.json({ error: "Unauthorized" }, 401);
+    const guildId = c.req.param("id");
+    if (!DISCORD_SNOWFLAKE_RE.test(guildId)) {
+      return c.json({ error: "Invalid guild id", code: "invalid_guild_id" }, 400);
+    }
+    const access = await assertBotGuildAccess(env, session.sub, guildId);
+    if (!access.ok) return c.json(access.body, access.status);
+    const botUrl = await requireMusicBotUrl(c);
+    if (!botUrl) return;
+    const body = await c.req.json<{ seekSec: number }>();
+    return proxyMusicCommand(c, botUrl, "/seek", { guildId, seekSec: body.seekSec });
+  });
+
+  // --- Playlist endpoints ---
+
+  app.get("/api/bot/guild/:id/playlists", async (c) => {
+    const token = getCookie(c, COOKIE_NAME);
+    if (!token) return c.json({ error: "Unauthorized" }, 401);
+    const session = await verifySession(env.sessionSecret, token);
+    if (!session) return c.json({ error: "Unauthorized" }, 401);
+    const guildId = c.req.param("id");
+    if (!DISCORD_SNOWFLAKE_RE.test(guildId)) return c.json({ error: "Invalid guild id" }, 400);
+    const access = await assertBotGuildAccess(env, session.sub, guildId);
+    if (!access.ok) return c.json(access.body, access.status);
+    const pool = getPool();
+    if (!pool) return c.json({ error: "Database not available" }, 503);
+    const res = await pool.query(
+      `SELECT p.id, p.name, p.created_by, COUNT(t.id)::int AS track_count
+       FROM bot.playlists p
+       LEFT JOIN bot.playlist_tracks t ON t.playlist_id = p.id
+       WHERE p.guild_id = $1
+       GROUP BY p.id ORDER BY p.name`,
+      [guildId],
+    );
+    return c.json({ playlists: res.rows });
+  });
+
+  app.post("/api/bot/guild/:id/playlists", async (c) => {
+    const token = getCookie(c, COOKIE_NAME);
+    if (!token) return c.json({ error: "Unauthorized" }, 401);
+    const session = await verifySession(env.sessionSecret, token);
+    if (!session) return c.json({ error: "Unauthorized" }, 401);
+    const guildId = c.req.param("id");
+    if (!DISCORD_SNOWFLAKE_RE.test(guildId)) return c.json({ error: "Invalid guild id" }, 400);
+    const access = await assertBotGuildAccess(env, session.sub, guildId);
+    if (!access.ok) return c.json(access.body, access.status);
+    const pool = getPool();
+    if (!pool) return c.json({ error: "Database not available" }, 503);
+    const { name } = await c.req.json<{ name: string }>();
+    if (!name?.trim()) return c.json({ error: "Name required" }, 400);
+    try {
+      const res = await pool.query(
+        `INSERT INTO bot.playlists (guild_id, name, created_by) VALUES ($1, $2, $3) RETURNING id, name`,
+        [guildId, name.trim(), session.sub],
+      );
+      return c.json({ ok: true, playlist: res.rows[0] });
+    } catch (err: unknown) {
+      if ((err as { code?: string }).code === "23505") return c.json({ error: "Name already exists" }, 409);
+      throw err;
+    }
+  });
+
+  app.delete("/api/bot/guild/:id/playlists/:name", async (c) => {
+    const token = getCookie(c, COOKIE_NAME);
+    if (!token) return c.json({ error: "Unauthorized" }, 401);
+    const session = await verifySession(env.sessionSecret, token);
+    if (!session) return c.json({ error: "Unauthorized" }, 401);
+    const guildId = c.req.param("id");
+    if (!DISCORD_SNOWFLAKE_RE.test(guildId)) return c.json({ error: "Invalid guild id" }, 400);
+    const access = await assertBotGuildAccess(env, session.sub, guildId);
+    if (!access.ok) return c.json(access.body, access.status);
+    const pool = getPool();
+    if (!pool) return c.json({ error: "Database not available" }, 503);
+    const playlistName = decodeURIComponent(c.req.param("name"));
+    const res = await pool.query(
+      `DELETE FROM bot.playlists WHERE guild_id = $1 AND name = $2`,
+      [guildId, playlistName],
+    );
+    if ((res.rowCount ?? 0) === 0) return c.json({ error: "Not found" }, 404);
+    return c.json({ ok: true });
+  });
+
+  app.get("/api/bot/guild/:id/playlists/:name/tracks", async (c) => {
+    const token = getCookie(c, COOKIE_NAME);
+    if (!token) return c.json({ error: "Unauthorized" }, 401);
+    const session = await verifySession(env.sessionSecret, token);
+    if (!session) return c.json({ error: "Unauthorized" }, 401);
+    const guildId = c.req.param("id");
+    if (!DISCORD_SNOWFLAKE_RE.test(guildId)) return c.json({ error: "Invalid guild id" }, 400);
+    const access = await assertBotGuildAccess(env, session.sub, guildId);
+    if (!access.ok) return c.json(access.body, access.status);
+    const pool = getPool();
+    if (!pool) return c.json({ error: "Database not available" }, 503);
+    const playlistName = decodeURIComponent(c.req.param("name"));
+    const pl = await pool.query(
+      `SELECT id FROM bot.playlists WHERE guild_id = $1 AND name = $2`,
+      [guildId, playlistName],
+    );
+    if (!pl.rows.length) return c.json({ error: "Not found" }, 404);
+    const tracks = await pool.query(
+      `SELECT position, title, artist, duration_sec, source FROM bot.playlist_tracks
+       WHERE playlist_id = $1 ORDER BY position`,
+      [pl.rows[0].id],
+    );
+    return c.json({ tracks: tracks.rows });
+  });
+
+  app.post("/api/bot/guild/:id/playlists/:name/tracks", async (c) => {
+    const token = getCookie(c, COOKIE_NAME);
+    if (!token) return c.json({ error: "Unauthorized" }, 401);
+    const session = await verifySession(env.sessionSecret, token);
+    if (!session) return c.json({ error: "Unauthorized" }, 401);
+    const guildId = c.req.param("id");
+    if (!DISCORD_SNOWFLAKE_RE.test(guildId)) return c.json({ error: "Invalid guild id" }, 400);
+    const access = await assertBotGuildAccess(env, session.sub, guildId);
+    if (!access.ok) return c.json(access.body, access.status);
+    const botUrl = await requireMusicBotUrl(c);
+    if (!botUrl) return;
+    const { query } = await c.req.json<{ query: string }>();
+    if (!query?.trim()) return c.json({ error: "Query required" }, 400);
+    return proxyMusicCommand(c, botUrl, "/playlist/add-track", {
+      guildId,
+      playlistName: decodeURIComponent(c.req.param("name")),
+      query: query.trim(),
+      userId: session.sub,
+    });
+  });
+
+  app.delete("/api/bot/guild/:id/playlists/:name/tracks/:position", async (c) => {
+    const token = getCookie(c, COOKIE_NAME);
+    if (!token) return c.json({ error: "Unauthorized" }, 401);
+    const session = await verifySession(env.sessionSecret, token);
+    if (!session) return c.json({ error: "Unauthorized" }, 401);
+    const guildId = c.req.param("id");
+    if (!DISCORD_SNOWFLAKE_RE.test(guildId)) return c.json({ error: "Invalid guild id" }, 400);
+    const access = await assertBotGuildAccess(env, session.sub, guildId);
+    if (!access.ok) return c.json(access.body, access.status);
+    const pool = getPool();
+    if (!pool) return c.json({ error: "Database not available" }, 503);
+    const playlistName = decodeURIComponent(c.req.param("name"));
+    const position = Number(c.req.param("position"));
+    if (!Number.isInteger(position) || position < 1) return c.json({ error: "Invalid position" }, 400);
+    const pl = await pool.query(
+      `SELECT id FROM bot.playlists WHERE guild_id = $1 AND name = $2`,
+      [guildId, playlistName],
+    );
+    if (!pl.rows.length) return c.json({ error: "Playlist not found" }, 404);
+    const del = await pool.query(
+      `DELETE FROM bot.playlist_tracks WHERE playlist_id = $1 AND position = $2`,
+      [pl.rows[0].id, position],
+    );
+    if ((del.rowCount ?? 0) === 0) return c.json({ error: "Track not found" }, 404);
+    await pool.query(
+      `UPDATE bot.playlist_tracks SET position = position - 1 WHERE playlist_id = $1 AND position > $2`,
+      [pl.rows[0].id, position],
+    );
+    return c.json({ ok: true });
+  });
+
+  app.post("/api/bot/guild/:id/playlists/:name/play", async (c) => {
+    const token = getCookie(c, COOKIE_NAME);
+    if (!token) return c.json({ error: "Unauthorized" }, 401);
+    const session = await verifySession(env.sessionSecret, token);
+    if (!session) return c.json({ error: "Unauthorized" }, 401);
+    const guildId = c.req.param("id");
+    if (!DISCORD_SNOWFLAKE_RE.test(guildId)) return c.json({ error: "Invalid guild id" }, 400);
+    const access = await assertBotGuildAccess(env, session.sub, guildId);
+    if (!access.ok) return c.json(access.body, access.status);
+    const botUrl = await requireMusicBotUrl(c);
+    if (!botUrl) return;
+    const { channelId } = await c.req.json<{ channelId: string }>();
+    return proxyMusicCommand(c, botUrl, "/playlist/play", {
+      guildId,
+      playlistName: decodeURIComponent(c.req.param("name")),
+      channelId: channelId ?? "",
+      userId: session.sub,
+    });
+  });
+
+  app.delete("/api/bot/guild/:id/music/queue/:itemId", async (c) => {
+    const token = getCookie(c, COOKIE_NAME);
+    if (!token) return c.json({ error: "Unauthorized" }, 401);
+    const session = await verifySession(env.sessionSecret, token);
+    if (!session) return c.json({ error: "Unauthorized" }, 401);
+    const guildId = c.req.param("id");
+    if (!DISCORD_SNOWFLAKE_RE.test(guildId)) {
+      return c.json({ error: "Invalid guild id", code: "invalid_guild_id" }, 400);
+    }
+    const access = await assertBotGuildAccess(env, session.sub, guildId);
+    if (!access.ok) return c.json(access.body, access.status);
+    const pool = getPool();
+    if (!pool) return c.json({ error: "Database not available" }, 503);
+    const itemId = Number(c.req.param("itemId"));
+    if (!Number.isInteger(itemId) || itemId <= 0) {
+      return c.json({ error: "Invalid item id" }, 400);
+    }
+    const result = await pool.query(
+      `DELETE FROM bot.music_queue WHERE id = $1 AND guild_id = $2`,
+      [itemId, guildId],
+    );
+    if ((result.rowCount ?? 0) === 0) {
+      return c.json({ error: "Item not found" }, 404);
+    }
+    return c.json({ ok: true });
+  });
+
   return app;
 }
 
@@ -1191,6 +1407,11 @@ async function main(): Promise<void> {
   const app = createApp(env);
   startDiscordGateway(env);
   stopWheelCollabServer = startWheelCollabServer(env);
+  if (env.riotApiKey) {
+    startLeagueSyncScheduler(env.riotApiKey);
+  } else {
+    console.log("[league-sync] RIOT_API_KEY not set — auto-sync disabled");
+  }
 
   process.once("SIGINT", () => {
     void shutdownAndExit(0);

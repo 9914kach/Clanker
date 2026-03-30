@@ -10,6 +10,7 @@ const sodium = require('libsodium-wrappers') as { ready: Promise<void> };
 /**
  * @discordjs/voice loads encryption in a fire-and-forget async IIFE; awaiting sodium here
  * avoids racing the first joinVoiceChannel before libsodium-wrappers is ready.
+ * Discord voice (DAVE / e2ee) uses `@snazzah/davey` — keep it installed (see package.json).
  */
 export async function prepareDiscordVoiceCrypto(): Promise<void> {
   await sodium.ready;

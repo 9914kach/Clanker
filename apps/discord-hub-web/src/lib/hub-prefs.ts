@@ -33,6 +33,8 @@ export type HubDesktopPrefsSlice = {
   gridDensity: HubGridDensity;
   gridCompaction: HubGridCompaction;
   snapStrength: HubSnapStrength;
+  /** Outline on desktop (and stacked mobile) widget cards. */
+  showWidgetBorder: boolean;
 };
 
 export type HubDockPrefsSlice = {
@@ -93,6 +95,7 @@ export const DEFAULT_HUB_PREFS: HubPrefs = {
     gridDensity: "cozy",
     gridCompaction: "none",
     snapStrength: "standard",
+    showWidgetBorder: true,
   },
   dock: {
     position: "bottom",
@@ -246,6 +249,9 @@ export function mergeHubPrefs(base: HubPrefs, patch: unknown): HubPrefs {
     }
     if (d.snapStrength === "relaxed" || d.snapStrength === "standard" || d.snapStrength === "firm") {
       next.desktop.snapStrength = d.snapStrength;
+    }
+    if (typeof d.showWidgetBorder === "boolean") {
+      next.desktop.showWidgetBorder = d.showWidgetBorder;
     }
   }
   const dock = patch.dock;

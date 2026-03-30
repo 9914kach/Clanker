@@ -272,9 +272,15 @@ När **Pi** kör webb/API men Postgres ska ligga på **stationär workstation** 
 
 1. På **workstation**: samma `.env`-värden för `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` som API:t ska använda.
 2. Sätt **`POSTGRES_BIND_ADDRESS=0.0.0.0`** om klienter på LAN (t.ex. Pi) ska ansluta direkt. Standard **`127.0.0.1`** är säkrast om allt som pratar med DB kör på samma maskin.
-3. Starta endast databasen: `docker compose --profile db up -d`
-4. **Brandvägg** på workstation: begränsa **5432/tcp** till Pis IP (eller betrott subnet), inte mot hela internet. Använd **starkt** `POSTGRES_PASSWORD`.
-5. På **Pi** (eller var respektive API körs): två URL:er med **samma** host/port men olika databasnamn, t.ex. `…/clanker_discord` och `…/clanker_devtools` (eller dina `POSTGRES_DB` / `POSTGRES_EXTRA_DB`). Starta **inte** profilen **`db`** på Pi — då får du en **tom lokal** Postgres i stället för workstationens data.
+3. Starta eller uppdatera databasen så portmappningen mot värden stämmer: `docker compose --profile db up -d`. Efter du **ändrat** `POSTGRES_BIND_ADDRESS` måste detta köras igen (så Docker sätter om `0.0.0.0:5432` eller `127.0.0.1:5432` på värden).
+4. **Brandvägg** på workstation: begränsa **5432/tcp** till Pis IP (eller betrott subnet), inte mot hela internet. Använd **starkt** `POSTGRES_PASSWORD`. På **Windows** (PowerShell som administratör), byt ut IP:
+
+   ```powershell
+   New-NetFirewallRule -DisplayName "Postgres Clanker (Pi only)" -Direction Inbound -LocalPort 5432 -Protocol TCP -Action Allow -RemoteAddress 192.168.x.x
+   ```
+
+5. På **Pi** (eller var respektive klient körs): connection string mot workstationens **LAN-IP** och port **5432**, databasnamn = `POSTGRES_DB` (standard `clanker_discord`). **discord-hub-api:** `DATABASE_URL`. **Discord-bot** med Compose-profil **`discord-host`** (`network_mode: host`): sätt **`DISCORD_BOT_HOST_DATABASE_URL`** i rotens `.env` till den URL:en — standard **`127.0.0.1`** i Compose gäller bara när Postgres körs på **samma** maskin som boten. Kör du boten med **npm** på Pi: `DATABASE_URL` i `bots/discord-bot/.env` mot samma URL. Specialtecken i lösenord måste **URL-kodas** i connection string (t.ex. `!` → `%21`).
+6. Två databaser på samma server: **samma** host/port men olika path (`…/clanker_discord` och `…/clanker_devtools` eller dina `POSTGRES_DB` / `POSTGRES_EXTRA_DB`). Starta **inte** profilen **`db`** på Pi — då får du en **tom lokal** Postgres i stället för workstationens data.
 
 **Utan att exponera Postgres mot LAN:** kör Postgres på workstation med standard **127.0.0.1** och öppna en **SSH-tunnel** från Pi (`ssh -L 5432:127.0.0.1:5432 användare@workstation`). Sätt då `DATABASE_URL` mot **`127.0.0.1:5432`** på Pi-sidan.
 

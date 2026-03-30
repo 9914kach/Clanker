@@ -374,6 +374,14 @@ function DesktopTab() {
         />
       </HubPrefRow>
 
+      <HubPrefToggleRow
+        id="hub-prefs-show-widget-border"
+        label={p.showWidgetBorder}
+        description={p.showWidgetBorderDesc}
+        checked={d.showWidgetBorder}
+        onCheckedChange={(v) => patchPrefs({ desktop: { ...d, showWidgetBorder: v } })}
+      />
+
       <Separator />
 
       <HubPrefRow label={p.dockPosition}>

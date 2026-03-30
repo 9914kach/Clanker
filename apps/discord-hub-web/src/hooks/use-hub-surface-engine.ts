@@ -13,7 +13,7 @@
  *
  * Kompatibilitet:
  * - Returnerar identiska gränssnitt som Dashboard.tsx hade inline.
- * - Ingen förändring i HubDesktopSurface props eller HubDesktopShellState.
+ * - Ingen förändring i HubDesktopShellState (selektion för nudge m.m. finns kvar i hooken).
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -44,9 +44,7 @@ import {
   type HubGridNodeMap,
 } from "@/lib/hub-grid-node";
 import type { HubPrefs } from "@/lib/hub-prefs";
-
-const MIN_WIDGET_W = 120;
-const MIN_WIDGET_H = 100;
+import { clampWidgetDimensions } from "@/lib/hub-widget-size-bounds";
 const FALLBACK_LAYOUT: HubDesktopWidgetLayout = {
   x: 0,
   y: 0,
@@ -498,22 +496,23 @@ export function useHubSurfaceEngine({
       const apply = (prev: HubGridNodeMap) => {
         const base = baseNodeForId(prev, id);
         const geo = base.geometry ?? fallbackGeometry();
-        const w =
+        const wSnapped =
           shouldSnap && gridSnapEnabled
             ? snapCoord(size.w, true, gridStep, prefs.desktop.snapStrength)
             : Math.round(size.w);
-        const h =
+        const hSnapped =
           shouldSnap && gridSnapEnabled
             ? snapCoord(size.h, true, gridStep, prefs.desktop.snapStrength)
             : Math.round(size.h);
+        const { w, h } = clampWidgetDimensions(id, wSnapped, hSnapped);
         return {
           ...prev,
           [id]: {
             ...base,
             geometry: {
               ...geo,
-              w: Math.max(MIN_WIDGET_W, Math.round(w)),
-              h: Math.max(MIN_WIDGET_H, Math.round(h)),
+              w,
+              h,
               z: nextDesktopZ(prev),
             },
           },

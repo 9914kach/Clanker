@@ -274,6 +274,47 @@ export async function fetchMatch(
   );
 }
 
+/**
+ * Fetch only matches that are NOT in knownMatchIds, up to `count` total candidates.
+ * Minimises API calls when syncing users who were recently synced.
+ */
+export async function fetchNewMatches(params: {
+  apiKey: string;
+  region: LeagueRegion;
+  puuid: string;
+  knownMatchIds: Set<string>;
+  count?: number;
+}): Promise<LeagueRecentMatch[]> {
+  const { apiKey, region, puuid, knownMatchIds, count = 20 } = params;
+  const hosts = getLeagueApiHosts(region);
+
+  const allIds = await fetchRecentMatchIds(apiKey, hosts.regionalBaseUrl, puuid, count);
+  const newIds = allIds.filter((id) => !knownMatchIds.has(id));
+  if (newIds.length === 0) return [];
+
+  const results: LeagueRecentMatch[] = [];
+  for (const matchId of newIds) {
+    const rawMatch = await fetchMatch(apiKey, hosts.regionalBaseUrl, matchId);
+    const matchIdStr = asString(rawMatch.metadata?.matchId);
+    const info = rawMatch.info;
+    if (!matchIdStr || !info || !Array.isArray(info.participants)) continue;
+    const participant = (info.participants as RiotMatchParticipantResponse[]).find(
+      (p) => p.puuid === puuid,
+    );
+    if (!participant) continue;
+    results.push(
+      normalizeMatchParticipant(
+        matchIdStr,
+        asFiniteNumber(info.gameCreation),
+        asFiniteNumber(info.gameDuration),
+        asFiniteNumber(info.queueId),
+        participant,
+      ),
+    );
+  }
+  return results;
+}
+
 export async function fetchLeaguePlayerSnapshot(params: {
   apiKey: string;
   region: LeagueRegion;

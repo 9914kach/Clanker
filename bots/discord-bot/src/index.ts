@@ -20,7 +20,13 @@ import {
 import { initDb, closeDb } from './db.js';
 import { prepareDiscordVoiceCrypto } from './voice-setup.js';
 import { registerVoiceTracker } from './voice-tracker.js';
-import { enqueue, skip, pause, resume, stop, initPlayDl, getLastChannelId } from './music-player.js';
+import { registerGuildTracker } from './guild-tracker.js';
+import { registerMessageTracker } from './message-tracker.js';
+import {
+  enqueue, skip, pause, resume, stop, initPlayDl, getLastChannelId,
+  createPlaylist, deletePlaylist, listPlaylists, getPlaylistTracks,
+  addTrackToPlaylist, removeTrackFromPlaylist, playPlaylist,
+} from './music-player.js';
 import { startMusicHttpServer } from './music-http.js';
 import { getPool } from './db.js';
 
@@ -67,6 +73,40 @@ const commands = [
   new SlashCommandBuilder().setName('stop').setDescription('Stoppa musiken och töm kön.').toJSON(),
 
   new SlashCommandBuilder().setName('queue').setDescription('Visa nuvarande kö.').toJSON(),
+
+  new SlashCommandBuilder()
+    .setName('playlist')
+    .setDescription('Hantera sparade spellistor.')
+    .addSubcommand((sub) =>
+      sub.setName('skapa').setDescription('Skapa en ny spellista.')
+        .addStringOption((o) => o.setName('namn').setDescription('Spellistas namn').setRequired(true)),
+    )
+    .addSubcommand((sub) =>
+      sub.setName('radera').setDescription('Radera en spellista.')
+        .addStringOption((o) => o.setName('namn').setDescription('Spellistas namn').setRequired(true)),
+    )
+    .addSubcommand((sub) =>
+      sub.setName('lista').setDescription('Lista alla spellistor i servern.'),
+    )
+    .addSubcommand((sub) =>
+      sub.setName('visa').setDescription('Visa spår i en spellista.')
+        .addStringOption((o) => o.setName('namn').setDescription('Spellistas namn').setRequired(true)),
+    )
+    .addSubcommand((sub) =>
+      sub.setName('lagg-till').setDescription('Lägg till en låt i en spellista.')
+        .addStringOption((o) => o.setName('namn').setDescription('Spellistas namn').setRequired(true))
+        .addStringOption((o) => o.setName('lat').setDescription('URL eller sökterm').setRequired(true)),
+    )
+    .addSubcommand((sub) =>
+      sub.setName('ta-bort').setDescription('Ta bort ett spår från en spellista.')
+        .addStringOption((o) => o.setName('namn').setDescription('Spellistas namn').setRequired(true))
+        .addIntegerOption((o) => o.setName('position').setDescription('Spårets position (1-baserat)').setRequired(true).setMinValue(1)),
+    )
+    .addSubcommand((sub) =>
+      sub.setName('spela').setDescription('Ladda och spela en spellista.')
+        .addStringOption((o) => o.setName('namn').setDescription('Spellistas namn').setRequired(true)),
+    )
+    .toJSON(),
 ];
 
 async function registerSlashCommands(): Promise<void> {
@@ -84,8 +124,11 @@ async function registerSlashCommands(): Promise<void> {
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
-    // GUILD_VOICE_STATES — voice channel updates, @discordjs/voice adapter, /play (user’s voice channel), voice-tracker
-    GatewayIntentBits.GuildVoiceStates,
+    GatewayIntentBits.GuildVoiceStates,    // voice channel tracking + @discordjs/voice
+    GatewayIntentBits.GuildMembers,        // privileged: member join/leave/update, full member list
+    GatewayIntentBits.GuildPresences,      // privileged: online status + activities (games, Spotify, …)
+    GatewayIntentBits.GuildMessages,       // message events (MessageCreate, etc.)
+    GatewayIntentBits.MessageContent,      // privileged: read message content
   ],
 });
 
@@ -107,15 +150,127 @@ async function handlePlay(interaction: ChatInputCommandInteraction): Promise<voi
   await interaction.deferReply({ flags: 64 });
   const query = interaction.options.getString('query', true);
   try {
-    const track = await enqueue(client, interaction.guildId!, query, interaction.user.id, channelId);
-    if (!track) {
-      await interaction.editReply('❌ Kunde inte hitta låten. Prova med en annan sökning.');
+    const result = await enqueue(client, interaction.guildId!, query, interaction.user.id, channelId);
+    if (!result) {
+      await interaction.editReply('❌ Kunde inte hitta låten eller spellistan. Prova med en annan sökning eller URL.');
       return;
     }
-    await interaction.editReply(`▶️ **${track.title}**${track.artist ? ` — ${track.artist}` : ''} lades till i kön.`);
+    if (result.kind === 'playlist') {
+      await interaction.editReply(`▶️ **${result.title}** — ${result.queued} låtar lades till i kön.`);
+    } else {
+      const t = result.track;
+      await interaction.editReply(`▶️ **${t.title}**${t.artist ? ` — ${t.artist}` : ''} lades till i kön.`);
+    }
   } catch (err) {
     console.error('[music] enqueue error:', err);
     await interaction.editReply(`❌ Fel: ${(err as Error).message}`);
+  }
+}
+
+function fmtDuration(sec: number | null): string {
+  if (sec == null) return '';
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return ` [${m}:${s.toString().padStart(2, '0')}]`;
+}
+
+async function handlePlaylist(interaction: ChatInputCommandInteraction): Promise<void> {
+  const sub = interaction.options.getSubcommand(true);
+  const guildId = interaction.guildId!;
+  const userId = interaction.user.id;
+
+  if (sub === 'skapa') {
+    const name = interaction.options.getString('namn', true);
+    const pl = await createPlaylist(guildId, name, userId);
+    if (!pl) {
+      await interaction.reply({ content: `❌ En spellista med namnet **${name}** finns redan.`, flags: 64 });
+      return;
+    }
+    await interaction.reply({ content: `✅ Spellistan **${pl.name}** skapades.`, flags: 64 });
+    return;
+  }
+
+  if (sub === 'radera') {
+    const name = interaction.options.getString('namn', true);
+    const ok = await deletePlaylist(guildId, name);
+    await interaction.reply({ content: ok ? `🗑️ **${name}** raderades.` : `❌ Hittade ingen spellista med det namnet.`, flags: 64 });
+    return;
+  }
+
+  if (sub === 'lista') {
+    const lists = await listPlaylists(guildId);
+    if (!lists.length) {
+      await interaction.reply({ content: '📭 Inga spellistor skapade ännu. Använd `/playlist skapa`.', flags: 64 });
+      return;
+    }
+    const embed = new EmbedBuilder()
+      .setTitle('🎶 Spellistor')
+      .setDescription(lists.map((p) => `**${p.name}** — ${p.trackCount} spår`).join('\n'));
+    await interaction.reply({ embeds: [embed], flags: 64 });
+    return;
+  }
+
+  if (sub === 'visa') {
+    const name = interaction.options.getString('namn', true);
+    const tracks = await getPlaylistTracks(guildId, name);
+    if (!tracks) {
+      await interaction.reply({ content: `❌ Hittade ingen spellista med namnet **${name}**.`, flags: 64 });
+      return;
+    }
+    if (!tracks.length) {
+      await interaction.reply({ content: `📭 **${name}** är tom. Lägg till låtar med \`/playlist lagg-till\`.`, flags: 64 });
+      return;
+    }
+    const embed = new EmbedBuilder()
+      .setTitle(`🎶 ${name}`)
+      .setDescription(
+        tracks.map((t) => `${t.position}. **${t.title}**${t.artist ? ` — ${t.artist}` : ''}${fmtDuration(t.durationSec)}`).join('\n').slice(0, 4000),
+      );
+    await interaction.reply({ embeds: [embed], flags: 64 });
+    return;
+  }
+
+  if (sub === 'lagg-till') {
+    const name = interaction.options.getString('namn', true);
+    const query = interaction.options.getString('lat', true);
+    await interaction.deferReply({ flags: 64 });
+    const result = await addTrackToPlaylist(guildId, name, query, userId);
+    if (!result) {
+      await interaction.editReply(`❌ Hittade ingen spellista **${name}** eller kunde inte lösa låten.`);
+      return;
+    }
+    const { track, position } = result;
+    await interaction.editReply(`✅ **${track.title}**${track.artist ? ` — ${track.artist}` : ''} lades till på plats ${position} i **${name}**.`);
+    return;
+  }
+
+  if (sub === 'ta-bort') {
+    const name = interaction.options.getString('namn', true);
+    const position = interaction.options.getInteger('position', true);
+    const ok = await removeTrackFromPlaylist(guildId, name, position);
+    await interaction.reply({ content: ok ? `✅ Spår ${position} togs bort från **${name}**.` : `❌ Hittade inget spår på position ${position} i **${name}**.`, flags: 64 });
+    return;
+  }
+
+  if (sub === 'spela') {
+    const name = interaction.options.getString('namn', true);
+    const member = interaction.guild?.members.cache.get(userId);
+    const channelId = member?.voice.channelId ?? getLastChannelId(guildId);
+    if (!channelId) {
+      await interaction.reply({ content: '❌ Du måste vara i en röstkanal.', flags: 64 });
+      return;
+    }
+    await interaction.deferReply({ flags: 64 });
+    const result = await playPlaylist(client, guildId, name, userId, channelId);
+    if (!result) {
+      await interaction.editReply(`❌ Hittade ingen spellista med namnet **${name}**.`);
+      return;
+    }
+    if (result.queued === 0) {
+      await interaction.editReply(`📭 **${result.name}** är tom.`);
+      return;
+    }
+    await interaction.editReply(`▶️ **${result.name}** — ${result.queued} spår lades till i kön.`);
   }
 }
 
@@ -185,6 +340,9 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
     case 'queue':
       await handleQueue(interaction);
       break;
+    case 'playlist':
+      await handlePlaylist(interaction);
+      break;
   }
 });
 
@@ -199,6 +357,8 @@ async function main(): Promise<void> {
   initDb(databaseUrl);
   await initPlayDl();
   registerVoiceTracker(client);
+  registerGuildTracker(client);
+  registerMessageTracker(client);
   startMusicHttpServer(client, musicHttpPort);
   warnDockerBridgeVoice();
   await registerSlashCommands();
