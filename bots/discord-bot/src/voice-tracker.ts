@@ -9,19 +9,21 @@ async function upsertVoiceState(db: DB, state: VoiceState): Promise<void> {
   const member = state.member;
   const username = member?.user.username ?? 'unknown';
   const globalName = member?.user.globalName ?? null;
+  const nick = member?.nickname ?? null;
   const avatar = member?.user.avatar ?? null;
   const channelName = state.channel?.name ?? null;
 
   await db.query(
     `INSERT INTO bot.guild_voice_states
-       (guild_id, user_id, channel_id, channel_name, username, global_name, avatar,
+       (guild_id, user_id, channel_id, channel_name, username, global_name, nick, avatar,
         is_muted, is_deafened, is_streaming, is_video, joined_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now())
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now())
      ON CONFLICT (guild_id, user_id) DO UPDATE SET
        channel_id   = EXCLUDED.channel_id,
        channel_name = EXCLUDED.channel_name,
        username     = EXCLUDED.username,
        global_name  = EXCLUDED.global_name,
+       nick         = EXCLUDED.nick,
        avatar       = EXCLUDED.avatar,
        is_muted     = EXCLUDED.is_muted,
        is_deafened  = EXCLUDED.is_deafened,
@@ -34,6 +36,7 @@ async function upsertVoiceState(db: DB, state: VoiceState): Promise<void> {
       channelName,
       username,
       globalName,
+      nick,
       avatar,
       (state.selfMute || state.serverMute) ?? false,
       (state.selfDeaf || state.serverDeaf) ?? false,

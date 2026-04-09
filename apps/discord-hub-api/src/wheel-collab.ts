@@ -43,6 +43,17 @@ export function startWheelCollabServer(env: AppEnv): () => Promise<void> {
     response.end("wheel-collab ready");
   });
 
+  server.on("error", (err: NodeJS.ErrnoException) => {
+    if (err.code === "EADDRINUSE") {
+      console.error(
+        `discord-hub-api: wheel-collab cannot bind ${env.listenHost}:${env.wheelCollabPort} (${err.code}). From repo root run: node scripts/kill-dev-ports.mjs`,
+      );
+    } else {
+      console.error("discord-hub-api: wheel-collab server error:", err);
+    }
+    process.exit(1);
+  });
+
   server.on("upgrade", async (request, socket, head) => {
     const token = readCookie(request.headers.cookie, COOKIE_NAME);
     if (!token) {
@@ -69,8 +80,10 @@ export function startWheelCollabServer(env: AppEnv): () => Promise<void> {
     });
   });
 
-  server.listen(env.wheelCollabPort, "0.0.0.0", () => {
-    console.log(`discord-hub-api wheel-collab listening on ws://127.0.0.1:${env.wheelCollabPort}`);
+  server.listen(env.wheelCollabPort, env.listenHost, () => {
+    console.log(
+      `discord-hub-api wheel-collab listening on ws://${env.listenHost}:${env.wheelCollabPort}`,
+    );
   });
 
   return async () =>

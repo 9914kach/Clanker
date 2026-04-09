@@ -7,6 +7,7 @@ import {
   upsertProfileFromSession as repoUpsertProfileFromSession,
 } from "./repo.js";
 
+
 export type PublicLeagueProfile = {
   riotId: string;
   tagLine: string;

@@ -1,5 +1,5 @@
 import { config as loadDotenv } from "dotenv";
-import { serve } from "@hono/node-server";
+import { createAdaptorServer, type ServerType } from "@hono/node-server";
 import { Hono, type Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { fetchGuildSummary } from "./bot-guild-summary.js";
 import { assertBotGuildAccess } from "./bot-guild-access.js";
+import { discordBotFetchJson, discordBotRequest } from "./discord-bot-fetch.js";
 import {
   exchangeAuthorizationCode,
   fetchDiscordOAuth2Me,
@@ -28,9 +29,18 @@ import type { AppEnv } from "./env.js";
 import { loadEnv } from "./env.js";
 import { getPublicProfile, upsertProfileFromSession } from "./profile-store.js";
 import {
+  MATCH_V5_PUUID_IDS_HISTORY_CAP,
+  RIOT_TYPICAL_DEV_APP_DELAY_MS,
   RiotApiError,
-  fetchLeaguePlayerSnapshot,
+  fetchMatch,
+  fetchMatchIdsForPlayer,
+  fetchRankedEntries,
+  getLeagueApiHosts,
+  leagueRecentMatchForPuuid,
+  queueTypeForRankPreference,
+  resolvePuuid,
   type LeagueRankPreference,
+  type LeagueRecentMatch,
   type LeagueRegion,
 } from "./riot-lol.js";
 import { runSqlMigrations } from "@clanker/hub-pg-migrate";
@@ -42,8 +52,15 @@ import {
   deleteLeagueSnapshot,
   deleteWheelGroup,
   getHubUserSettings,
+  getKnownMatchIds,
   getLeagueConnection,
-  getLeagueSnapshot,
+  getLeagueConnections,
+  getLeagueRecentMatchesByMatchIds,
+  getLeagueMatchesPage,
+  getLeagueMatchStats,
+  getAllLeagueSnapshots,
+  deleteLeagueConnectionByAccount,
+  deleteLeagueSnapshotByPuuid,
   getWheelGroup,
   listRecentWheelSessions,
   listWheelGroups,
@@ -61,6 +78,44 @@ import { startLeagueSyncScheduler } from "./league-auto-sync.js";
 const STATE_COOKIE = "discord_oauth_state";
 const STATE_MAX_AGE = 600;
 const DISCORD_SNOWFLAKE_RE = /^\d{5,32}$/;
+
+/** Max match-ID listing for POST /api/integrations/league/sync (Riot caps ~1000). */
+const LEAGUE_MANUAL_SYNC_MAX_MATCH_IDS = Math.min(
+  Math.max(
+    1,
+    Math.floor(
+      Number(
+        process.env.LEAGUE_MANUAL_SYNC_MATCH_MAX ??
+          String(MATCH_V5_PUUID_IDS_HISTORY_CAP),
+      ),
+    ),
+  ),
+  MATCH_V5_PUUID_IDS_HISTORY_CAP,
+);
+
+/** How many newest matches to embed in the live snapshot / API response (full history stays in DB). */
+const LEAGUE_SNAPSHOT_RECENT_MATCHES = Math.min(
+  200,
+  Math.max(5, Math.floor(Number(process.env.LEAGUE_SNAPSHOT_RECENT_MATCHES ?? "50"))),
+);
+
+/**
+ * Pause between Riot calls during POST /api/integrations/league/sync only.
+ * Default matches typical **application** limits (100 req / 2 min → ~1200 ms). Approved production
+ * apps with higher app quotas can set `LEAGUE_MANUAL_RIOT_DELAY_MS` much lower (e.g. 50).
+ */
+const LEAGUE_MANUAL_RIOT_DELAY_MS = Math.max(
+  0,
+  Math.floor(
+    Number(
+      process.env.LEAGUE_MANUAL_RIOT_DELAY_MS ?? String(RIOT_TYPICAL_DEV_APP_DELAY_MS),
+    ),
+  ),
+);
+
+function sleepMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 type LeagueConnection = {
   riotId: string;
@@ -179,7 +234,7 @@ function respondWithRiotError(c: Context, error: RiotApiError) {
     return c.json(
       {
         error:
-          "Riot API rate limit uppnådd. Vänta lite och prova synk igen.",
+          "Riot API rate limit (429). Din **app** har ofta tak som 20/s och 100/2 min — då ska anrop spridas (standard ~1200 ms mellan varje). Vänta och synka igen; redan hämtade matcher sparas. Har du högre app-kvot (production): sänk LEAGUE_MANUAL_RIOT_DELAY_MS.",
         code: error.code,
       },
       429,
@@ -204,6 +259,45 @@ function respondWithRiotError(c: Context, error: RiotApiError) {
     },
     502,
   );
+}
+
+/** Same ordering logic as discord-bot `reorderMusicQueue` (hub DB fallback when MUSIC_BOT_HTTP_URL unset). */
+async function reorderMusicQueueDirect(guildId: string, orderedIds: number[]): Promise<boolean> {
+  const pool = getPool();
+  if (!pool) return false;
+  if (orderedIds.length === 0) return true;
+  const cur = await pool.query<{ id: number }>(
+    `SELECT id FROM bot.music_queue WHERE guild_id = $1 ORDER BY added_at`,
+    [guildId],
+  );
+  const currentIds = cur.rows.map((r) => r.id);
+  if (currentIds.length !== orderedIds.length) return false;
+  const setCur = new Set(currentIds);
+  if (new Set(orderedIds).size !== orderedIds.length) return false;
+  if (!orderedIds.every((id) => setCur.has(id))) return false;
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const baseRes = await client.query<{ t: string }>(`SELECT clock_timestamp()::text AS t`);
+    const base = baseRes.rows[0]?.t;
+    if (!base) throw new Error("clock_timestamp failed");
+    for (let i = 0; i < orderedIds.length; i++) {
+      await client.query(
+        `UPDATE bot.music_queue
+         SET added_at = $1::timestamptz + ($2::bigint * interval '1 microsecond')
+         WHERE id = $3 AND guild_id = $4`,
+        [base, i, orderedIds[i], guildId],
+      );
+    }
+    await client.query("COMMIT");
+  } catch {
+    await client.query("ROLLBACK");
+    return false;
+  } finally {
+    client.release();
+  }
+  return true;
 }
 
 function createApp(env: AppEnv) {
@@ -678,22 +772,24 @@ function createApp(env: AppEnv) {
       return c.json({ error: "Unauthorized" }, 401);
     }
 
-    const dbConn = await getLeagueConnection(session.sub);
-    const connection =
-      dbConn === null
-        ? null
-        : {
-            riotId: dbConn.riot_id,
-            tagLine: dbConn.tag_line,
-            region: dbConn.region,
-            autoSync: dbConn.auto_sync,
-            rankPreference: dbConn.rank_preference,
-            statusMessage: dbConn.status_message,
-            linkedAt: dbConn.linked_at,
-            lastSyncRequestedAt: dbConn.last_sync_requested_at,
-          };
-    const sync = await getLeagueSnapshot(session.sub);
-    return c.json({ connected: connection !== null, connection, sync });
+    const dbConns = await getLeagueConnections(session.sub);
+    const snapshots = await getAllLeagueSnapshots(session.sub);
+    const snapshotByPuuid = new Map(snapshots.map((s) => [s.account.puuid, s]));
+
+    const accounts = dbConns.map((dbConn) => ({
+      riotId: dbConn.riot_id,
+      tagLine: dbConn.tag_line,
+      region: dbConn.region,
+      autoSync: dbConn.auto_sync,
+      rankPreference: dbConn.rank_preference,
+      statusMessage: dbConn.status_message,
+      linkedAt: dbConn.linked_at,
+      lastSyncRequestedAt: dbConn.last_sync_requested_at,
+      puuid: dbConn.puuid,
+      sync: dbConn.puuid ? (snapshotByPuuid.get(dbConn.puuid) ?? null) : null,
+    }));
+
+    return c.json({ connected: accounts.length > 0, accounts });
   });
 
   app.post("/api/integrations/league/connect", async (c) => {
@@ -736,13 +832,13 @@ function createApp(env: AppEnv) {
       status_message: connection.statusMessage,
       linked_at: connection.linkedAt,
       last_sync_requested_at: connection.lastSyncRequestedAt,
+      puuid: null,
     });
-    await deleteLeagueSnapshot(session.sub);
+    // Do NOT delete snapshots for other accounts
 
     return c.json({
       connected: true,
-      connection,
-      sync: null,
+      accounts: [{ ...connection, puuid: null, sync: null }],
       message: "League-koppling sparad. Kontot är redo att synkas via Riot API.",
     });
   });
@@ -753,86 +849,203 @@ function createApp(env: AppEnv) {
       return c.json({ error: "Unauthorized" }, 401);
     }
 
-    const dbConn = await getLeagueConnection(session.sub);
-    const connection = dbConn
-      ? ({
-          riotId: dbConn.riot_id,
-          tagLine: dbConn.tag_line,
-          region: dbConn.region,
-          autoSync: dbConn.auto_sync,
-          rankPreference: dbConn.rank_preference,
-          statusMessage: dbConn.status_message,
-          linkedAt: dbConn.linked_at,
-          lastSyncRequestedAt: dbConn.last_sync_requested_at,
-        } satisfies LeagueConnection)
-      : null;
-    if (!connection) {
+    // Optional body: { riotId, tagLine } to sync a specific account.
+    // If omitted, sync the first linked account.
+    let targetRiotId: string | undefined;
+    let targetTagLine: string | undefined;
+    try {
+      const body = await c.req.json<{ riotId?: string; tagLine?: string }>();
+      targetRiotId = body.riotId;
+      targetTagLine = body.tagLine;
+    } catch {
+      // no body — that's fine
+    }
+
+    let dbConn;
+    if (targetRiotId && targetTagLine) {
+      const all = await getLeagueConnections(session.sub);
+      dbConn = all.find(
+        (c) => c.riot_id === targetRiotId && c.tag_line === targetTagLine,
+      ) ?? null;
+    } else {
+      dbConn = await getLeagueConnection(session.sub);
+    }
+
+    if (!dbConn) {
       return c.json({ error: "No linked League account" }, 404);
     }
 
     if (!env.riotApiKey) {
       return c.json(
         {
-          error:
-            "RIOT_API_KEY saknas i backend-miljön. Lägg till den innan du kör synk.",
+          error: "RIOT_API_KEY saknas i backend-miljön. Lägg till den innan du kör synk.",
           code: "riot_api_key_missing",
         },
         503,
       );
     }
 
-    const updated: LeagueConnection = {
-      ...connection,
-      lastSyncRequestedAt: new Date().toISOString(),
-    };
-
+    const nowIso = new Date().toISOString();
     await upsertProfileFromSession(session);
     await upsertLeagueConnection(session.sub, {
-      riot_id: updated.riotId,
-      tag_line: updated.tagLine,
-      region: updated.region,
-      auto_sync: updated.autoSync,
-      rank_preference: updated.rankPreference,
-      status_message: updated.statusMessage,
-      linked_at: updated.linkedAt,
-      last_sync_requested_at: updated.lastSyncRequestedAt,
+      riot_id: dbConn.riot_id,
+      tag_line: dbConn.tag_line,
+      region: dbConn.region,
+      auto_sync: dbConn.auto_sync,
+      rank_preference: dbConn.rank_preference,
+      status_message: dbConn.status_message,
+      linked_at: dbConn.linked_at,
+      last_sync_requested_at: nowIso,
+      puuid: dbConn.puuid,
     });
 
     try {
-      const sync = await fetchLeaguePlayerSnapshot({
+      const hosts = getLeagueApiHosts(dbConn.region);
+      const rankPreference = dbConn.rank_preference as LeagueRankPreference;
+      const participantLabel = `${dbConn.riot_id}#${dbConn.tag_line}`;
+      const d = LEAGUE_MANUAL_RIOT_DELAY_MS;
+
+      const account = await resolvePuuid(
+        env.riotApiKey,
+        hosts.regionalBaseUrl,
+        dbConn.riot_id,
+        dbConn.tag_line,
+      );
+      if (d > 0) await sleepMs(d);
+
+      const leagueEntries = await fetchRankedEntries(
+        env.riotApiKey,
+        hosts.platformBaseUrl,
+        account.puuid,
+      );
+      if (d > 0) await sleepMs(d);
+
+      const matchIds = await fetchMatchIdsForPlayer({
         apiKey: env.riotApiKey,
-        region: updated.region,
-        riotId: updated.riotId,
-        tagLine: updated.tagLine,
-        rankPreference: updated.rankPreference,
-        matchCount: 5,
+        regionalBaseUrl: hosts.regionalBaseUrl,
+        puuid: account.puuid,
+        maxTotal: LEAGUE_MANUAL_SYNC_MAX_MATCH_IDS,
+        delayBetweenPagesMs: d,
+      });
+
+      const known = await getKnownMatchIds(session.sub, account.puuid, matchIds);
+      const newRows: LeagueRecentMatch[] = [];
+      for (const matchId of matchIds) {
+        if (known.has(matchId)) continue;
+        if (d > 0) await sleepMs(d);
+        const rawMatch = await fetchMatch(
+          env.riotApiKey,
+          hosts.regionalBaseUrl,
+          matchId,
+        );
+        const row = leagueRecentMatchForPuuid(rawMatch, account.puuid);
+        if (row) newRows.push(row);
+      }
+
+      await saveLeagueMatches(session.sub, account.puuid, newRows);
+
+      const preferredRank =
+        leagueEntries.find(
+          (entry) => entry.queueType === queueTypeForRankPreference(rankPreference),
+        ) ?? null;
+
+      const recentIds = matchIds.slice(0, LEAGUE_SNAPSHOT_RECENT_MATCHES);
+      const freshById = new Map(newRows.map((m) => [m.matchId, m]));
+      const missingForSnapshot = recentIds.filter((id) => !freshById.has(id));
+      const fromDb =
+        missingForSnapshot.length > 0
+          ? await getLeagueRecentMatchesByMatchIds(
+              session.sub,
+              account.puuid,
+              missingForSnapshot,
+              participantLabel,
+            )
+          : new Map<string, LeagueRecentMatch>();
+
+      const recentMatches: LeagueRecentMatch[] = [];
+      for (const id of recentIds) {
+        const row = freshById.get(id) ?? fromDb.get(id);
+        if (row) recentMatches.push(row);
+      }
+
+      const sync = {
+        fetchedAt: new Date().toISOString(),
+        account,
+        rankPreference,
+        preferredRank,
+        leagueEntries,
+        recentMatches,
+      };
+
+      await upsertLeagueConnection(session.sub, {
+        riot_id: dbConn.riot_id,
+        tag_line: dbConn.tag_line,
+        region: dbConn.region,
+        auto_sync: dbConn.auto_sync,
+        rank_preference: dbConn.rank_preference,
+        status_message: dbConn.status_message,
+        linked_at: dbConn.linked_at,
+        last_sync_requested_at: nowIso,
+        puuid: sync.account.puuid,
       });
 
       await upsertLeagueSnapshot(session.sub, sync);
-      // Persist historical data for charts/stats
-      await saveLeagueMatches(session.sub, sync.account.puuid, sync.recentMatches);
       await saveLeagueRankHistory(session.sub, sync.account.puuid, sync.leagueEntries);
 
       return c.json({
         connected: true,
-        connection: updated,
         sync,
-        message: `Synk klar. Hämtade ${sync.recentMatches.length} matcher från Riot API.`,
+        message: `Synk klar. ${matchIds.length} match-ID:n i Riots historik; ${newRows.length} nya match(er) hämtade (översikten visar de ${recentMatches.length} senaste).`,
       });
     } catch (error) {
       if (error instanceof RiotApiError) {
         return respondWithRiotError(c, error);
       }
-
       console.error("League sync failed", error);
-      return c.json(
-        {
-          error: "Okänt fel vid League-synk.",
-          code: "league_sync_failed",
-        },
-        500,
-      );
+      return c.json({ error: "Okänt fel vid League-synk.", code: "league_sync_failed" }, 500);
     }
+  });
+
+  app.get("/api/stats/league", async (c) => {
+    const session = await requireSession(env, getCookie(c, COOKIE_NAME));
+    if (!session) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    const puuid = c.req.query("puuid");
+    if (!puuid) {
+      return c.json({ error: "puuid query param required" }, 400);
+    }
+    const stats = await getLeagueMatchStats(session.sub, puuid);
+    if (!stats || stats.totalGames === 0) {
+      return c.json({ available: false });
+    }
+    return c.json({ available: true, ...stats });
+  });
+
+  app.get("/api/stats/league/matches", async (c) => {
+    const session = await requireSession(env, getCookie(c, COOKIE_NAME));
+    if (!session) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    const puuid = c.req.query("puuid");
+    if (!puuid) {
+      return c.json({ error: "puuid query param required" }, 400);
+    }
+    const linked = await getLeagueConnections(session.sub);
+    if (!linked.some((row) => row.puuid === puuid)) {
+      return c.json({ error: "Forbidden", code: "league_puuid_not_linked" }, 403);
+    }
+
+    const limitRaw = Number(c.req.query("limit") ?? "25");
+    const offsetRaw = Number(c.req.query("offset") ?? "0");
+    const limit = Math.min(100, Math.max(1, Math.floor(Number.isFinite(limitRaw) ? limitRaw : 25)));
+    const offset = Math.max(0, Math.floor(Number.isFinite(offsetRaw) ? offsetRaw : 0));
+
+    const page = await getLeagueMatchesPage(session.sub, puuid, offset, limit);
+    if (!page) {
+      return c.json({ error: "Database unavailable" }, 503);
+    }
+    return c.json(page);
   });
 
   app.post("/api/integrations/league/disconnect", async (c) => {
@@ -841,10 +1054,35 @@ function createApp(env: AppEnv) {
       return c.json({ error: "Unauthorized" }, 401);
     }
 
+    // Disconnect a specific account by riotId + tagLine
+    let riotId: string | undefined;
+    let tagLine: string | undefined;
+    try {
+      const body = await c.req.json<{ riotId?: string; tagLine?: string }>();
+      riotId = body.riotId;
+      tagLine = body.tagLine;
+    } catch {
+      // no body
+    }
+
     await upsertProfileFromSession(session);
-    await deleteLeagueConnection(session.sub);
-    await deleteLeagueSnapshot(session.sub);
-    return c.json({ connected: false });
+
+    if (riotId && tagLine) {
+      // Find the puuid of this account so we can delete its snapshot
+      const all = await getLeagueConnections(session.sub);
+      const target = all.find((c) => c.riot_id === riotId && c.tag_line === tagLine);
+      await deleteLeagueConnectionByAccount(session.sub, riotId, tagLine);
+      if (target?.puuid) {
+        await deleteLeagueSnapshotByPuuid(session.sub, target.puuid);
+      }
+    } else {
+      // Disconnect all (backward compat)
+      await deleteLeagueConnection(session.sub);
+      await deleteLeagueSnapshot(session.sub);
+    }
+
+    const remaining = await getLeagueConnections(session.sub);
+    return c.json({ connected: remaining.length > 0 });
   });
 
   app.get("/api/public/profile/:userId", async (c) => {
@@ -1005,6 +1243,7 @@ function createApp(env: AppEnv) {
       channel_name: string | null;
       username: string;
       global_name: string | null;
+      nick: string | null;
       avatar: string | null;
       is_muted: boolean;
       is_deafened: boolean;
@@ -1014,7 +1253,7 @@ function createApp(env: AppEnv) {
       updated_at: string;
     };
     const result = await pool.query<VoiceStateRow>(
-      `SELECT user_id, channel_id, channel_name, username, global_name,
+      `SELECT user_id, channel_id, channel_name, username, global_name, nick,
               avatar, is_muted, is_deafened, is_streaming, is_video,
               joined_at, updated_at
        FROM bot.guild_voice_states
@@ -1037,6 +1276,91 @@ function createApp(env: AppEnv) {
       channels: [...channelMap.values()],
       total_users: result.rowCount ?? 0,
     });
+  });
+
+  // Move a user between voice channels (e.g. for League custom game team sorting)
+  app.post("/api/bot/guild/:id/voice-move", async (c) => {
+    const token = getCookie(c, COOKIE_NAME);
+    if (!token) return c.json({ error: "Unauthorized" }, 401);
+    const session = await verifySession(env.sessionSecret, token);
+    if (!session) return c.json({ error: "Unauthorized" }, 401);
+
+    const guildId = c.req.param("id");
+    if (!DISCORD_SNOWFLAKE_RE.test(guildId)) {
+      return c.json({ error: "Invalid guild id" }, 400);
+    }
+    const access = await assertBotGuildAccess(env, session.sub, guildId);
+    if (!access.ok) return c.json(access.body, access.status);
+
+    if (!env.discordBotToken) {
+      return c.json({ error: "Bot token not configured" }, 503);
+    }
+
+    let body: { userId?: unknown; direction?: unknown };
+    try {
+      body = await c.req.json<{ userId?: unknown; direction?: unknown }>();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+
+    if (typeof body.userId !== "string" || !DISCORD_SNOWFLAKE_RE.test(body.userId)) {
+      return c.json({ error: "Invalid userId" }, 400);
+    }
+    const userId = body.userId;
+    const direction = body.direction === "up" ? "up" : "down";
+
+    const pool = getPool();
+    if (!pool) return c.json({ error: "Database not available" }, 503);
+
+    type VoiceRow = { channel_id: string };
+    const voiceRes = await pool.query<VoiceRow>(
+      `SELECT channel_id FROM bot.guild_voice_states WHERE guild_id = $1 AND user_id = $2`,
+      [guildId, userId],
+    );
+    if (!voiceRes.rows.length) {
+      return c.json({ error: "User not in a voice channel" }, 404);
+    }
+    const currentChannelId = voiceRes.rows[0]!.channel_id;
+
+    type DiscordChannel = { id: string; type: number; position: number; name: string };
+    const channelsResult = await discordBotFetchJson<DiscordChannel[]>(
+      env.discordBotToken,
+      `/guilds/${guildId}/channels`,
+    );
+    if (!channelsResult.ok) {
+      return c.json({ error: channelsResult.error.message }, channelsResult.error.status as 400 | 403 | 502 | 503);
+    }
+
+    // Type 2 = voice, 13 = stage (both support member moves via channel_id)
+    const voiceChannels = channelsResult.data
+      .filter((ch) => ch.type === 2 || ch.type === 13)
+      .sort((a, b) => a.position - b.position);
+
+    const currentIdx = voiceChannels.findIndex((ch) => ch.id === currentChannelId);
+    if (currentIdx === -1) {
+      return c.json({ error: "Current channel not found among voice channels" }, 404);
+    }
+
+    const targetIdx = direction === "down" ? currentIdx + 1 : currentIdx - 1;
+    if (targetIdx < 0 || targetIdx >= voiceChannels.length) {
+      return c.json({ error: "No channel in that direction" }, 400);
+    }
+
+    const targetChannel = voiceChannels[targetIdx]!;
+    const moveResult = await discordBotRequest(
+      env.discordBotToken,
+      `/guilds/${guildId}/members/${userId}`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ channel_id: targetChannel.id }),
+      },
+    );
+    if (!moveResult.ok) {
+      return c.json({ error: moveResult.error.message }, moveResult.error.status as 400 | 403 | 404 | 502);
+    }
+
+    return c.json({ ok: true, targetChannelId: targetChannel.id, targetChannelName: targetChannel.name });
   });
 
   // --- Music endpoints ---
@@ -1393,6 +1717,61 @@ function createApp(env: AppEnv) {
     return c.json({ ok: true });
   });
 
+  app.post("/api/bot/guild/:id/music/queue/reorder", async (c) => {
+    const token = getCookie(c, COOKIE_NAME);
+    if (!token) return c.json({ error: "Unauthorized" }, 401);
+    const session = await verifySession(env.sessionSecret, token);
+    if (!session) return c.json({ error: "Unauthorized" }, 401);
+    const guildId = c.req.param("id");
+    if (!DISCORD_SNOWFLAKE_RE.test(guildId)) {
+      return c.json({ error: "Invalid guild id", code: "invalid_guild_id" }, 400);
+    }
+    const access = await assertBotGuildAccess(env, session.sub, guildId);
+    if (!access.ok) return c.json(access.body, access.status);
+
+    let body: { orderedIds?: unknown };
+    try {
+      body = await c.req.json<{ orderedIds?: unknown }>();
+    } catch {
+      return c.json({ error: "Invalid JSON" }, 400);
+    }
+    const raw = body.orderedIds;
+    if (!Array.isArray(raw) || raw.length === 0) {
+      return c.json({ error: "orderedIds must be a non-empty array" }, 400);
+    }
+    const orderedIds = raw.map((x) => (typeof x === "number" ? x : Number(x)));
+    if (!orderedIds.every((n) => Number.isInteger(n) && n > 0)) {
+      return c.json({ error: "orderedIds must be positive integers" }, 400);
+    }
+
+    const botBase = musicBotBaseUrl();
+    if (botBase) {
+      try {
+        const res = await fetch(`${botBase}/music/queue/reorder`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ guildId, orderedIds }),
+        });
+        const json = (await res.json()) as Record<string, unknown>;
+        if (!res.ok) {
+          return c.json(json, res.status as 400 | 409 | 503);
+        }
+        return c.json(json);
+      } catch {
+        return c.json({ error: "Music bot unreachable" }, 503);
+      }
+    }
+
+    const ok = await reorderMusicQueueDirect(guildId, orderedIds);
+    if (!ok) {
+      return c.json(
+        { error: "Queue mismatch — refresh and try again", code: "music_queue_reorder_conflict" },
+        409,
+      );
+    }
+    return c.json({ ok: true });
+  });
+
   return app;
 }
 
@@ -1418,9 +1797,16 @@ function shutdownGateway(): void {
 }
 
 let stopWheelCollabServer: (() => Promise<void>) | null = null;
+let httpServer: ServerType | null = null;
 
 async function shutdownAndExit(code: number): Promise<void> {
   shutdownGateway();
+  if (httpServer) {
+    await new Promise<void>((resolve) => {
+      httpServer!.close(() => resolve());
+    });
+    httpServer = null;
+  }
   if (stopWheelCollabServer) {
     await stopWheelCollabServer();
     stopWheelCollabServer = null;
@@ -1457,8 +1843,12 @@ async function main(): Promise<void> {
   const app = createApp(env);
   startDiscordGateway(env);
   stopWheelCollabServer = startWheelCollabServer(env);
-  if (env.riotApiKey) {
+  if (env.riotApiKey && env.leagueAutoSyncEnabled) {
     startLeagueSyncScheduler(env.riotApiKey);
+  } else if (env.riotApiKey && !env.leagueAutoSyncEnabled) {
+    console.log(
+      "[league-sync] Auto-sync av — sätt LEAGUE_AUTO_SYNC_ENABLED=1 för att aktivera periodisk synk.",
+    );
   } else {
     console.log("[league-sync] RIOT_API_KEY not set — auto-sync disabled");
   }
@@ -1470,15 +1860,29 @@ async function main(): Promise<void> {
     void shutdownAndExit(0);
   });
 
-  serve(
-    {
-      fetch: app.fetch,
-      port: env.port,
-    },
-    (info) => {
-      console.log(`discord-hub-api listening on http://127.0.0.1:${info.port}`);
-    },
-  );
+  const server = createAdaptorServer({
+    fetch: app.fetch,
+    hostname: env.listenHost,
+  });
+  httpServer = server;
+  server.on("error", (err: NodeJS.ErrnoException) => {
+    if (err.code === "EADDRINUSE") {
+      console.error(
+        `discord-hub-api: cannot bind ${env.listenHost}:${env.port} (${err.code}). From repo root run: node scripts/kill-dev-ports.mjs`,
+      );
+    } else {
+      console.error("discord-hub-api: HTTP server error:", err);
+    }
+    process.exit(1);
+  });
+  server.listen(env.port, env.listenHost, () => {
+    const addr = server.address();
+    const p =
+      typeof addr === "object" && addr !== null && "port" in addr
+        ? (addr as { port: number }).port
+        : env.port;
+    console.log(`discord-hub-api listening on http://${env.listenHost}:${p}`);
+  });
 }
 
 main().catch((err) => {

@@ -32,6 +32,10 @@ type LeagueRecentMatch = {
   matchId: string;
   gameCreation: number;
   gameDurationSeconds: number;
+  queueId?: number;
+  gameMode?: string;
+  gameType?: string;
+  mapId?: number;
   championName: string;
   kills: number;
   deaths: number;
@@ -385,6 +389,15 @@ export default function PublicProfilePage() {
                                   match.championLevel,
                                 )}
                               </p>
+                              {(() => {
+                                const mode = p.leagueMatchModeLine(
+                                  match.gameMode ?? "",
+                                  match.gameType ?? "",
+                                );
+                                return mode ? (
+                                  <p className="text-xs text-muted-foreground/90">{mode}</p>
+                                ) : null;
+                              })()}
                             </div>
                           </div>
                           <div className="text-right text-sm text-muted-foreground">

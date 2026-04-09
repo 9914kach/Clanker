@@ -139,3 +139,48 @@ export async function discordBotFetchJson<T>(
     error: { status: 502, code: "exhausted_retries", message: "Retries exhausted" },
   };
 }
+
+/** Like discordBotFetchJson but does not parse a JSON body — use for PATCH/DELETE that return 204. */
+export async function discordBotRequest(
+  botToken: string,
+  pathAndQuery: string,
+  init?: RequestInit & { timeoutMs?: number },
+): Promise<{ ok: true; status: number } | { ok: false; error: BotFetchError }> {
+  const url = `${DISCORD_API_V10}${pathAndQuery.startsWith("/") ? "" : "/"}${pathAndQuery}`;
+  const timeoutMs = (init as { timeoutMs?: number } | undefined)?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const { timeoutMs: _t, ...rest } = (init ?? {}) as RequestInit & { timeoutMs?: number };
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      ...rest,
+      signal: ac.signal,
+      headers: {
+        Authorization: `Bot ${botToken}`,
+        "User-Agent": "Clanker-discord-hub-api/1.0",
+        ...(rest.headers as Record<string, string> | undefined),
+      },
+    });
+    if (!res.ok) {
+      let message = res.statusText || "Discord error";
+      try {
+        const text = await res.text();
+        if (text.length > 0 && text.length < 500) message = text;
+      } catch { /* ignore */ }
+      return { ok: false, error: { status: res.status >= 400 ? res.status : 502, code: "discord_error", message } };
+    }
+    return { ok: true, status: res.status };
+  } catch (e) {
+    const aborted = e instanceof Error && e.name === "AbortError";
+    return {
+      ok: false,
+      error: {
+        status: aborted ? 504 : 502,
+        code: aborted ? "timeout" : "network_error",
+        message: aborted ? "Discord request timed out" : "Discord request failed",
+      },
+    };
+  } finally {
+    clearTimeout(t);
+  }
+}

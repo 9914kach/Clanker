@@ -3,7 +3,7 @@ import type { HubShellObjectKind } from "@/lib/hub-shell-object-kinds";
 
 export type HubContextTarget =
   | { type: "shell.surface"; area: "desktop" | "workspace" | "fallback" }
-  | { type: "shell.nav"; area: "topbar" | "dock" | "panel" }
+  | { type: "shell.nav"; area: "topbar" | "dock" | "panel" | "sidebar" }
   | {
       type: "shell.object";
       kind: HubShellObjectKind;

@@ -8,8 +8,9 @@
   },
   "scripts": {
     "postinstall": "node scripts/patch-prism-ffmpeg-env.mjs",
-    "predev": "npm run build --prefix ../../packages/hub-pg-migrate",
-    "dev": "tsx watch src/index.ts",
+    "predev": "node ../../scripts/kill-dev-ports.mjs music-bot && npm run build --prefix ../../packages/hub-pg-migrate",
+    "dev": "tsx watch --exclude \"../../packages/**\" --exclude \"**/node_modules/**\" src/index.ts",
+    "dev:once": "node ../../scripts/kill-dev-ports.mjs music-bot && tsx src/index.ts",
     "prebuild": "npm run build --prefix ../../packages/hub-pg-migrate",
     "build": "tsc -p tsconfig.json",
     "rebuild:ytdlp": "node scripts/rebuild-ytdlp.mjs",

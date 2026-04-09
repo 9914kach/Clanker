@@ -22,10 +22,13 @@ export function MusicSeekProgressBar({
   track,
   nowMs,
   onSeek,
+  timeTextClassName,
 }: {
   track: MusicSeekProgressTrack;
   nowMs: number;
   onSeek?: (sec: number) => void;
+  /** When set, overrides `text-muted-foreground` for elapsed/total labels */
+  timeTextClassName?: string;
 }) {
   const barRef = useRef<HTMLDivElement>(null);
   /** Non-null while the user is holding the scrubber (pointer captured). */
@@ -120,7 +123,12 @@ export function MusicSeekProgressBar({
           />
         )}
       </div>
-      <div className="flex justify-between text-[10px] tabular-nums text-muted-foreground">
+      <div
+        className={cn(
+          "flex justify-between text-[10px] tabular-nums text-muted-foreground",
+          timeTextClassName,
+        )}
+      >
         <span>{fmtDuration(Math.max(0, displaySec))}</span>
         <span>{fmtDuration(track.duration_sec)}</span>
       </div>

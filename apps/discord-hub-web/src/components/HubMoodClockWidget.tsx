@@ -9,14 +9,12 @@ import { useHubToasts } from "@/components/HubToastProvider";
 import { useHubLocale } from "@/components/locale-provider";
 import { useTheme, type ColorPalette } from "@/components/theme-provider";
 import { toBcp47 } from "@/i18n/hub-copy";
-import type { HubDesktopStylePackId } from "@/lib/hub-prefs";
 import { hubMotionDurationScale } from "@/lib/hub-motion";
 
 type MoodPreset = {
   id: string;
   label: string;
   detail: string;
-  stylePackId: HubDesktopStylePackId;
   palette: ColorPalette;
   tone: "useful" | "social" | "chaos";
 };
@@ -27,7 +25,6 @@ function presetForHour(hour: number, copy: { vibeMorning: string; vibeDay: strin
       id: "night",
       label: copy.vibeNight,
       detail: "low light · high lore · do not ping",
-      stylePackId: "midnight",
       palette: "midnight-acid",
       tone: "chaos",
     };
@@ -37,7 +34,6 @@ function presetForHour(hour: number, copy: { vibeMorning: string; vibeDay: strin
       id: "morning",
       label: copy.vibeMorning,
       detail: "boot sequence · warm paper · mild cope",
-      stylePackId: "paper",
       palette: "citrus-pop",
       tone: "useful",
     };
@@ -47,7 +43,6 @@ function presetForHour(hour: number, copy: { vibeMorning: string; vibeDay: strin
       id: "day",
       label: copy.vibeDay,
       detail: "steady signal · dashboards pretending to be alive",
-      stylePackId: "signal",
       palette: "slate-ocean",
       tone: "useful",
     };
@@ -56,8 +51,7 @@ function presetForHour(hour: number, copy: { vibeMorning: string; vibeDay: strin
     return {
       id: "evening",
       label: copy.vibeEvening,
-      detail: "prime time · campfire OS · snacks approved",
-      stylePackId: "campfire",
+      detail: "prime time · snacks approved",
       palette: "citrus-pop",
       tone: "social",
     };
@@ -65,8 +59,7 @@ function presetForHour(hour: number, copy: { vibeMorning: string; vibeDay: strin
   return {
     id: "night",
     label: copy.vibeNight,
-    detail: "ritual hour · orbiting dots · suspicious vibes",
-    stylePackId: "midnight",
+    detail: "ritual hour · suspicious vibes",
     palette: "goblin",
     tone: "chaos",
   };
@@ -84,7 +77,7 @@ export default function HubMoodClockWidget() {
   const reducedMotion = useReducedMotion() ?? false;
   const { play } = useHubAudio();
   const toasts = useHubToasts();
-  const { prefs, patchPrefs } = useHubPrefs();
+  const { prefs } = useHubPrefs();
   const { colorPalette, setColorPalette } = useTheme();
   const [now, setNow] = useState(() => new Date());
 
@@ -121,13 +114,12 @@ export default function HubMoodClockWidget() {
   const durationScale = hubMotionDurationScale(prefs.motion.animationIntensity);
 
   const applyMood = () => {
-    patchPrefs({ desktop: { ...prefs.desktop, stylePackId: preset.stylePackId } });
     setColorPalette(preset.palette);
     play("confirm");
     toasts.push({
       kind: "success",
       title: d.moodClockToastAppliedTitle,
-      message: `${preset.stylePackId} · ${preset.palette}`,
+      message: preset.palette,
     });
   };
 
@@ -140,7 +132,7 @@ export default function HubMoodClockWidget() {
     });
   };
 
-  const isAlreadyApplied = prefs.desktop.stylePackId === preset.stylePackId && colorPalette === preset.palette;
+  const isAlreadyApplied = colorPalette === preset.palette;
 
   return (
     <div className="flex flex-col gap-3 text-sm text-muted-foreground">
@@ -154,9 +146,6 @@ export default function HubMoodClockWidget() {
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <Badge variant={toneBadgeVariant(preset.tone)}>{preset.label}</Badge>
-            <Badge variant="outline" className="font-mono text-xs">
-              {preset.stylePackId}
-            </Badge>
             <Badge variant="outline" className="font-mono text-xs">
               {preset.palette}
             </Badge>

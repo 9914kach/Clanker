@@ -138,12 +138,36 @@ export function loadEnv() {
   const oauthCallbackVerboseLog =
     nodeEnv !== "production" || truthyEnv("DISCORD_OAUTH_DEBUG");
 
+  const listenHostRaw = process.env.DISCORD_HUB_API_LISTEN_HOST?.trim();
+  const listenHost =
+    listenHostRaw && listenHostRaw.length > 0
+      ? listenHostRaw
+      : nodeEnv === "production"
+        ? "0.0.0.0"
+        : "127.0.0.1";
+
+  const port = Number(process.env.PORT ?? "3001");
+  const wheelCollabPort = Number(
+    process.env.WHEEL_COLLAB_PORT?.trim() || String(port + 1),
+  );
+  if (!Number.isFinite(port) || port < 1 || port > 65535) {
+    throw new Error("PORT måste vara ett giltigt TCP-portnummer (1–65535).");
+  }
+  if (!Number.isFinite(wheelCollabPort) || wheelCollabPort < 1 || wheelCollabPort > 65535) {
+    throw new Error(
+      "WHEEL_COLLAB_PORT måste vara ett giltigt TCP-portnummer (1–65535) — se apps/discord-hub-api/.env.example.",
+    );
+  }
+  if (port === wheelCollabPort) {
+    throw new Error(
+      "PORT och WHEEL_COLLAB_PORT får inte vara samma: wheel-collab startar före HTTP-servern och skulle då ta porten. Sätt t.ex. WHEEL_COLLAB_PORT till PORT+1.",
+    );
+  }
+
   return {
-    port: Number(process.env.PORT ?? "3001"),
-    wheelCollabPort: Number(
-      process.env.WHEEL_COLLAB_PORT ??
-        String(Number(process.env.PORT ?? "3001") + 1),
-    ),
+    listenHost,
+    port,
+    wheelCollabPort,
     discordClientId: process.env.DISCORD_CLIENT_ID!.trim(),
     discordClientSecret: process.env.DISCORD_CLIENT_SECRET!.trim(),
     discordRedirectUri: process.env.DISCORD_REDIRECT_URI!.trim(),
@@ -164,6 +188,8 @@ export function loadEnv() {
     ),
     discordBotToken,
     riotApiKey,
+    /** Periodic League Riot sync; off unless `LEAGUE_AUTO_SYNC_ENABLED=1` (saves rate limit / Pi load). */
+    leagueAutoSyncEnabled: truthyEnv("LEAGUE_AUTO_SYNC_ENABLED"),
     musicBotHttpUrl: process.env.MUSIC_BOT_HTTP_URL?.trim() || undefined,
     discordHubAllowedGuildIds: parseSnowflakeList(
       process.env.DISCORD_HUB_ALLOWED_GUILD_IDS,

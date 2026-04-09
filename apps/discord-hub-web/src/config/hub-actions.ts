@@ -5,10 +5,12 @@ import {
   Home,
   LogOut,
   Palette,
+  Radio,
   RefreshCw,
   Search,
   Settings,
   Sparkles,
+  Trophy,
   UserRound,
   Volume2,
   VolumeX,
@@ -55,6 +57,8 @@ export type HubActionApi = {
   openPath: (path: string, sound?: "dock" | "panel" | "confirm" | "chaos") => void;
   openDashboard: () => void;
   openWheel: () => void;
+  openRadio: () => void;
+  openLeagueStats: () => void;
   openSettings: () => void;
   openProfile: (() => void) | null;
   openCommandPalette: (() => void) | null;
@@ -185,6 +189,8 @@ export function createHubActionApi(params: HubActionEnvironment): HubActionApi {
     openPath,
     openDashboard: () => openPath("/dashboard"),
     openWheel: () => openPath("/tools/spin-the-wheel"),
+    openRadio: () => openPath("/tools/music"),
+    openLeagueStats: () => openPath("/tools/league-stats"),
     openSettings: () => openPath("/profile/settings"),
     openProfile: params.profilePath ? () => openPath(params.profilePath!) : null,
     openCommandPalette: params.openCommandPalette
@@ -244,6 +250,26 @@ export function buildHubActions(params: HubActionEnvironment): HubAction[] {
       keywords: a.navWheel.keywords,
       icon: Dices,
       onSelect: actionApi.openWheel,
+    },
+    {
+      id: "nav-radio",
+      label: a.navRadio.label,
+      description: a.navRadio.description,
+      section: "Navigation",
+      tone: "social",
+      keywords: a.navRadio.keywords,
+      icon: Radio,
+      onSelect: actionApi.openRadio,
+    },
+    {
+      id: "nav-league-stats",
+      label: a.navLeagueStats.label,
+      description: a.navLeagueStats.description,
+      section: "Navigation",
+      tone: "useful",
+      keywords: a.navLeagueStats.keywords,
+      icon: Trophy,
+      onSelect: actionApi.openLeagueStats,
     },
     {
       id: "nav-settings",
@@ -343,7 +369,7 @@ export function buildHubActions(params: HubActionEnvironment): HubAction[] {
   ];
 
   if (actionApi.openProfile) {
-    actions.splice(2, 0, {
+    actions.splice(4, 0, {
       id: "nav-profile",
       label: a.navProfile.label,
       description: a.navProfile.description,
@@ -356,29 +382,36 @@ export function buildHubActions(params: HubActionEnvironment): HubAction[] {
   }
 
   if (actionApi.copyDiscordId) {
-    actions.splice(6, 0, {
-      id: "system-copy-discord-id",
-      label: a.systemCopyDiscord.label,
-      description: a.systemCopyDiscord.description,
-      section: "System",
-      tone: "social",
-      keywords: a.systemCopyDiscord.keywords,
-      icon: Copy,
-      onSelect: actionApi.copyDiscordId,
-    });
+    const paletteIdx = actions.findIndex((x) => x.id === "system-cycle-palette");
+    if (paletteIdx >= 0) {
+      actions.splice(paletteIdx, 0, {
+        id: "system-copy-discord-id",
+        label: a.systemCopyDiscord.label,
+        description: a.systemCopyDiscord.description,
+        section: "System",
+        tone: "social",
+        keywords: a.systemCopyDiscord.keywords,
+        icon: Copy,
+        onSelect: actionApi.copyDiscordId,
+      });
+    }
   }
 
   if (actionApi.copyHandle) {
-    actions.splice(7, 0, {
-      id: "system-copy-handle",
-      label: a.systemCopyHandle.label,
-      description: a.systemCopyHandle.description,
-      section: "System",
-      tone: "social",
-      keywords: a.systemCopyHandle.keywords,
-      icon: Copy,
-      onSelect: actionApi.copyHandle,
-    });
+    const discordIdx = actions.findIndex((x) => x.id === "system-copy-discord-id");
+    const insertAt = discordIdx >= 0 ? discordIdx + 1 : actions.findIndex((x) => x.id === "system-cycle-palette");
+    if (insertAt >= 0) {
+      actions.splice(insertAt, 0, {
+        id: "system-copy-handle",
+        label: a.systemCopyHandle.label,
+        description: a.systemCopyHandle.description,
+        section: "System",
+        tone: "social",
+        keywords: a.systemCopyHandle.keywords,
+        icon: Copy,
+        onSelect: actionApi.copyHandle,
+      });
+    }
   }
 
   return actions;

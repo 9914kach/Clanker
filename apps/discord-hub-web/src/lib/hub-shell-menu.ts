@@ -357,6 +357,16 @@ export function buildHubShellMenu(params: {
             label: m.openWheel,
             onSelect: actions.openWheel,
           },
+          {
+            id: "nav-radio",
+            label: m.openRadio,
+            onSelect: actions.openRadio,
+          },
+          {
+            id: "nav-league-stats",
+            label: m.openLeagueStats,
+            onSelect: actions.openLeagueStats,
+          },
           actions.openProfile
             ? {
                 id: "nav-profile",
@@ -404,6 +414,16 @@ export function buildHubShellMenu(params: {
           id: "nav-wheel",
           label: m.openWheel,
           onSelect: actions.openWheel,
+        },
+        {
+          id: "nav-radio",
+          label: m.openRadio,
+          onSelect: actions.openRadio,
+        },
+        {
+          id: "nav-league-stats",
+          label: m.openLeagueStats,
+          onSelect: actions.openLeagueStats,
         },
         actions.openProfile
           ? {

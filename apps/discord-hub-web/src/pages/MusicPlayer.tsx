@@ -2,6 +2,24 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { MusicSeekProgressBar } from "@/components/MusicSeekProgressBar";
 import { Navigate } from "react-router-dom";
 import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
+  GripVertical,
   Music,
   Pause,
   Play,
@@ -16,11 +34,13 @@ import { Input } from "@clanker/ui/components/input";
 import { cn } from "@clanker/ui/lib/utils";
 import { apiUrl } from "@/config";
 import { discordAvatarUrl } from "@/lib/discordCdn";
+import { hubMusicPollIntervalMs } from "@/lib/hub-music-poll-interval";
 import { useHubLayout } from "@/hooks/use-hub-layout";
+import { useMusicArtTextTone } from "@/hooks/use-music-art-text-tone";
 import { useHubLocale } from "@/components/locale-provider";
+import { useTheme } from "@/components/theme-provider";
 
 const GUILD_ID = import.meta.env.VITE_DISCORD_HUB_GUILD_ID?.trim() ?? "";
-const POLL_MS = 3_000;
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -149,6 +169,95 @@ function SourceBadge({ source }: { source: MusicSource }) {
   );
 }
 
+function SortableQueueRow({
+  item,
+  index,
+  voiceStates,
+  removingIds,
+  busy,
+  onRemove,
+  dragHandleAria,
+}: {
+  item: QueueItem;
+  index: number;
+  voiceStates: VoiceStatesResponse | null;
+  removingIds: Set<number>;
+  busy: boolean;
+  onRemove: (id: number) => void;
+  dragHandleAria: string;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: item.id,
+  });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    ...(isDragging ? { zIndex: 10, opacity: 0.92 } : {}),
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="group flex items-center gap-2 rounded-xl border border-border/50 bg-card px-2 py-3 transition-colors hover:bg-muted/40 sm:gap-3 sm:px-4"
+    >
+      <button
+        type="button"
+        className="flex size-8 shrink-0 cursor-grab touch-none items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/80 active:cursor-grabbing disabled:pointer-events-none disabled:opacity-40"
+        aria-label={dragHandleAria}
+        disabled={busy}
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical className="size-4" aria-hidden />
+      </button>
+
+      <span className="w-5 shrink-0 text-center text-xs tabular-nums text-muted-foreground">
+        {index + 1}
+      </span>
+
+      {item.thumbnail ? (
+        <img
+          src={item.thumbnail}
+          alt=""
+          className="size-10 shrink-0 rounded-lg object-cover"
+        />
+      ) : (
+        <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-base">
+          🎵
+        </div>
+      )}
+
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium leading-tight">{item.title}</p>
+        {item.artist && (
+          <p className="truncate text-xs text-muted-foreground">{item.artist}</p>
+        )}
+        <div className="mt-1 flex items-center gap-1.5">
+          <SourceBadge source={item.source} />
+          {item.duration_sec && (
+            <span className="text-[10px] tabular-nums text-muted-foreground">
+              {fmtDuration(item.duration_sec)}
+            </span>
+          )}
+          <RequesterAvatar userId={item.requested_by} voiceStates={voiceStates} />
+        </div>
+      </div>
+
+      <Button
+        size="icon"
+        variant="ghost"
+        className="size-8 shrink-0 rounded-lg opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
+        disabled={removingIds.has(item.id) || busy}
+        onClick={() => void onRemove(item.id)}
+        title="Ta bort från kö"
+      >
+        <Trash2 className="size-4" />
+      </Button>
+    </div>
+  );
+}
+
 function RequesterAvatar({
   userId,
   voiceStates,
@@ -177,6 +286,7 @@ export default function MusicPlayerPage() {
   const { me } = useHubLayout();
   const { copy } = useHubLocale();
   const d = copy.dashboard;
+  const { theme } = useTheme();
 
   const [music, setMusic] = useState<MusicState | null>(null);
   const [voiceStates, setVoiceStates] = useState<VoiceStatesResponse | null>(null);
@@ -188,6 +298,10 @@ export default function MusicPlayerPage() {
 
   const inputRef = useRef<HTMLInputElement>(null);
   const dropDepthRef = useRef(0);
+
+  const artThumbUrl =
+    me.status !== "guest" && GUILD_ID ? (music?.now_playing?.thumbnail ?? null) : null;
+  const artTextTone = useMusicArtTextTone(artThumbUrl, theme);
 
   // Clock tick for progress bar
   useEffect(() => {
@@ -203,7 +317,7 @@ export default function MusicPlayerPage() {
         apiUrl(`/api/bot/guild/${encodeURIComponent(GUILD_ID)}/music`),
         { credentials: "include" },
       );
-      if (res.ok) setMusic(await res.json() as MusicState);
+      if (res.ok) setMusic((await res.json()) as MusicState);
     } catch {
       // silent
     }
@@ -211,8 +325,17 @@ export default function MusicPlayerPage() {
 
   useEffect(() => {
     void fetchMusic();
-    const t = window.setInterval(() => void fetchMusic(), POLL_MS);
-    return () => window.clearInterval(t);
+    let timer = window.setInterval(() => void fetchMusic(), hubMusicPollIntervalMs());
+    const restart = () => {
+      window.clearInterval(timer);
+      timer = window.setInterval(() => void fetchMusic(), hubMusicPollIntervalMs());
+      if (!document.hidden) void fetchMusic();
+    };
+    document.addEventListener("visibilitychange", restart);
+    return () => {
+      document.removeEventListener("visibilitychange", restart);
+      window.clearInterval(timer);
+    };
   }, [fetchMusic]);
 
   // Poll voice states (for avatar resolution + channel id)
@@ -285,6 +408,52 @@ export default function MusicPlayerPage() {
       }
     },
     [fetchMusic],
+  );
+
+  const reorderQueue = useCallback(
+    async (orderedIds: number[]) => {
+      if (!GUILD_ID || orderedIds.length === 0) return;
+      setBusy(true);
+      try {
+        const res = await fetch(
+          apiUrl(`/api/bot/guild/${encodeURIComponent(GUILD_ID)}/music/queue/reorder`),
+          {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ orderedIds }),
+          },
+        );
+        if (!res.ok) {
+          alert(d.musicQueueReorderFailed);
+        }
+        await fetchMusic();
+      } finally {
+        setBusy(false);
+      }
+    },
+    [fetchMusic, d.musicQueueReorderFailed],
+  );
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleQueueDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const q = music?.queue ?? [];
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
+      const aid = Number(active.id);
+      const oid = Number(over.id);
+      const oldIndex = q.findIndex((i) => i.id === aid);
+      const newIndex = q.findIndex((i) => i.id === oid);
+      if (oldIndex < 0 || newIndex < 0) return;
+      const newOrder = arrayMove(q, oldIndex, newIndex).map((row) => row.id);
+      void reorderQueue(newOrder);
+    },
+    [music?.queue, reorderQueue],
   );
 
   const resolveChannelId = (): string | null => {
@@ -365,6 +534,8 @@ export default function MusicPlayerPage() {
   const queue = music?.queue ?? [];
   const queueTotal = music?.total_in_queue ?? queue.length;
   const canShuffleQueue = queueTotal >= 2;
+  const artOnCard = Boolean(np?.thumbnail);
+  const artShellTone = artOnCard ? artTextTone : null;
 
   return (
     <div
@@ -399,92 +570,151 @@ export default function MusicPlayerPage() {
         </div>
 
         {np ? (
-          <div className="rounded-2xl border border-border/60 bg-card p-5 shadow-sm">
-            <div className="flex gap-4">
-              {/* Thumbnail */}
-              <div className="shrink-0">
-                {np.thumbnail ? (
-                  <img
-                    src={np.thumbnail}
-                    alt=""
-                    className="size-24 rounded-xl object-cover shadow-md"
-                  />
-                ) : (
-                  <div className="flex size-24 items-center justify-center rounded-xl bg-muted text-3xl">
-                    🎵
-                  </div>
-                )}
-              </div>
-
-              {/* Info */}
-              <div className="flex min-w-0 flex-1 flex-col justify-center gap-1">
-                <p className="truncate text-base font-semibold leading-tight">{np.title}</p>
-                {np.artist && (
-                  <p className="truncate text-sm text-muted-foreground">{np.artist}</p>
-                )}
-                <div className="mt-1 flex items-center gap-2">
-                  <SourceBadge source={np.source} />
-                  {np.is_paused && (
-                    <span className="rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-yellow-500/20 text-yellow-500">
-                      Pausad
-                    </span>
+          <div
+            className={cn(
+              "relative overflow-hidden rounded-2xl border border-border/60 shadow-sm",
+              !np.thumbnail && "bg-card",
+            )}
+          >
+            {np.thumbnail ? (
+              <>
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute inset-0 scale-105 bg-cover bg-center saturate-[1.12] dark:saturate-100"
+                  style={{ backgroundImage: `url(${np.thumbnail})` }}
+                />
+                <div
+                  aria-hidden
+                  className={cn(
+                    "pointer-events-none absolute inset-0 bg-gradient-to-br",
+                    /* Light: darken — `background` overlay washes art to near-white */
+                    "from-black/50 via-black/42 to-black/55",
+                    "dark:from-background/82 dark:via-background/68 dark:to-background/78",
                   )}
-                  <RequesterAvatar userId={np.requested_by} voiceStates={voiceStates} />
+                />
+              </>
+            ) : null}
+            <div
+              className={cn(
+                "relative z-10 p-5",
+                artShellTone === "light-text" &&
+                  "text-white [&_button]:text-white [&_button:hover]:bg-white/12",
+                artShellTone === "dark-text" &&
+                  "text-neutral-950 [&_button]:text-neutral-900 [&_button:hover]:bg-black/10",
+              )}
+            >
+              <div className="flex gap-4">
+                {/* Thumbnail */}
+                <div className="shrink-0">
+                  {np.thumbnail ? (
+                    <img
+                      src={np.thumbnail}
+                      alt=""
+                      className="size-24 rounded-xl object-cover shadow-md ring-1 ring-black/15 dark:ring-white/10"
+                    />
+                  ) : (
+                    <div className="flex size-24 items-center justify-center rounded-xl bg-muted text-3xl">
+                      🎵
+                    </div>
+                  )}
+                </div>
+
+                {/* Info */}
+                <div className="flex min-w-0 flex-1 flex-col justify-center gap-1">
+                  <p
+                    className={cn(
+                      "truncate text-base font-semibold leading-tight",
+                      !artOnCard && "text-foreground",
+                    )}
+                  >
+                    {np.title}
+                  </p>
+                  {np.artist && (
+                    <p
+                      className={cn(
+                        "truncate text-sm",
+                        !artOnCard && "text-muted-foreground",
+                        artShellTone === "light-text" && "text-white/80",
+                        artShellTone === "dark-text" && "text-neutral-800",
+                      )}
+                    >
+                      {np.artist}
+                    </p>
+                  )}
+                  <div className="mt-1 flex items-center gap-2">
+                    <SourceBadge source={np.source} />
+                    {np.is_paused && (
+                      <span className="rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-yellow-500/20 text-yellow-500">
+                        Pausad
+                      </span>
+                    )}
+                    <RequesterAvatar userId={np.requested_by} voiceStates={voiceStates} />
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* Progress */}
-            <div className="mt-4">
-              <MusicSeekProgressBar
-                track={np}
-                nowMs={nowMs}
-                onSeek={(sec) => void cmd("seek", { seekSec: sec })}
-              />
-            </div>
+              {/* Progress */}
+              <div className="mt-4">
+                <MusicSeekProgressBar
+                  track={np}
+                  nowMs={nowMs}
+                  onSeek={(sec) => void cmd("seek", { seekSec: sec })}
+                  timeTextClassName={
+                    artShellTone === "light-text"
+                      ? "text-white/75"
+                      : artShellTone === "dark-text"
+                        ? "text-neutral-600"
+                        : undefined
+                  }
+                />
+              </div>
 
-            {/* Controls */}
-            <div className="mt-4 flex items-center justify-center gap-2">
-              <Button
-                size="icon"
-                variant="ghost"
-                className="size-11 rounded-full"
-                disabled={busy}
-                onClick={() => void cmd("previous")}
-                title={d.musicPreviousTitle}
-              >
-                <SkipBack className="size-5" />
-              </Button>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="size-11 rounded-full"
-                disabled={busy}
-                onClick={() => void cmd(np.is_paused ? "resume" : "pause")}
-                title={np.is_paused ? "Återuppta" : "Pausa"}
-              >
-                {np.is_paused ? <Play className="size-5" /> : <Pause className="size-5" />}
-              </Button>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="size-11 rounded-full"
-                disabled={busy}
-                onClick={() => void cmd("skip")}
-                title="Hoppa över"
-              >
-                <SkipForward className="size-5" />
-              </Button>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="size-11 rounded-full text-destructive hover:text-destructive"
-                disabled={busy}
-                onClick={() => void cmd("stop")}
-                title="Stoppa och rensa kö"
-              >
-                <Square className="size-5" />
-              </Button>
+              {/* Controls */}
+              <div className="mt-4 flex items-center justify-center gap-2">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="size-11 rounded-full"
+                  disabled={busy}
+                  onClick={() => void cmd("previous")}
+                  title={d.musicPreviousTitle}
+                >
+                  <SkipBack className="size-5" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="size-11 rounded-full"
+                  disabled={busy}
+                  onClick={() => void cmd(np.is_paused ? "resume" : "pause")}
+                  title={np.is_paused ? "Återuppta" : "Pausa"}
+                >
+                  {np.is_paused ? <Play className="size-5" /> : <Pause className="size-5" />}
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="size-11 rounded-full"
+                  disabled={busy}
+                  onClick={() => void cmd("skip")}
+                  title="Hoppa över"
+                >
+                  <SkipForward className="size-5" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className={cn(
+                    "size-11 rounded-full text-destructive hover:text-destructive",
+                    artShellTone === "light-text" && "!text-red-400 hover:!text-red-300",
+                  )}
+                  disabled={busy}
+                  onClick={() => void cmd("stop")}
+                  title="Stoppa och rensa kö"
+                >
+                  <Square className="size-5" />
+                </Button>
+              </div>
             </div>
           </div>
         ) : (
@@ -553,61 +783,31 @@ export default function MusicPlayerPage() {
               <p>Kön är tom</p>
             </div>
           ) : (
-          <div className="flex flex-col gap-1.5">
-            {queue.map((item, idx) => (
-              <div
-                key={item.id}
-                className="group flex items-center gap-3 rounded-xl border border-border/50 bg-card px-4 py-3 transition-colors hover:bg-muted/40"
-              >
-                {/* Position */}
-                <span className="w-5 shrink-0 text-center text-xs tabular-nums text-muted-foreground">
-                  {idx + 1}
-                </span>
-
-                {/* Thumbnail */}
-                {item.thumbnail ? (
-                  <img
-                    src={item.thumbnail}
-                    alt=""
-                    className="size-10 shrink-0 rounded-lg object-cover"
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleQueueDragEnd}
+          >
+            <SortableContext
+              items={queue.map((it) => it.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <div className="flex flex-col gap-1.5">
+                {queue.map((item, idx) => (
+                  <SortableQueueRow
+                    key={item.id}
+                    item={item}
+                    index={idx}
+                    voiceStates={voiceStates}
+                    removingIds={removingIds}
+                    busy={busy}
+                    onRemove={removeFromQueue}
+                    dragHandleAria={d.musicQueueDragHandleAria}
                   />
-                ) : (
-                  <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-base">
-                    🎵
-                  </div>
-                )}
-
-                {/* Track info */}
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium leading-tight">{item.title}</p>
-                  {item.artist && (
-                    <p className="truncate text-xs text-muted-foreground">{item.artist}</p>
-                  )}
-                  <div className="mt-1 flex items-center gap-1.5">
-                    <SourceBadge source={item.source} />
-                    {item.duration_sec && (
-                      <span className="text-[10px] tabular-nums text-muted-foreground">
-                        {fmtDuration(item.duration_sec)}
-                      </span>
-                    )}
-                    <RequesterAvatar userId={item.requested_by} voiceStates={voiceStates} />
-                  </div>
-                </div>
-
-                {/* Remove */}
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="size-8 shrink-0 rounded-lg opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
-                  disabled={removingIds.has(item.id)}
-                  onClick={() => void removeFromQueue(item.id)}
-                  title="Ta bort från kö"
-                >
-                  <Trash2 className="size-4" />
-                </Button>
+                ))}
               </div>
-            ))}
-          </div>
+            </SortableContext>
+          </DndContext>
           )}
         </section>
     </div>

@@ -1,5 +1,12 @@
 export const HUB_PRIMARY_NAV_ORDER_KEY = "hub.shell.primaryNavOrder.v2";
-export const DEFAULT_PRIMARY_NAV_ORDER = ["desktop", "wheel", "profile", "settings"] as const;
+export const DEFAULT_PRIMARY_NAV_ORDER = [
+  "desktop",
+  "wheel",
+  "radio",
+  "leagueStats",
+  "profile",
+  "settings",
+] as const;
 export type HubPrimaryNavItemId = (typeof DEFAULT_PRIMARY_NAV_ORDER)[number];
 
 export function mergeOrderWithDefaults(saved: string[], defaults: readonly string[]): string[] {

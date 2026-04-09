@@ -23,7 +23,7 @@ Kopiera [`.env.example`](./.env.example) till **repo-roten** `.env` och/eller `a
 | `DISCORD_OAUTH_PROMPT` | Valfritt: `consent` eller `none` (se Discord). |
 | `DISCORD_PROXY_USER_PREFIXES` | Valfritt. Kommaseparerade URL-prefix (utan inledande `/`) som får anropas via användarproxyn. Standard: `users/@me,oauth2/@me`. |
 | `DISCORD_BOT_TOKEN` | Valfritt. Bot-token från **Bot** i portalen. Aktiverar `/api/bot/discord/...`, `/api/bot/guild/:id/summary`, `/api/bot/live/*` och Gateway om guild-IDs är satta. **Committa aldrig.** |
-| `RIOT_API_KEY` | Valfritt för övriga API:t, men krävs för `POST /api/integrations/league/sync`. Riot skickar nyckeln i headern `X-Riot-Token`. Development-nycklar löper ut och har låga rate limits, så räkna med `429` och att nyckeln ibland behöver bytas ut. Vid production key: se [Riot-regler för production key](./docs/riot-production-key-rules.md). |
+| `RIOT_API_KEY` | Valfritt för övriga API:t, men krävs för `POST /api/integrations/league/sync`. Riot skickar nyckeln i headern `X-Riot-Token`. **App-gränser** (visas i portalen för din nyckel) gäller alla anrop — vanligt för personlig/dev-app: **20/s** och **100/2 min**; hubbens standarddelay (~**1200 ms**) följer 100/2 min-bucketen. **Metod-gränser** (t.ex. match-v5 **2000/10 s**) gäller bara när din app fått högre kvoter. Vid godkänd production-app: sänk `LEAGUE_MANUAL_RIOT_DELAY_MS` / `LEAGUE_CALL_DELAY_MS`. Se [Riot-regler för production key](./docs/riot-production-key-rules.md). |
 | `DISCORD_PROXY_BOT_PREFIXES` | Valfritt. Allowlist för bot-REST-proxyn. Standard: `guilds/,channels/`. |
 | `DISCORD_HUB_ALLOWED_GUILD_IDS` | Valfritt men **rekommenderas i prod**. Kommaseparerade snowflakes. Om satt får anroparen endast summary/live för dessa guilds. Tomt = ingen begränsning (endast för betrodd dev). |
 | `DISCORD_HUB_ENFORCE_GUILD_MEMBERSHIP` | Valfritt. `1`/`true`: verifiera att inloggad användare (session `sub`) är medlem i guild via bot REST. |
@@ -99,6 +99,8 @@ Sedan starta `discord-hub-web` (`npm run dev`). Webbläsaren anropar `/api/...` 
 | POST | `/api/integrations/league/connect` | Inloggad: sparar `riotId`, `tagLine`, `region`, `rankPreference` och övriga League-inställningar. |
 | POST | `/api/integrations/league/sync` | Inloggad + `RIOT_API_KEY`: hämtar PUUID via Riot Account v1, rank via League v4 och senaste matcher via Match v5. Returnerar snapshot med rank och matchlista. |
 | POST | `/api/integrations/league/disconnect` | Inloggad: tar bort sparad League-koppling och rensar senaste snapshoten. |
+| GET | `/api/stats/league?puuid=` | Inloggad: aggregerad League-statistik + kö/champion-uppdelning från `stats.league_matches` (ingen rå matchlista). |
+| GET | `/api/stats/league/matches?puuid=&offset=&limit=` | Inloggad: paginerad matchhistorik (nyast först). `limit` 1–100, standard 25. **403** om `puuid` inte tillhör användarens kopplade konton. |
 
 ### JSON-exempel: `GET /api/bot/guild/:id/summary`
 
@@ -175,6 +177,8 @@ API-hanterare uppdaterar tabellerna automatiskt: inloggning uppdaterar profilen;
 ## Riot / League policy
 
 Om den här integrationen ska använda en Riot **production key**, läs och följ [Riot-regler för production key](./docs/riot-production-key-rules.md) innan projektet registreras eller görs publikt.
+
+**Två nivåer av limits:** (1) **Din applikations** kvoter i portalen — t.ex. **20 förfrågningar/s** och **100 per 2 minuter**; det är oftast det som begränsar långa synker. (2) **Per metod** när Riot gett appen högre tak — t.ex. LoL **match-v5** `matches/{id}` och match-ID-lista upp till **2000 / 10 s**. Hubben använder som standard ~**1200 ms** mellan Riot-anrop så 100/2 min hålls; har du högre app-kvot, sänk `LEAGUE_MANUAL_RIOT_DELAY_MS` och `LEAGUE_CALL_DELAY_MS` i `.env`.
 
 ## Gateway — fel och återanslutning
 
