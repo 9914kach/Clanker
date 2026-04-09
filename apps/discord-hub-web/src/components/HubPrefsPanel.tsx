@@ -36,7 +36,6 @@ import {
   cloneHubPrefs,
   type HubWidgetSizePreset,
   type HubToneOverride,
-  type HubDesktopStylePackId,
   type HubGridDensity,
   type HubGridCompaction,
   type HubSnapStrength,
@@ -303,14 +302,6 @@ function DesktopTab() {
   const dock = prefs.dock;
   const motion = prefs.motion;
 
-  const stylePackOptions: HubSegmentOption<HubDesktopStylePackId>[] = [
-    { value: "default", label: p.stylePackDefault },
-    { value: "midnight", label: p.stylePackMidnight },
-    { value: "paper", label: p.stylePackPaper },
-    { value: "signal", label: p.stylePackSignal },
-    { value: "campfire", label: p.stylePackCampfire },
-  ];
-
   const densityOptions: HubSegmentOption<HubGridDensity>[] = [
     { value: "compact", label: p.gridCompact },
     { value: "cozy", label: p.gridCozy },
@@ -341,14 +332,6 @@ function DesktopTab() {
   return (
     <div className="flex flex-col gap-5">
       <HubPrefSectionHeading>{copy.hubPrefsPanel.tabs.desktop}</HubPrefSectionHeading>
-
-      <HubPrefRow label={p.stylePack}>
-        <HubSegmentControl
-          options={stylePackOptions}
-          value={d.stylePackId}
-          onChange={(v) => patchPrefs({ desktop: { ...d, stylePackId: v } })}
-        />
-      </HubPrefRow>
 
       <HubPrefRow label={p.gridDensity}>
         <HubSegmentControl

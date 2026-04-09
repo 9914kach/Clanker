@@ -8,20 +8,15 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import {
-  AppWindow,
   Command,
   Inspect,
   LayoutGrid,
   SearchIcon,
   Settings2,
-  UserRound,
-  Workflow,
-  X,
 } from "lucide-react";
 import { Link, NavLink, Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { Reorder, useReducedMotion } from "framer-motion";
+import { useReducedMotion } from "framer-motion";
 import { Button } from "@clanker/ui/components/button";
-import { Tabs, TabsList, TabsTrigger } from "@clanker/ui/components/tabs";
 import {
   Avatar,
   AvatarFallback,
@@ -60,7 +55,6 @@ import { discordAvatarUrl } from "@/lib/discordCdn";
 import { hubContextData, isTextEditingTarget, resolveHubContextTarget, type HubContextTarget } from "@/lib/hub-shell-context";
 import { buildHubShellMenu } from "@/lib/hub-shell-menu";
 import { classifyTarget, getCapabilities, isEditable } from "@/lib/hub-shell-classification";
-import type { HubDesktopStylePackId } from "@/lib/hub-prefs";
 import HubNavBookmarkDialog from "@/components/HubNavBookmarkDialog";
 import HubPrefsPanel from "@/components/HubPrefsPanel";
 import HubShellInspectCursor from "@/components/HubShellInspectCursor";
@@ -89,24 +83,18 @@ import {
 
 /** Text-raden i headern (rullande kompisrader). Sätt till `false` för att dölja. */
 const SHOW_HUB_LIVE_TICKER = true;
-const STYLE_PACK_CYCLE_ORDER: readonly HubDesktopStylePackId[] = [
-  "default",
-  "paper",
-  "campfire",
-  "midnight",
-  "signal",
-];
+/**
+ * `true`: högerklick öppnar HubGlobalContextMenu (skalmeny). `false`: vanlig webbläsarmeny;
+ * HubGlobalContextMenu och openShellContextMenu finns kvar för framtida återaktivering.
+ */
+const HUB_SHELL_CONTEXT_MENU_ON_RIGHT_CLICK = false;
+/** `true`: visa HubDock längst ned. Komponenten och props finns kvar nedan. */
+const SHOW_HUB_DOCK = false;
 const DOCK_STORAGE_KEY = "hub.dock.pins.v1";
 const LAYOUT_EDIT_KEY = "hub.shell.layoutEdit.v1";
 const GRID_SNAP_KEY = "hub.shell.gridSnap.v1";
 const GRID_VISIBLE_KEY = "hub.shell.gridVisible.v1";
 const NATIVE_BROWSER_CONTEXT_KEY = "hub.dev.native-browser-context.v1";
-const SHELL_OPEN_TABS_KEY = "hub.shell.openTabs.v1";
-
-type OpenTab = {
-  path: string;
-  closable: boolean;
-};
 
 function readNativeBrowserContextMenu(): boolean {
   if (!import.meta.env.DEV) {
@@ -157,60 +145,6 @@ function loadPins(defaultPins: string[]): string[] {
   }
 }
 
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null && !Array.isArray(v);
-}
-
-function buildOpenTab(path: string): OpenTab | null {
-  const trimmed = path.trim();
-  if (!trimmed.startsWith("/")) {
-    return null;
-  }
-  return { path: trimmed, closable: trimmed !== "/dashboard" };
-}
-
-function readOpenTabs(defaultTabs: string[]): OpenTab[] {
-  try {
-    const raw = localStorage.getItem(SHELL_OPEN_TABS_KEY);
-    if (!raw) {
-      return defaultTabs.map((path) => buildOpenTab(path)).filter(Boolean) as OpenTab[];
-    }
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) {
-      return defaultTabs.map((path) => buildOpenTab(path)).filter(Boolean) as OpenTab[];
-    }
-    const seen = new Set<string>();
-    const tabs: OpenTab[] = [];
-    for (const value of parsed) {
-      if (typeof value === "string") {
-        const tab = buildOpenTab(value);
-        if (!tab || seen.has(tab.path)) {
-          continue;
-        }
-        seen.add(tab.path);
-        tabs.push(tab);
-        continue;
-      }
-      if (isRecord(value) && typeof value.path === "string") {
-        const tab = buildOpenTab(value.path);
-        if (!tab || seen.has(tab.path)) {
-          continue;
-        }
-        seen.add(tab.path);
-        tabs.push({
-          path: tab.path,
-          closable: value.closable === false ? false : tab.closable,
-        });
-      }
-    }
-    return tabs.length > 0
-      ? tabs
-      : (defaultTabs.map((path) => buildOpenTab(path)).filter(Boolean) as OpenTab[]);
-  } catch {
-    return defaultTabs.map((path) => buildOpenTab(path)).filter(Boolean) as OpenTab[];
-  }
-}
-
 function workspaceMeta(
   pathname: string,
   panel: HubCopy["chrome"],
@@ -220,6 +154,18 @@ function workspaceMeta(
   }
   if (pathname.startsWith("/tools/spin-the-wheel")) {
     return { id: "panel-wheel", label: panel.panelWheel.label, detail: panel.panelWheel.detail };
+  }
+
+  if (pathname.startsWith("/tools/music")) {
+    return { id: "panel-music", label: panel.panelMusic.label, detail: panel.panelMusic.detail };
+  }
+
+  if (pathname.startsWith("/tools/league-stats")) {
+    return {
+      id: "panel-league-stats",
+      label: panel.panelLeagueStats.label,
+      detail: panel.panelLeagueStats.detail,
+    };
   }
 
   if (pathname.startsWith("/profile/settings")) {
@@ -243,22 +189,6 @@ function workspaceMeta(
     label: panel.panelDefault.label,
     detail: panel.panelDefault.detail,
   };
-}
-
-function workspaceIcon(pathname: string) {
-  if (pathname === "/dashboard") {
-    return AppWindow;
-  }
-  if (pathname.startsWith("/profile/settings")) {
-    return Settings2;
-  }
-  if (pathname.startsWith("/tools/spin-the-wheel")) {
-    return Workflow;
-  }
-  if (pathname.startsWith("/u/")) {
-    return UserRound;
-  }
-  return LayoutGrid;
 }
 
 /** Element that actually received the click — not elementFromPoint (can disagree with contextmenu target). */
@@ -296,9 +226,6 @@ export default function HubLayout() {
   const [prefsPanelOpen, setPrefsPanelOpen] = useState(false);
   const { prefs: hubPrefs, patchPrefs } = useHubPrefs();
   useHubSettingsSync(me, hubPrefs);
-  const chaosPulseTimerRef = useRef<number | null>(null);
-  const [chaosPulseNonce, setChaosPulseNonce] = useState(0);
-  const [chaosPulseActive, setChaosPulseActive] = useState(false);
   const [shellContextMenu, setShellContextMenu] = useState<{
     target: HubContextTarget;
     position: { x: number; y: number };
@@ -313,7 +240,8 @@ export default function HubLayout() {
   const oauthError = searchParams.get("error") === "oauth";
   const apiUnreachable = me.status === "backend_error";
   /** Dev: anpassad skal-pekare när hubbens högerklick är aktivt — inte när webbläsarens meny är på. */
-  const shellCustomCursorActive = import.meta.env.DEV && !nativeBrowserContextMenu;
+  const shellCustomCursorActive =
+    import.meta.env.DEV && HUB_SHELL_CONTEXT_MENU_ON_RIGHT_CLICK && !nativeBrowserContextMenu;
   const panelMeta = workspaceMeta(pathname, copy.chrome);
   const defaultPinnedIds = useMemo(() => HUB_TOOLS.map((tool) => tool.id), []);
   const [pinnedIds, setPinnedIds] = useState<string[]>(() => loadPins(defaultPinnedIds));
@@ -328,7 +256,6 @@ export default function HubLayout() {
     null,
   );
   const [primaryNavDialog, setPrimaryNavDialog] = useState<null | { id: HubPrimaryNavItemId }>(null);
-  const [openTabs, setOpenTabs] = useState<OpenTab[]>(() => readOpenTabs(["/dashboard"]));
 
   const refreshMe = useCallback(async () => {
     try {
@@ -349,31 +276,6 @@ export default function HubLayout() {
   useEffect(() => {
     void refreshMe();
   }, [refreshMe]);
-
-  useEffect(() => {
-    const handler = () => {
-      if (reducedMotion || hubPrefs.motion.animationIntensity <= 0) {
-        return;
-      }
-      if (chaosPulseTimerRef.current !== null) {
-        window.clearTimeout(chaosPulseTimerRef.current);
-      }
-      setChaosPulseNonce((prev) => prev + 1);
-      setChaosPulseActive(true);
-      chaosPulseTimerRef.current = window.setTimeout(() => {
-        setChaosPulseActive(false);
-      }, 820);
-    };
-
-    window.addEventListener("hub:chaos-pulse", handler);
-    return () => {
-      window.removeEventListener("hub:chaos-pulse", handler);
-      if (chaosPulseTimerRef.current !== null) {
-        window.clearTimeout(chaosPulseTimerRef.current);
-        chaosPulseTimerRef.current = null;
-      }
-    };
-  }, [hubPrefs.motion.animationIntensity, reducedMotion]);
 
   useEffect(() => {
     if (me.status !== "user") {
@@ -449,14 +351,6 @@ export default function HubLayout() {
 
   useEffect(() => {
     try {
-      localStorage.setItem(SHELL_OPEN_TABS_KEY, JSON.stringify(openTabs));
-    } catch {
-      /* ignore */
-    }
-  }, [openTabs]);
-
-  useEffect(() => {
-    try {
       localStorage.setItem(LAYOUT_EDIT_KEY, layoutEditMode ? "true" : "false");
     } catch {
       /* ignore */
@@ -489,25 +383,6 @@ export default function HubLayout() {
       /* ignore */
     }
   }, [nativeBrowserContextMenu]);
-
-  useEffect(() => {
-    if (!pathname.startsWith("/")) {
-      return;
-    }
-    if (pathname === "/login" || pathname === "/") {
-      return;
-    }
-    setOpenTabs((prev) => {
-      if (prev.some((tab) => tab.path === pathname)) {
-        return prev;
-      }
-      const nextTab = buildOpenTab(pathname);
-      if (!nextTab) {
-        return prev;
-      }
-      return [...prev, nextTab];
-    });
-  }, [pathname]);
 
   useEffect(() => {
     if (pathname === "/login" && me.status === "user") {
@@ -719,6 +594,16 @@ export default function HubLayout() {
         label: copy.chrome.wheel,
         path: "/tools/spin-the-wheel",
         iconKey: "Workflow" as HubNavBookmarkIconKey,
+      },
+      radio: {
+        label: copy.chrome.navRadio,
+        path: "/tools/music",
+        iconKey: "Radio" as HubNavBookmarkIconKey,
+      },
+      leagueStats: {
+        label: copy.chrome.navLeagueStats,
+        path: "/tools/league-stats",
+        iconKey: "Trophy" as HubNavBookmarkIconKey,
       },
     }),
     [copy.chrome, profilePath],
@@ -1006,46 +891,11 @@ export default function HubLayout() {
   const actionApi = useMemo(() => createHubActionApi(actionEnvironment), [actionEnvironment]);
   const baseActions = useMemo(() => buildHubActions(actionEnvironment), [actionEnvironment]);
 
-  const cycleStylePack = useCallback(() => {
-    const current = hubPrefs.desktop.stylePackId;
-    const index = STYLE_PACK_CYCLE_ORDER.indexOf(current);
-    const next =
-      STYLE_PACK_CYCLE_ORDER[(index + 1) % STYLE_PACK_CYCLE_ORDER.length] ?? STYLE_PACK_CYCLE_ORDER[0] ?? "default";
-
-    patchPrefs({ desktop: { ...hubPrefs.desktop, stylePackId: next } });
-    play("panel");
-
-    const p = copy.hubPrefsPanel.desktop;
-    const label =
-      next === "default"
-        ? p.stylePackDefault
-        : next === "midnight"
-          ? p.stylePackMidnight
-          : next === "paper"
-            ? p.stylePackPaper
-            : next === "signal"
-              ? p.stylePackSignal
-              : p.stylePackCampfire;
-
-    toasts.push({ kind: "success", title: p.stylePack, message: label });
-  }, [copy.hubPrefsPanel.desktop, hubPrefs.desktop, patchPrefs, play, toasts]);
-
-  const navButtonClassName = (isActive: boolean) =>
+  const sidebarNavButtonClassName = (isActive: boolean) =>
     cn(
-      "relative inline-flex items-center gap-1 rounded-xl border px-2 py-0.5 text-xs font-medium transition",
-      "border-transparent bg-background/35 text-muted-foreground hover:bg-muted/65 hover:text-foreground",
-      isActive &&
-        "border-primary/35 bg-background/80 text-foreground shadow-[0_10px_24px_color-mix(in_oklab,var(--primary)_16%,transparent)]",
-      isActive &&
-        "after:absolute after:-bottom-1 after:left-2 after:right-2 after:h-1 after:rounded-full after:bg-primary/60 after:content-['']",
-    );
-
-  const workspaceTabClassName = (isActive: boolean) =>
-    cn(
-      "hub-workspace-tab-label relative inline-flex h-8 items-center px-3 text-[0.7rem] font-medium transition",
-      "bg-transparent text-muted-foreground",
-      "hover:text-foreground",
-      isActive && "text-foreground",
+      "relative flex w-full min-w-0 items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition",
+      "border-transparent text-muted-foreground hover:bg-muted/70 hover:text-foreground",
+      isActive && "border-primary/35 bg-primary/10 text-foreground shadow-sm",
     );
 
   /** Kompakt topbar — matchar ungefär halv tidigare vertikal höjd. */
@@ -1096,7 +946,7 @@ export default function HubLayout() {
   ]);
 
   const actions = useMemo((): HubAction[] => {
-    if (!import.meta.env.DEV) {
+    if (!import.meta.env.DEV || !HUB_SHELL_CONTEXT_MENU_ON_RIGHT_CLICK) {
       return baseActions;
     }
     const d = copy.actions;
@@ -1217,76 +1067,6 @@ export default function HubLayout() {
   );
   const routeContentCaps = getCapabilities(routeContentClassification, policyMode, policyRoute);
 
-  const openShellTabs = useMemo(
-    () =>
-      openTabs.map((tab) => ({
-        ...tab,
-        label: workspaceMeta(tab.path, copy.chrome).label,
-      })),
-    [copy.chrome, openTabs],
-  );
-  const openWorkspaceTabs = useMemo(
-    () => openShellTabs.filter((tab) => tab.path !== "/login"),
-    [openShellTabs],
-  );
-  const openWorkspaceTabSet = useMemo(
-    () => new Set(openWorkspaceTabs.map((tab) => tab.path)),
-    [openWorkspaceTabs],
-  );
-
-  const commitWorkspaceTabReorder = useCallback(
-    (nextOrder: string[]) => {
-      setOpenTabs((prev) => {
-        const byPath = new Map(prev.map((tab) => [tab.path, tab]));
-        const pinned = prev.filter((tab) => tab.path === "/dashboard");
-        const ordered = nextOrder
-          .filter((path) => path !== "/dashboard")
-          .map((path) => byPath.get(path))
-          .filter(Boolean) as OpenTab[];
-        const tail = prev.filter(
-          (tab) => tab.path !== "/dashboard" && !openWorkspaceTabSet.has(tab.path),
-        );
-        return [...pinned, ...ordered, ...tail];
-      });
-      play("panel");
-    },
-    [openWorkspaceTabSet, play],
-  );
-
-  const closeWorkspaceTab = useCallback(
-    (path: string) => {
-      if (path === "/dashboard") {
-        return;
-      }
-      if (pathname === path) {
-        const index = openWorkspaceTabs.findIndex((tab) => tab.path === path);
-        const fallback =
-          openWorkspaceTabs[index + 1]?.path ??
-          openWorkspaceTabs[index - 1]?.path ??
-          "/dashboard";
-        navigate(fallback);
-      }
-      setOpenTabs((prev) => prev.filter((tab) => tab.path !== path));
-      play("panel");
-    },
-    [navigate, openWorkspaceTabs, pathname, play],
-  );
-
-  const handleWorkspaceTabMouseDown = useCallback(
-    (event: React.MouseEvent<HTMLButtonElement>, path: string) => {
-      if (event.button !== 1) {
-        return;
-      }
-      if (path === "/dashboard") {
-        return;
-      }
-      event.preventDefault();
-      event.stopPropagation();
-      closeWorkspaceTab(path);
-    },
-    [closeWorkspaceTab],
-  );
-
   const renderIdentity = () =>
     me.status === "user" ? (
         <NavLink
@@ -1380,7 +1160,7 @@ export default function HubLayout() {
         </Button>
       </div>
       <div className="ms-1 flex items-center gap-1 border-l border-border/55 ps-1.5">
-        {import.meta.env.DEV ? (
+        {import.meta.env.DEV && HUB_SHELL_CONTEXT_MENU_ON_RIGHT_CLICK ? (
           <Button
             type="button"
             variant={nativeBrowserContextMenu ? "secondary" : "outline"}
@@ -1411,49 +1191,26 @@ export default function HubLayout() {
       className={cn(
         "hub-os-select-root relative flex h-dvh flex-col overflow-hidden bg-background text-foreground",
         layoutEditMode && "ring-2 ring-inset ring-primary/30",
-        chaosPulseActive && "hub-chaos-pulse-shake",
       )}
-      data-style-pack={hubPrefs.desktop.stylePackId}
-      onContextMenu={openShellContextMenu}
+      onContextMenu={HUB_SHELL_CONTEXT_MENU_ON_RIGHT_CLICK ? openShellContextMenu : undefined}
     >
       <HubShellInspectCursor active={shellCustomCursorActive} prefs={hubPrefs.inspectCursor} />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,color-mix(in_oklab,var(--primary)_18%,transparent),transparent_24%),radial-gradient(circle_at_bottom_right,color-mix(in_oklab,var(--accent)_14%,transparent),transparent_28%),linear-gradient(180deg,color-mix(in_oklab,var(--background)_94%,black),var(--background))]" />
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_right,color-mix(in_oklab,var(--border)_18%,transparent)_1px,transparent_1px),linear-gradient(to_bottom,color-mix(in_oklab,var(--border)_14%,transparent)_1px,transparent_1px)] bg-[size:96px_96px] opacity-35 dark:hidden" />
-      {hubPrefs.desktop.stylePackId === "signal" ? (
-        <div className="pointer-events-none absolute inset-0 hub-signal-scanlines" />
-      ) : null}
-      {hubPrefs.desktop.stylePackId === "paper" ? (
-        <div className="pointer-events-none absolute inset-0 hub-paper-grain" />
-      ) : null}
-      {hubPrefs.desktop.stylePackId === "midnight" ? (
-        <div className="pointer-events-none absolute inset-0 hub-midnight-stars" />
-      ) : null}
-      {hubPrefs.desktop.stylePackId === "campfire" ? (
-        <div className="pointer-events-none absolute inset-0 hub-campfire-embers" />
-      ) : null}
-      {chaosPulseActive ? (
-        <div
-          key={chaosPulseNonce}
-          className="pointer-events-none absolute inset-0 z-10 hub-chaos-pulse-overlay"
-          aria-hidden
-        />
-      ) : null}
 
-      <header
-        ref={topbarRef}
-        className="hub-shell-header relative z-20"
-        {...hubContextData({ type: "shell.nav", area: "topbar" })}
-      >
-        <div className="hub-shell-header-inner flex flex-col gap-1 px-3 py-0.5 md:px-4">
-          <div className="flex flex-col gap-1 lg:flex-row lg:items-center lg:gap-2 lg:gap-y-0">
-          <div className="flex min-w-0 items-center gap-2 lg:shrink-0">
+      <div className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-row">
+        <aside
+          className="flex w-[min(100%,14rem)] shrink-0 flex-col border-r border-border/55 bg-background/85 backdrop-blur-md"
+          {...hubContextData({ type: "shell.nav", area: "sidebar" })}
+        >
+          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-3">
             <HubShellObject
               as="div"
               objectId="shell.brandRow"
               objectKind="brandBlock"
               label={copy.chrome.shellObjectBrandBlock}
               layoutEditMode={layoutEditMode && brandBlockEditable}
-              className="flex min-w-0 shrink-0 items-center gap-2"
+              className="flex min-w-0 shrink-0 flex-col gap-1"
             >
               <Link
                 to="/dashboard"
@@ -1462,7 +1219,7 @@ export default function HubLayout() {
                   if (layoutEditMode) e.preventDefault();
                 }}
                 className={cn(
-                  "flex items-center gap-2 rounded-xl px-2 py-1 transition-colors hover:text-primary/90",
+                  "flex items-center gap-2 rounded-xl px-2 py-1.5 transition-colors hover:text-primary/90",
                   layoutEditMode && "pointer-events-none select-none",
                 )}
                 {...hubContextData({
@@ -1486,203 +1243,146 @@ export default function HubLayout() {
                 </div>
               </Link>
             </HubShellObject>
-          </div>
 
-          {SHOW_HUB_LIVE_TICKER ? (
-            <div className="hidden min-w-0 shrink-0 grow basis-0 lg:flex">
-              <HubLiveTicker variant="top" />
-            </div>
-          ) : null}
-
-          <HubShellObject
-            as="nav"
-            objectId="shell.nav.primary"
-            objectKind="navGroup"
-            label={copy.chrome.shellObjectNavGroup}
-            layoutEditMode={layoutEditMode}
-            layoutEditChrome="none"
-            className="flex min-w-0 flex-1 justify-center gap-0"
-            aria-label={copy.chrome.shellObjectNavGroup}
-          >
-            <HubShellReorderablePrimaryNav
-              order={primaryNavOrder}
-              onReorder={setPrimaryNavOrder}
-              layoutEditMode={layoutEditMode}
-              play={play}
-              copy={copy}
-              navButtonClassName={navButtonClassName}
-              profilePath={profilePath}
-              navBookmarks={navBookmarks}
-              primaryNavOverrides={primaryNavOverrides}
-              onContextMenu={openShellContextMenu}
-            />
-          </HubShellObject>
-          <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 border-t border-border/45 pt-1.5 lg:ml-auto lg:border-t-0 lg:pt-0">
-            {renderActions()}
-            {renderIdentity()}
-            {me.status === "user" ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className={hubTopbarButtonClass}
-                onClick={logout}
-              >
-                {copy.common.logOut}
-              </Button>
-            ) : (
-              <Button asChild size="sm" className={hubTopbarButtonClass}>
-                <Link to="/login">{copy.common.logIn}</Link>
-              </Button>
-            )}
-          </div>
-          </div>
-
-        </div>
-
-        {openWorkspaceTabs.length > 0 && !layoutEditMode ? (
-          <div className="hub-workspace-tab-strip inline-flex w-fit px-3 md:px-4">
-          <div className="inline-flex w-fit items-center overflow-x-auto bg-transparent">
-            <Tabs
-              value={pathname}
-              onValueChange={(value) => {
-                if (value === pathname) {
-                  return;
-                }
-                play("panel");
-                navigate(value);
-              }}
-            >
-              <TabsList asChild>
-                <Reorder.Group
-                  axis="x"
-                  values={openWorkspaceTabs.map((tab) => tab.path)}
-                  onReorder={commitWorkspaceTabReorder}
-                  className="hub-workspace-tab-row w-fit"
-                >
-                  {openWorkspaceTabs.map((tab) => {
-                    const isActive = pathname === tab.path;
-                    const isPinned = tab.path === "/dashboard";
-                    const Icon = workspaceIcon(tab.path);
-                    return (
-                      <Reorder.Item
-                        key={tab.path}
-                        value={tab.path}
-                        as="div"
-                        layout="position"
-                        className="hub-workspace-tab"
-                        data-active={isActive ? "true" : "false"}
-                        dragListener={!isPinned}
-                      >
-                        <TabsTrigger
-                          value={tab.path}
-                          className={workspaceTabClassName(isActive)}
-                          onMouseDown={(event) => handleWorkspaceTabMouseDown(event, tab.path)}
-                          onAuxClick={(event) => handleWorkspaceTabMouseDown(event, tab.path)}
-                        >
-                          <Icon className="size-3.5 shrink-0" />
-                          {tab.label}
-                        </TabsTrigger>
-                        {isPinned ? null : (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="hub-workspace-tab-close h-5 w-5 rounded-full text-muted-foreground transition hover:text-foreground"
-                            onClick={(event) => {
-                              event.preventDefault();
-                              event.stopPropagation();
-                              closeWorkspaceTab(tab.path);
-                            }}
-                            onMouseDown={(event) => event.stopPropagation()}
-                            aria-label={`Close ${tab.label}`}
-                            title={`Close ${tab.label}`}
-                          >
-                            <X className="size-3" />
-                          </Button>
-                        )}
-                      </Reorder.Item>
-                    );
-                  })}
-                </Reorder.Group>
-              </TabsList>
-            </Tabs>
-          </div>
-          </div>
-        ) : null}
-      </header>
-
-      <div className="relative z-10 flex min-h-0 flex-1">
-        <main
-          className={cn(
-            "flex min-h-0 flex-1 overflow-auto",
-            authGateActive && "pointer-events-none select-none opacity-40",
-          )}
-        >
-          {isDashboardRoute ? (
-            <Outlet context={contextValue} />
-          ) : (
             <HubShellObject
-              as="section"
-              objectId={`shell.route.${panelMeta.id}`}
-              objectKind="routePanel"
-              label={panelMeta.label}
+              as="nav"
+              objectId="shell.nav.primary"
+              objectKind="navGroup"
+              label={copy.chrome.shellObjectNavGroup}
               layoutEditMode={layoutEditMode}
               layoutEditChrome="none"
-              className="flex min-h-0 w-full flex-1 flex-col"
-              aria-label={panelMeta.label}
+              className="flex min-w-0 flex-1 flex-col gap-0"
+              aria-label={copy.chrome.shellObjectNavGroup}
             >
-              <div
-                className={cn(
-                  "min-h-0 flex-1 overflow-auto px-3 pb-5 md:px-4 md:pb-6",
-                  layoutEditMode &&
-                    !routeContentCaps.editableInLayout &&
-                    "[&_a]:pointer-events-none [&_button]:pointer-events-none [&_input]:pointer-events-none [&_select]:pointer-events-none [&_textarea]:pointer-events-none [&_[role=button]]:pointer-events-none",
-                )}
-              >
-                <Outlet context={contextValue} />
-              </div>
+              <HubShellReorderablePrimaryNav
+                order={primaryNavOrder}
+                onReorder={setPrimaryNavOrder}
+                layoutEditMode={layoutEditMode}
+                play={play}
+                copy={copy}
+                navButtonClassName={sidebarNavButtonClassName}
+                profilePath={profilePath}
+                navBookmarks={navBookmarks}
+                primaryNavOverrides={primaryNavOverrides}
+                orientation="vertical"
+                onContextMenu={
+                  HUB_SHELL_CONTEXT_MENU_ON_RIGHT_CLICK ? openShellContextMenu : undefined
+                }
+              />
             </HubShellObject>
-          )}
-        </main>
-        {authGateActive ? (
-          <div className="absolute inset-0 z-20 flex items-center justify-center p-6">
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-background/50 via-background/80 to-background/95 backdrop-blur-sm" />
-            <div className="relative z-10 w-full max-w-md">
-              <Card className="border-border/65 bg-background/90 shadow-2xl backdrop-blur-xl">
-                <CardHeader>
-                  <CardTitle>{copy.login.title}</CardTitle>
-                  <CardDescription>{copy.login.description}</CardDescription>
-                </CardHeader>
-                <CardContent className="flex flex-col gap-4">
-                  {oauthError ? (
-                    <p className="text-sm text-destructive" role="alert">
-                      {copy.login.oauthFailed}
-                    </p>
-                  ) : null}
-                  {apiUnreachable ? (
-                    <p className="text-sm text-muted-foreground" role="status">
-                      {copy.login.apiUnreachable}
-                    </p>
-                  ) : null}
-                  {apiUnreachable ? (
-                    <Button type="button" className="w-full" disabled>
-                      {copy.login.continueDisabled}
+          </div>
+        </aside>
+
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <header
+            ref={topbarRef}
+            className="hub-shell-header relative z-20"
+            {...hubContextData({ type: "shell.nav", area: "topbar" })}
+          >
+            <div className="hub-shell-header-inner flex flex-col gap-1 px-3 py-0.5 md:px-4">
+              <div className="flex flex-col gap-1 lg:flex-row lg:items-center lg:gap-2 lg:gap-y-0">
+                {SHOW_HUB_LIVE_TICKER ? (
+                  <div className="hidden min-w-0 shrink-0 grow basis-0 lg:flex">
+                    <HubLiveTicker variant="top" />
+                  </div>
+                ) : null}
+                <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 border-t border-border/45 pt-1.5 lg:ml-auto lg:border-t-0 lg:pt-0">
+                  {renderActions()}
+                  {renderIdentity()}
+                  {me.status === "user" ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className={hubTopbarButtonClass}
+                      onClick={logout}
+                    >
+                      {copy.common.logOut}
                     </Button>
                   ) : (
-                    <Button asChild className="w-full">
-                      <a href={apiUrl("/api/auth/discord")}>{copy.login.continueDiscord}</a>
+                    <Button asChild size="sm" className={hubTopbarButtonClass}>
+                      <Link to="/login">{copy.common.logIn}</Link>
                     </Button>
                   )}
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             </div>
+          </header>
+
+          <div className="relative flex min-h-0 flex-1">
+            <main
+              className={cn(
+                "flex min-h-0 flex-1 overflow-auto",
+                authGateActive && "pointer-events-none select-none opacity-40",
+              )}
+            >
+              {isDashboardRoute ? (
+                <Outlet context={contextValue} />
+              ) : (
+                <HubShellObject
+                  as="section"
+                  objectId={`shell.route.${panelMeta.id}`}
+                  objectKind="routePanel"
+                  label={panelMeta.label}
+                  layoutEditMode={layoutEditMode}
+                  layoutEditChrome="none"
+                  className="flex min-h-0 w-full flex-1 flex-col"
+                  aria-label={panelMeta.label}
+                >
+                  <div
+                    className={cn(
+                      "min-h-0 flex-1 overflow-auto px-3 pb-5 md:px-4 md:pb-6",
+                      layoutEditMode &&
+                        !routeContentCaps.editableInLayout &&
+                        "[&_a]:pointer-events-none [&_button]:pointer-events-none [&_input]:pointer-events-none [&_select]:pointer-events-none [&_textarea]:pointer-events-none [&_[role=button]]:pointer-events-none",
+                    )}
+                  >
+                    <Outlet context={contextValue} />
+                  </div>
+                </HubShellObject>
+              )}
+            </main>
+            {authGateActive ? (
+              <div className="absolute inset-0 z-20 flex items-center justify-center p-6">
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-background/50 via-background/80 to-background/95 backdrop-blur-sm" />
+                <div className="relative z-10 w-full max-w-md">
+                  <Card className="border-border/65 bg-background/90 shadow-2xl backdrop-blur-xl">
+                    <CardHeader>
+                      <CardTitle>{copy.login.title}</CardTitle>
+                      <CardDescription>{copy.login.description}</CardDescription>
+                    </CardHeader>
+                    <CardContent className="flex flex-col gap-4">
+                      {oauthError ? (
+                        <p className="text-sm text-destructive" role="alert">
+                          {copy.login.oauthFailed}
+                        </p>
+                      ) : null}
+                      {apiUnreachable ? (
+                        <p className="text-sm text-muted-foreground" role="status">
+                          {copy.login.apiUnreachable}
+                        </p>
+                      ) : null}
+                      {apiUnreachable ? (
+                        <Button type="button" className="w-full" disabled>
+                          {copy.login.continueDisabled}
+                        </Button>
+                      ) : (
+                        <Button asChild className="w-full">
+                          <a href={apiUrl("/api/auth/discord")}>{copy.login.continueDiscord}</a>
+                        </Button>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+              </div>
+            ) : null}
           </div>
-        ) : null}
+        </div>
       </div>
 
       <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 h-[var(--hub-shell-bottom-bar)]" />
 
+      {SHOW_HUB_DOCK ? (
       <HubDock
         tools={orderedDockTools}
         pinnedIds={pinnedIds}
@@ -1706,7 +1406,6 @@ export default function HubLayout() {
         audioEnabled={audioEnabled}
         onToggleAudio={actionApi.toggleAudio}
         onCyclePalette={actionApi.cyclePalette}
-        onCycleStylePack={cycleStylePack}
         onOpenCommandPalette={actionApi.openCommandPalette}
         onSummonGoblin={actionApi.summonGoblin}
         onAppeaseHamster={actionApi.appeaseHamster}
@@ -1717,6 +1416,7 @@ export default function HubLayout() {
         dockPosition={hubPrefs.dock.position}
         dockScale={hubPrefs.dock.scale}
       />
+      ) : null}
       <HubCommandPalette
         open={commandOpen}
         onOpenChange={handleCommandOpenChange}

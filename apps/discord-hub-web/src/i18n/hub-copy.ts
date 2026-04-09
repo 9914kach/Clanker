@@ -48,9 +48,15 @@ export type HubCopy = {
     myProfileOffline: string;
     settings: string;
     wheel: string;
+    /** Primärnav → `/tools/music` (kö / “radion”). */
+    navRadio: string;
+    /** Primärnav → `/tools/league-stats`. */
+    navLeagueStats: string;
     runningApp: string;
     identityNavHint: string;
     panelWheel: { label: string; detail: string };
+    panelMusic: { label: string; detail: string };
+    panelLeagueStats: { label: string; detail: string };
     panelSettings: { label: string; detail: string };
     panelProfile: { label: string; detail: string };
     panelDefault: { label: string; detail: string };
@@ -158,6 +164,8 @@ export type HubCopy = {
     };
     navDashboard: { label: string; description: string; keywords: readonly string[] };
     navWheel: { label: string; description: string; keywords: readonly string[] };
+    navRadio: { label: string; description: string; keywords: readonly string[] };
+    navLeagueStats: { label: string; description: string; keywords: readonly string[] };
     navSettings: { label: string; description: string; keywords: readonly string[] };
     navProfile: { label: string; description: string; keywords: readonly string[] };
     systemCommand: { label: string; description: string; keywords: readonly string[] };
@@ -190,6 +198,8 @@ export type HubCopy = {
     shell: string;
     openDashboard: string;
     openWheel: string;
+    openRadio: string;
+    openLeagueStats: string;
     openMyProfile: string;
     openSettings: string;
     identity: string;
@@ -408,6 +418,9 @@ export type HubCopy = {
     musicPreviousNone: string;
     /** Music player: shuffle queue order. */
     musicShuffleQueue: string;
+    /** Music queue: drag handle for reordering. */
+    musicQueueDragHandleAria: string;
+    musicQueueReorderFailed: string;
   };
   desktopSurface: {
     spawnApp: string;
@@ -538,6 +551,8 @@ export type HubCopy = {
     win: string;
     loss: string;
     matchStatsLine: (kills: number, deaths: number, assists: number, cs: number, level: number) => string;
+    /** Riot `gameMode` / `gameType`; empty string if both missing. */
+    leagueMatchModeLine: (gameMode: string, gameType: string) => string;
     steamTitle: string;
     steamDesc: string;
     steamBody: string;
@@ -555,6 +570,59 @@ export type HubCopy = {
     lastLeagueSync: string;
     statusLine: (label: string, value: string) => string;
     hotStreak: string;
+  };
+  /** `/tools/league-stats` — egen sida (inte samma som public profile). */
+  leagueStatsPage: {
+    loading: string;
+    loadingMatches: string;
+    syncRequiredTitle: string;
+    syncRequiredBody: (accountList: string) => string;
+    syncRequiredLinkLabel: string;
+    syncRequiredAction: string;
+    syncRequiredApiHint: string;
+    noLinkedTitle: string;
+    noLinkedBody: string;
+    loadError: (message: string) => string;
+    noMatchesTitle: string;
+    noMatchesBody: string;
+    title: string;
+    subtitle: (totalGames: number, accountLine: string) => string;
+    statGames: string;
+    statGamesSub: (wins: number, losses: number) => string;
+    statWinRate: string;
+    statKda: string;
+    statKdaSub: (k: number, d: number, a: number) => string;
+    statCs: string;
+    statCsSub: (avgDuration: string) => string;
+    breakdownByQueue: string;
+    thQueueMode: string;
+    thMatches: string;
+    thWl: string;
+    thWinPct: string;
+    championsTitle: string;
+    thChampion: string;
+    thChampMatches: string;
+    thChampWinPct: string;
+    thChampKda: string;
+    thChampCsPerGame: string;
+    matchHistoryTitle: string;
+    winBadge: string;
+    lossBadge: string;
+    levelShort: (n: number) => string;
+    goldK: (k: string) => string;
+    csLabel: string;
+    paginationPrev: string;
+    paginationNext: string;
+    paginationRange: (from: number, to: number, total: number) => string;
+    paginationPage: (page: number, totalPages: number) => string;
+    matchesLoadError: string;
+    queueSoloDuo: string;
+    queueFlex: string;
+    queueAram: string;
+    queueQuickplay: string;
+    queueNormalDraft: string;
+    queueCustom: string;
+    queueUnknown: (queueId: number) => string;
   };
   login: {
     title: string;
@@ -673,6 +741,9 @@ export type HubCopy = {
       seedCopied: string;
       voiceFillTitle: string;
       voiceFillMessage: (channelLabel: string, count: number) => string;
+      voiceMoveFail: string;
+      voiceMoveUnknown: string;
+      voiceMoveNoMember: (name: string) => string;
     };
   };
   backendCard: {
@@ -832,11 +903,21 @@ const SV: HubCopy = {
     myProfileOffline: "Min profil (offline)",
     settings: "Inställningar",
     wheel: "Hjul",
+    navRadio: "Radio",
+    navLeagueStats: "League-statistik",
     runningApp: "Körande app",
     identityNavHint: "Högerklicka för identitetsåtgärder.",
     panelWheel: {
       label: "Hjulmodul",
       detail: "Delat kaos, slump och ödesrouting.",
+    },
+    panelMusic: {
+      label: "Musik / kö",
+      detail: "Discord-botens kö och uppspelning.",
+    },
+    panelLeagueStats: {
+      label: "League-statistik",
+      detail: "Egna matcher, köer och champions.",
     },
     panelSettings: {
       label: "Profilinställningar",
@@ -981,6 +1062,16 @@ const SV: HubCopy = {
       description: "Starta ödessnurran och laglottningen.",
       keywords: ["snurra", "hjul", "lag", "slump", "wheel", "spin"],
     },
+    navRadio: {
+      label: "Öppna radion",
+      description: "Musik-kön och Discord-botten.",
+      keywords: ["radio", "musik", "music", "kö", "queue", "spela"],
+    },
+    navLeagueStats: {
+      label: "Öppna League-statistik",
+      description: "Matcher, köer och champions för dina kopplade konton.",
+      keywords: ["league", "lol", "riot", "stats", "matcher"],
+    },
     navSettings: {
       label: "Öppna inställningar",
       description: "Profilvibe och integrationer.",
@@ -1075,6 +1166,8 @@ const SV: HubCopy = {
     shell: "Skal",
     openDashboard: "Öppna dashboard",
     openWheel: "Öppna hjulet",
+    openRadio: "Öppna radion",
+    openLeagueStats: "Öppna League-statistik",
     openMyProfile: "Öppna min profil",
     openSettings: "Öppna inställningar",
     identity: "Identitet",
@@ -1144,6 +1237,9 @@ const SV: HubCopy = {
       Bell: "Klocka",
       Heart: "Hjärta",
       Zap: "Energi",
+      Music: "Musik",
+      Radio: "Radio",
+      Trophy: "Pokal",
     },
     save: "Spara",
     cancel: "Avbryt",
@@ -1174,6 +1270,9 @@ const SV: HubCopy = {
       Bell: "Klocka",
       Heart: "Hjärta",
       Zap: "Energi",
+      Music: "Musik",
+      Radio: "Radio",
+      Trophy: "Pokal",
     },
     save: "Spara",
     cancel: "Avbryt",
@@ -1369,6 +1468,8 @@ const SV: HubCopy = {
     musicPreviousTitle: "Föregående låt",
     musicPreviousNone: "Ingen tidigare låt finns i den här sessionen.",
     musicShuffleQueue: "Blanda kön",
+    musicQueueDragHandleAria: "Dra för att ändra ordning i kön",
+    musicQueueReorderFailed: "Kunde inte spara köordningen. Försök igen.",
   },
   desktopSurface: {
     spawnApp: "Visa app",
@@ -1509,6 +1610,14 @@ const SV: HubCopy = {
     loss: "Förlust",
     matchStatsLine: (kills, deaths, assists, cs, level) =>
       `${kills}/${deaths}/${assists} KDA · ${cs} CS · nivå ${level}`,
+    leagueMatchModeLine: (gameMode, gameType) => {
+      const gm = gameMode.trim();
+      const gt = gameType.trim();
+      if (!gm && !gt) return "";
+      if (!gt) return gm;
+      if (!gm) return gt;
+      return `${gm} · ${gt}`;
+    },
     steamTitle: "Steam",
     steamDesc: "Reserverat för nästa integration.",
     steamBody:
@@ -1529,12 +1638,66 @@ const SV: HubCopy = {
     statusLine: (label, value) => `${label}: ${value}`,
     hotStreak: " · hot streak",
   },
+  leagueStatsPage: {
+    loading: "Laddar statistik…",
+    loadingMatches: "Laddar matcher…",
+    syncRequiredTitle: "Synk krävs",
+    syncRequiredBody: (accountList) =>
+      `${accountList} är kopplat men ingen synk har körts.`,
+    syncRequiredLinkLabel: "Profil → Inställningar",
+    syncRequiredAction: "och klicka Synkronisera på kontot.",
+    syncRequiredApiHint: "Kräver att RIOT_API_KEY är satt i API:ts .env.",
+    noLinkedTitle: "Ingen League-data tillgänglig",
+    noLinkedBody: "Koppla ditt Riot-konto under Profil → Inställningar och kör en synk.",
+    loadError: (message) => `Kunde inte ladda statistik: ${message}`,
+    noMatchesTitle: "Inga matcher inspelade ännu",
+    noMatchesBody: "Kör en synk för det valda kontot för att börja samla data.",
+    title: "League of Legends — statistik",
+    subtitle: (totalGames, accountLine) =>
+      `Baserat på ${totalGames} inspelade matcher${accountLine}`,
+    statGames: "Matcher",
+    statGamesSub: (wins, losses) => `${wins}V / ${losses}F`,
+    statWinRate: "Win rate",
+    statKda: "KDA (snitt)",
+    statKdaSub: (k, d, a) => `${k} / ${d} / ${a}`,
+    statCs: "CS / match",
+    statCsSub: (avgDuration) => `Snitt ${avgDuration} / match`,
+    breakdownByQueue: "Per spelläge",
+    thQueueMode: "Läge",
+    thMatches: "Matcher",
+    thWl: "V/F",
+    thWinPct: "Win %",
+    championsTitle: "Mest spelade champions",
+    thChampion: "Champion",
+    thChampMatches: "Matcher",
+    thChampWinPct: "Win %",
+    thChampKda: "KDA",
+    thChampCsPerGame: "CS/match",
+    matchHistoryTitle: "Matchhistorik",
+    winBadge: "VINST",
+    lossBadge: "FÖRLUST",
+    levelShort: (n) => `Niv ${n}`,
+    goldK: (k) => `${k}k guld`,
+    csLabel: "CS",
+    paginationPrev: "Föregående",
+    paginationNext: "Nästa",
+    paginationRange: (from, to, total) => `Visar ${from}–${to} av ${total}`,
+    paginationPage: (page, totalPages) => `Sida ${page} av ${totalPages}`,
+    matchesLoadError: "Kunde inte ladda matchhistorik.",
+    queueSoloDuo: "Solo/Duo",
+    queueFlex: "Flex",
+    queueAram: "ARAM",
+    queueQuickplay: "Snabbspel",
+    queueNormalDraft: "Normal draft",
+    queueCustom: "Custom",
+    queueUnknown: (queueId) => `Kö ${queueId}`,
+  },
   login: {
     title: "Logga in",
     description: "Synka med Discord för att använda hubben.",
     oauthFailed: "Inloggningen dog. Försök igen.",
     apiUnreachable:
-      "Backend svarar inte (port 3001). Vanlig orsak: discord-hub-api kraschade vid start — kolla terminalen [api] och att repots .env har variablerna i apps/discord-hub-api/.env.example (t.ex. DISCORD_CLIENT_ID).",
+      "Backend svarar inte (vanligt mål: port 3001). Vanlig orsak: discord-hub-api körs inte eller kraschade — kolla [api]-terminalen och .env enligt apps/discord-hub-api/.env.example. Om du satt PORT i apps/discord-hub-api/.env: starta om Vite så proxyn följer (eller sätt DISCORD_HUB_API_DEV_PORT i rot-.env).",
     continueDiscord: "Fortsätt med Discord",
     continueDisabled: "Fortsätt med Discord",
   },
@@ -1653,6 +1816,10 @@ const SV: HubCopy = {
       voiceFillTitle: "Deltagare från röst",
       voiceFillMessage: (channelLabel, count) =>
         `${count} ${count === 1 ? "person" : "personer"} från ${channelLabel}`,
+      voiceMoveFail: "Kunde inte flytta i Discord",
+      voiceMoveUnknown: "Okänt fel — kolla att botten har Behörighet att flytta medlemmar.",
+      voiceMoveNoMember: (name) =>
+        `Hittade ingen i röst som matchar “${name}”. Uppdatera listan från röstkanal eller använd samma namn som i Discord.`,
     },
   },
   backendCard: {
@@ -1814,11 +1981,21 @@ const EN: HubCopy = {
     myProfileOffline: "My profile offline",
     settings: "Settings",
     wheel: "Wheel",
+    navRadio: "Radio",
+    navLeagueStats: "League stats",
     runningApp: "Running app",
     identityNavHint: "Right-click for identity actions.",
     panelWheel: {
       label: "Wheel module",
       detail: "Shared chaos tools and random fate routing.",
+    },
+    panelMusic: {
+      label: "Music queue",
+      detail: "Discord bot queue and playback.",
+    },
+    panelLeagueStats: {
+      label: "League stats",
+      detail: "Your matches, queues, and champions.",
     },
     panelSettings: {
       label: "Profile settings",
@@ -1963,6 +2140,16 @@ const EN: HubCopy = {
       description: "Launch the fate spinner and team randomizer.",
       keywords: ["spin", "wheel", "teams", "random"],
     },
+    navRadio: {
+      label: "Open radio",
+      description: "Music queue and Discord bot controls.",
+      keywords: ["radio", "music", "queue", "player"],
+    },
+    navLeagueStats: {
+      label: "Open League stats",
+      description: "Matches, queues, and champions for your linked accounts.",
+      keywords: ["league", "lol", "riot", "stats", "matches"],
+    },
     navSettings: {
       label: "Open settings",
       description: "Tweak your profile vibe and integrations.",
@@ -2057,6 +2244,8 @@ const EN: HubCopy = {
     shell: "Shell",
     openDashboard: "Open dashboard",
     openWheel: "Open wheel",
+    openRadio: "Open radio",
+    openLeagueStats: "Open League stats",
     openMyProfile: "Open my profile",
     openSettings: "Open settings",
     identity: "Identity",
@@ -2126,6 +2315,9 @@ const EN: HubCopy = {
       Bell: "Bell",
       Heart: "Heart",
       Zap: "Zap",
+      Music: "Music",
+      Radio: "Radio",
+      Trophy: "Trophy",
     },
     save: "Save",
     cancel: "Cancel",
@@ -2156,6 +2348,9 @@ const EN: HubCopy = {
       Bell: "Bell",
       Heart: "Heart",
       Zap: "Zap",
+      Music: "Music",
+      Radio: "Radio",
+      Trophy: "Trophy",
     },
     save: "Save",
     cancel: "Cancel",
@@ -2348,6 +2543,8 @@ const EN: HubCopy = {
     musicPreviousTitle: "Previous track",
     musicPreviousNone: "No previous track in this session.",
     musicShuffleQueue: "Shuffle queue",
+    musicQueueDragHandleAria: "Drag to reorder queue",
+    musicQueueReorderFailed: "Couldn’t save queue order. Try again.",
   },
   desktopSurface: {
     spawnApp: "Spawn app",
@@ -2483,6 +2680,14 @@ const EN: HubCopy = {
     loss: "Loss",
     matchStatsLine: (kills, deaths, assists, cs, level) =>
       `${kills}/${deaths}/${assists} KDA · ${cs} CS · lvl ${level}`,
+    leagueMatchModeLine: (gameMode, gameType) => {
+      const gm = gameMode.trim();
+      const gt = gameType.trim();
+      if (!gm && !gt) return "";
+      if (!gt) return gm;
+      if (!gm) return gt;
+      return `${gm} · ${gt}`;
+    },
     steamTitle: "Steam",
     steamDesc: "Reserved for the next integration.",
     steamBody: "Steam will show here once linking and backend exist — same card style as the hub.",
@@ -2501,12 +2706,66 @@ const EN: HubCopy = {
     statusLine: (label, value) => `${label}: ${value}`,
     hotStreak: " · hot streak",
   },
+  leagueStatsPage: {
+    loading: "Loading stats…",
+    loadingMatches: "Loading matches…",
+    syncRequiredTitle: "Sync required",
+    syncRequiredBody: (accountList) =>
+      `${accountList} is linked but no sync has run yet.`,
+    syncRequiredLinkLabel: "Profile → Settings",
+    syncRequiredAction: "and click Sync on the account.",
+    syncRequiredApiHint: "Requires RIOT_API_KEY in the API .env.",
+    noLinkedTitle: "No League data available",
+    noLinkedBody: "Link your Riot account under Profile → Settings and run a sync.",
+    loadError: (message) => `Couldn’t load stats: ${message}`,
+    noMatchesTitle: "No matches recorded yet",
+    noMatchesBody: "Run a sync for the selected account to start collecting data.",
+    title: "League of Legends — stats",
+    subtitle: (totalGames, accountLine) =>
+      `Based on ${totalGames} recorded matches${accountLine}`,
+    statGames: "Games",
+    statGamesSub: (wins, losses) => `${wins}W / ${losses}L`,
+    statWinRate: "Win rate",
+    statKda: "KDA (avg)",
+    statKdaSub: (k, d, a) => `${k} / ${d} / ${a}`,
+    statCs: "CS / game",
+    statCsSub: (avgDuration) => `Avg ${avgDuration} / game`,
+    breakdownByQueue: "By queue",
+    thQueueMode: "Mode",
+    thMatches: "Games",
+    thWl: "W/L",
+    thWinPct: "Win %",
+    championsTitle: "Most-played champions",
+    thChampion: "Champion",
+    thChampMatches: "Games",
+    thChampWinPct: "Win %",
+    thChampKda: "KDA",
+    thChampCsPerGame: "CS/game",
+    matchHistoryTitle: "Match history",
+    winBadge: "WIN",
+    lossBadge: "LOSS",
+    levelShort: (n) => `Lvl ${n}`,
+    goldK: (k) => `${k}k gold`,
+    csLabel: "CS",
+    paginationPrev: "Previous",
+    paginationNext: "Next",
+    paginationRange: (from, to, total) => `Showing ${from}–${to} of ${total}`,
+    paginationPage: (page, totalPages) => `Page ${page} of ${totalPages}`,
+    matchesLoadError: "Couldn’t load match history.",
+    queueSoloDuo: "Solo/Duo",
+    queueFlex: "Flex",
+    queueAram: "ARAM",
+    queueQuickplay: "Quickplay",
+    queueNormalDraft: "Normal draft",
+    queueCustom: "Custom",
+    queueUnknown: (queueId) => `Queue ${queueId}`,
+  },
   login: {
     title: "Log in",
     description: "Sync with Discord to use the hub.",
     oauthFailed: "Login failed. Try again.",
     apiUnreachable:
-      "Backend isn’t answering (port 3001). Common cause: discord-hub-api crashed on start — check the [api] terminal and that the repo .env has the vars from apps/discord-hub-api/.env.example (e.g. DISCORD_CLIENT_ID).",
+      "Backend isn’t answering (usual target: port 3001). Common cause: discord-hub-api isn’t running or crashed — check the [api] terminal and .env per apps/discord-hub-api/.env.example. If you set PORT in apps/discord-hub-api/.env, restart Vite so the proxy matches (or set DISCORD_HUB_API_DEV_PORT in the repo root .env).",
     continueDiscord: "Continue with Discord",
     continueDisabled: "Continue with Discord",
   },
@@ -2624,6 +2883,10 @@ const EN: HubCopy = {
       voiceFillTitle: "Participants from voice",
       voiceFillMessage: (channelLabel, count) =>
         `${count} ${count === 1 ? "person" : "people"} from ${channelLabel}`,
+      voiceMoveFail: "Couldn’t move in Discord",
+      voiceMoveUnknown: "Unknown error — check the bot has Move Members permission.",
+      voiceMoveNoMember: (name) =>
+        `No voice member matched “${name}”. Refresh the list from a voice channel or use the same name as in Discord.`,
     },
   },
   backendCard: {

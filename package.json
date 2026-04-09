@@ -11,6 +11,7 @@
     "dev:web": "npm run dev -w discord-hub-web",
     "dev:discord-api": "npm run dev -w discord-hub-api",
     "dev:discord-bot": "npm run dev -w discord-bot",
+    "dev:discord-bot:once": "npm run dev:once -w discord-bot",
     "bot:start": "bash scripts/clanker-bot-start",
     "bot:start:logs": "bash scripts/clanker-bot-start --logs",
     "bot:dev": "node scripts/clanker-bot-dev.mjs",

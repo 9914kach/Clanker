@@ -6,7 +6,7 @@ export type HubWidgetSizePreset = "compact" | "cozy" | "expanded";
 export type HubToneOverride = "inherit" | "useful" | "social" | "chaos";
 export type HubGridDensity = "compact" | "cozy" | "expanded";
 export type HubGridCompaction = "none" | "pack";
-export type HubDesktopStylePackId = "default" | "midnight" | "paper" | "signal" | "campfire";
+export type HubDesktopStylePackId = "default";
 export type HubDockPosition = "bottom" | "left";
 export type HubDockScale = "sm" | "md" | "lg";
 export type HubCopyPersonality = "calm" | "normal" | "chaotic";
@@ -232,13 +232,7 @@ export function mergeHubPrefs(base: HubPrefs, patch: unknown): HubPrefs {
   }
   const d = patch.desktop;
   if (isRecord(d)) {
-    if (
-      d.stylePackId === "default" ||
-      d.stylePackId === "midnight" ||
-      d.stylePackId === "paper" ||
-      d.stylePackId === "signal" ||
-      d.stylePackId === "campfire"
-    ) {
+    if (d.stylePackId === "default") {
       next.desktop.stylePackId = d.stylePackId;
     }
     if (d.gridDensity === "compact" || d.gridDensity === "cozy" || d.gridDensity === "expanded") {

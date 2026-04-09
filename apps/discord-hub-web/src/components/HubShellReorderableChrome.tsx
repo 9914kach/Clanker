@@ -1,6 +1,6 @@
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useEffect, useRef, useState, useCallback } from "react";
-import { GripVertical, LayoutPanelTop, Workflow } from "lucide-react";
+import { GripVertical, LayoutPanelTop, Radio, Trophy, Workflow } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import { motion, Reorder, useReducedMotion } from "framer-motion";
 import { cn } from "@clanker/ui/lib/utils";
@@ -65,12 +65,15 @@ function HubReorderEditAffordance({
   slotIndex,
   reducedMotion,
   rowContext,
+  fullWidth,
   children,
 }: {
   slotIndex: number;
   reducedMotion: boolean;
   /** Same shell target as the nav control; grip sits beside the link, so it must carry context too. */
   rowContext?: HubContextTarget | null;
+  /** Sidebar: stretch row to full aside width. */
+  fullWidth?: boolean;
   children: ReactNode;
 }) {
   const rowCtxProps = rowContext ? hubContextData(rowContext) : {};
@@ -91,12 +94,17 @@ function HubReorderEditAffordance({
   const gripWrapClass =
     "pointer-events-none flex shrink-0 items-center ps-1 text-muted-foreground opacity-[0.14] transition-opacity duration-200 group-hover:opacity-80 group-active:opacity-100";
 
+  const rowFlexClass = cn(
+    "group cursor-grab items-stretch gap-0.5 active:cursor-grabbing",
+    fullWidth ? "flex w-full max-w-full" : "inline-flex max-w-full",
+  );
+
   if (reducedMotion) {
     return (
       <div
         {...rowCtxProps}
         className={cn(
-          "group inline-flex max-w-full cursor-grab items-stretch gap-0.5 active:cursor-grabbing",
+          rowFlexClass,
           radius,
           "ring-1 ring-primary/15 ring-offset-0 ring-offset-background",
         )}
@@ -116,7 +124,8 @@ function HubReorderEditAffordance({
     <motion.div
       {...rowCtxProps}
       className={cn(
-        "group inline-flex max-w-full cursor-grab items-stretch gap-0.5 will-change-transform active:cursor-grabbing",
+        rowFlexClass,
+        "will-change-transform",
         radius,
         "ring-1 ring-primary/12 ring-offset-0 ring-offset-background",
       )}
@@ -206,6 +215,7 @@ export function HubShellReorderablePrimaryNav({
   navBookmarks,
   primaryNavOverrides,
   onContextMenu,
+  orientation = "horizontal",
 }: {
   order: readonly string[];
   onReorder: (next: string[]) => void;
@@ -218,11 +228,13 @@ export function HubShellReorderablePrimaryNav({
   primaryNavOverrides: Readonly<Partial<Record<HubPrimaryNavItemId, HubPrimaryNavOverride>>>;
   /** Parent layout context menu handler — forwarded to Reorder.Items so drag doesn't swallow right-clicks. */
   onContextMenu?: (e: ReactMouseEvent<HTMLElement>) => void;
+  orientation?: "horizontal" | "vertical";
 }) {
   const em = copy.editMode;
   const ch = copy.chrome;
   const reducedMotion = useReducedMotion() ?? false;
   const introNonce = useLayoutEditIntroNonce(layoutEditMode);
+  const isVertical = orientation === "vertical";
 
   const labelForId = (id: string): string => {
     if (id === "desktop") {
@@ -239,6 +251,12 @@ export function HubShellReorderablePrimaryNav({
     }
     if (id === "wheel") {
       return primaryNavOverrides.wheel?.label ?? ch.wheel;
+    }
+    if (id === "radio") {
+      return primaryNavOverrides.radio?.label ?? ch.navRadio;
+    }
+    if (id === "leagueStats") {
+      return primaryNavOverrides.leagueStats?.label ?? ch.navLeagueStats;
     }
     if (isBookmarkNavId(id)) {
       return navBookmarks[id]?.label ?? id;
@@ -289,6 +307,26 @@ export function HubShellReorderablePrimaryNav({
         navId: "wheel",
         label: override?.label ?? ch.wheel,
         path: override?.path ?? "/tools/spin-the-wheel",
+        iconKey: override?.iconKey ?? null,
+      };
+    }
+    if (id === "radio") {
+      const override = primaryNavOverrides.radio;
+      return {
+        type: "navPrimary",
+        navId: "radio",
+        label: override?.label ?? ch.navRadio,
+        path: override?.path ?? "/tools/music",
+        iconKey: override?.iconKey ?? null,
+      };
+    }
+    if (id === "leagueStats") {
+      const override = primaryNavOverrides.leagueStats;
+      return {
+        type: "navPrimary",
+        navId: "leagueStats",
+        label: override?.label ?? ch.navLeagueStats,
+        path: override?.path ?? "/tools/league-stats",
         iconKey: override?.iconKey ?? null,
       };
     }
@@ -426,6 +464,60 @@ export function HubShellReorderablePrimaryNav({
         </NavLink>
       );
     }
+    if (id === "radio") {
+      const override = primaryNavOverrides.radio;
+      const label = override?.label ?? ch.navRadio;
+      const path = override?.path ?? "/tools/music";
+      const Icon = override?.iconKey ? resolveNavBookmarkIcon(override.iconKey) : Radio;
+      return (
+        <NavLink
+          to={path}
+          draggable={anchorDraggable}
+          tabIndex={layoutEditMode ? -1 : undefined}
+          onClick={(e) => {
+            if (layoutEditMode) e.preventDefault();
+          }}
+          className={({ isActive }) => navButtonClassName(isActive)}
+          {...hubContextData({
+            type: "navPrimary",
+            navId: "radio",
+            label,
+            path,
+            iconKey: override?.iconKey ?? null,
+          })}
+        >
+          <Icon className="size-3.5 shrink-0" />
+          {label}
+        </NavLink>
+      );
+    }
+    if (id === "leagueStats") {
+      const override = primaryNavOverrides.leagueStats;
+      const label = override?.label ?? ch.navLeagueStats;
+      const path = override?.path ?? "/tools/league-stats";
+      const Icon = override?.iconKey ? resolveNavBookmarkIcon(override.iconKey) : Trophy;
+      return (
+        <NavLink
+          to={path}
+          draggable={anchorDraggable}
+          tabIndex={layoutEditMode ? -1 : undefined}
+          onClick={(e) => {
+            if (layoutEditMode) e.preventDefault();
+          }}
+          className={({ isActive }) => navButtonClassName(isActive)}
+          {...hubContextData({
+            type: "navPrimary",
+            navId: "leagueStats",
+            label,
+            path,
+            iconKey: override?.iconKey ?? null,
+          })}
+        >
+          <Icon className="size-3.5 shrink-0" />
+          {label}
+        </NavLink>
+      );
+    }
     if (isBookmarkNavId(id)) {
       const bm = navBookmarks[id];
       if (!bm) {
@@ -486,15 +578,28 @@ export function HubShellReorderablePrimaryNav({
 
   const valueIds = rows.map((r) => r.id);
 
+  const groupClass = isVertical
+    ? "flex w-full flex-col gap-1"
+    : "flex flex-wrap items-center gap-1";
+
+  const itemClass = (slotIndex: number) =>
+    cn(
+      "relative touch-none select-none outline-none",
+      isVertical ? "w-full max-w-full" : "inline-flex max-w-full",
+      !isVertical &&
+        slotIndex > 0 &&
+        "ms-0.5 ps-1.5 before:pointer-events-none before:absolute before:left-0 before:top-1/2 before:h-6 before:w-px before:-translate-y-1/2 before:rounded-full before:bg-border/55 before:content-['']",
+    );
+
   return (
     <>
       {layoutEditMode ? (
         <Reorder.Group
-          axis="x"
+          axis={isVertical ? "y" : "x"}
           values={valueIds}
           onReorder={(next) => commitReorderIfChanged(valueIds, next, onReorder, play)}
           as="div"
-          className="flex flex-wrap items-center gap-1"
+          className={groupClass}
         >
           {rows.map(({ id, node }, slotIndex) => {
             const affordance = (
@@ -503,6 +608,7 @@ export function HubShellReorderablePrimaryNav({
                 slotIndex={slotIndex}
                 reducedMotion={reducedMotion}
                 rowContext={layoutRowContextForId(id)}
+                fullWidth={isVertical}
               >
                 {node}
               </HubReorderEditAffordance>
@@ -513,11 +619,7 @@ export function HubShellReorderablePrimaryNav({
               value={id}
               as="div"
               layout="position"
-              className={cn(
-                "relative inline-flex max-w-full touch-none select-none outline-none",
-                slotIndex > 0 &&
-                  "ms-0.5 ps-1.5 before:pointer-events-none before:absolute before:left-0 before:top-1/2 before:h-6 before:w-px before:-translate-y-1/2 before:rounded-full before:bg-border/55 before:content-['']",
-              )}
+              className={itemClass(slotIndex)}
               aria-label={em.shellReorderDragHandleAria(labelForId(id))}
               onContextMenu={(e: ReactMouseEvent<HTMLElement>) => {
                 // Framer Motion drag internals call preventDefault on contextmenu to
@@ -533,9 +635,9 @@ export function HubShellReorderablePrimaryNav({
           })}
         </Reorder.Group>
       ) : (
-        <div className="flex flex-wrap items-center gap-1">
+        <div className={groupClass}>
           {rows.map(({ id, node }) => (
-            <div key={id} className="inline-flex max-w-full">
+            <div key={id} className={isVertical ? "w-full max-w-full" : "inline-flex max-w-full"}>
               {node}
             </div>
           ))}

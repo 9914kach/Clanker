@@ -39,6 +39,9 @@ type LeagueRecentMatch = {
   gameCreation: number;
   gameDurationSeconds: number;
   queueId: number;
+  gameMode?: string;
+  gameType?: string;
+  mapId?: number;
   championName: string;
   kills: number;
   deaths: number;
@@ -65,10 +68,14 @@ type LeagueSyncSnapshot = {
   recentMatches: LeagueRecentMatch[];
 };
 
+type LeagueAccount = LeagueConnection & {
+  puuid: string | null;
+  sync: LeagueSyncSnapshot | null;
+};
+
 type LeagueStatusResponse = {
   connected: boolean;
-  connection: LeagueConnection | null;
-  sync: LeagueSyncSnapshot | null;
+  accounts: LeagueAccount[];
 };
 
 type LeagueForm = {
@@ -106,6 +113,7 @@ export default function ProfileSettingsPage() {
     [ps.defaultStatusMessage],
   );
 
+  const [leagueAccounts, setLeagueAccounts] = useState<LeagueAccount[]>([]);
   const [leagueForm, setLeagueForm] = useState<LeagueForm>(() => ({
     riotId: "",
     tagLine: "",
@@ -116,6 +124,7 @@ export default function ProfileSettingsPage() {
   }));
   const [leagueMessage, setLeagueMessage] = useState("");
   const [leagueBusy, setLeagueBusy] = useState(false);
+  const [syncingAccount, setSyncingAccount] = useState<string | null>(null);
   const [profileSettings, setProfileSettings] = useState({
     showOnlineStatus: true,
     showRank: true,
@@ -136,16 +145,7 @@ export default function ProfileSettingsPage() {
         return;
       }
 
-      if (data.connection) {
-        setLeagueForm({
-          riotId: data.connection.riotId,
-          tagLine: data.connection.tagLine,
-          region: data.connection.region,
-          autoSync: data.connection.autoSync,
-          rankPreference: data.connection.rankPreference,
-          statusMessage: data.connection.statusMessage,
-        });
-      }
+      setLeagueAccounts(data.accounts ?? []);
     } catch {
       setLeagueMessage(ps.errors.leagueStatusRead);
     }
@@ -184,9 +184,8 @@ export default function ProfileSettingsPage() {
         return;
       }
 
-      const payload = await parseJson<
-        LeagueStatusResponse & { message?: string }
-      >(res);
+      const payload = await parseJson<{ message?: string }>(res);
+      setLeagueForm(makeEmptyLeagueForm());
       await refreshLeague();
       setLeagueMessage(payload?.message ?? ps.success.connected);
     } catch {
@@ -196,13 +195,16 @@ export default function ProfileSettingsPage() {
     }
   };
 
-  const submitLeagueSync = async () => {
-    setLeagueBusy(true);
+  const submitLeagueSync = async (riotId: string, tagLine: string) => {
+    const key = `${riotId}#${tagLine}`;
+    setSyncingAccount(key);
     setLeagueMessage("");
     try {
       const res = await fetch(apiUrl("/api/integrations/league/sync"), {
         method: "POST",
         credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ riotId, tagLine }),
       });
 
       if (!res.ok) {
@@ -211,32 +213,31 @@ export default function ProfileSettingsPage() {
         return;
       }
 
-      const payload = await parseJson<
-        LeagueStatusResponse & { message?: string }
-      >(res);
+      const payload = await parseJson<{ message?: string }>(res);
       await refreshLeague();
       setLeagueMessage(payload?.message ?? ps.success.synced);
     } catch {
       setLeagueMessage(ps.errors.syncNetwork);
     } finally {
-      setLeagueBusy(false);
+      setSyncingAccount(null);
     }
   };
 
-  const submitLeagueDisconnect = async () => {
+  const submitLeagueDisconnect = async (riotId: string, tagLine: string) => {
     setLeagueBusy(true);
     setLeagueMessage("");
     try {
       const res = await fetch(apiUrl("/api/integrations/league/disconnect"), {
         method: "POST",
         credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ riotId, tagLine }),
       });
       if (!res.ok) {
         setLeagueMessage(ps.errors.disconnectFailed);
         return;
       }
-
-      setLeagueForm(makeEmptyLeagueForm());
+      await refreshLeague();
       setLeagueMessage(ps.success.disconnected);
     } catch {
       setLeagueMessage(ps.errors.disconnectNetwork);
@@ -380,96 +381,132 @@ export default function ProfileSettingsPage() {
             </CardTitle>
             <CardDescription>{ps.leagueCardDesc}</CardDescription>
           </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="flex flex-col gap-1 text-sm">
-                {ps.riotId}
+          <CardContent className="flex flex-col gap-4">
+            {/* Connected accounts list */}
+            {leagueAccounts.length > 0 && (
+              <div className="flex flex-col gap-2">
+                {leagueAccounts.map((acc) => {
+                  const key = `${acc.riotId}#${acc.tagLine}`;
+                  const isSyncing = syncingAccount === key;
+                  return (
+                    <div
+                      key={key}
+                      className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-sm"
+                    >
+                      <div className="flex flex-col min-w-0">
+                        <span className="font-semibold truncate">
+                          {acc.riotId}#{acc.tagLine}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {acc.region} · {acc.rankPreference === "solo" ? "Solo/Duo" : "Flex"}
+                          {acc.sync ? ` · Synkad ${new Date(acc.sync.fetchedAt).toLocaleDateString("sv-SE")}` : " · Ej synkad"}
+                        </span>
+                      </div>
+                      <div className="flex gap-2 shrink-0">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          disabled={isSyncing || leagueBusy}
+                          onClick={() => void submitLeagueSync(acc.riotId, acc.tagLine)}
+                        >
+                          <FontAwesomeIcon icon={faRotate} data-icon="inline-start" />
+                          {isSyncing ? "Synkar..." : ps.syncNow}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={isSyncing || leagueBusy}
+                          onClick={() => void submitLeagueDisconnect(acc.riotId, acc.tagLine)}
+                        >
+                          <FontAwesomeIcon icon={faUnlink} data-icon="inline-start" />
+                          {ps.disconnect}
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Add new account form */}
+            <div className="flex flex-col gap-3 border-t border-border pt-4">
+              <p className="text-sm font-medium">
+                {leagueAccounts.length > 0 ? "Lägg till konto" : ps.leagueCardDesc}
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="flex flex-col gap-1 text-sm">
+                  {ps.riotId}
+                  <input
+                    type="text"
+                    value={leagueForm.riotId}
+                    onChange={(e) => setLeagueForm((prev) => ({ ...prev, riotId: e.target.value }))}
+                    className="rounded-md border border-input bg-background px-3 py-2"
+                    placeholder="t.ex. Faker"
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-sm">
+                  {ps.tagline}
+                  <input
+                    type="text"
+                    value={leagueForm.tagLine}
+                    onChange={(e) => setLeagueForm((prev) => ({ ...prev, tagLine: e.target.value }))}
+                    className="rounded-md border border-input bg-background px-3 py-2"
+                    placeholder="EUW"
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-sm">
+                  {ps.region}
+                  <select
+                    value={leagueForm.region}
+                    onChange={(e) =>
+                      setLeagueForm((prev) => ({ ...prev, region: e.target.value as LeagueRegion }))
+                    }
+                    className="rounded-md border border-input bg-background px-3 py-2"
+                  >
+                    <option value="EUW">EUW</option>
+                    <option value="EUNE">EUNE</option>
+                    <option value="NA">NA</option>
+                    <option value="KR">KR</option>
+                    <option value="BR">BR</option>
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-sm">
+                  {ps.rankSource}
+                  <select
+                    value={leagueForm.rankPreference}
+                    onChange={(e) =>
+                      setLeagueForm((prev) => ({
+                        ...prev,
+                        rankPreference: e.target.value as "solo" | "flex",
+                      }))
+                    }
+                    className="rounded-md border border-input bg-background px-3 py-2"
+                  >
+                    <option value="solo">{ps.rankSolo}</option>
+                    <option value="flex">{ps.rankFlex}</option>
+                  </select>
+                </label>
+              </div>
+
+              <label className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm">
                 <input
-                  type="text"
-                  value={leagueForm.riotId}
-                  onChange={(e) => setLeagueForm((prev) => ({ ...prev, riotId: e.target.value }))}
-                  className="rounded-md border border-input bg-background px-3 py-2"
-                  placeholder="t.ex. Faker"
+                  type="checkbox"
+                  checked={leagueForm.autoSync}
+                  onChange={(e) => setLeagueForm((prev) => ({ ...prev, autoSync: e.target.checked }))}
                 />
+                {ps.autoSync}
               </label>
-              <label className="flex flex-col gap-1 text-sm">
-                {ps.tagline}
-                <input
-                  type="text"
-                  value={leagueForm.tagLine}
-                  onChange={(e) => setLeagueForm((prev) => ({ ...prev, tagLine: e.target.value }))}
-                  className="rounded-md border border-input bg-background px-3 py-2"
-                  placeholder="EUW"
-                />
-              </label>
-              <label className="flex flex-col gap-1 text-sm">
-                {ps.region}
-                <select
-                  value={leagueForm.region}
-                  onChange={(e) =>
-                    setLeagueForm((prev) => ({ ...prev, region: e.target.value as LeagueRegion }))
-                  }
-                  className="rounded-md border border-input bg-background px-3 py-2"
-                >
-                  <option value="EUW">EUW</option>
-                  <option value="EUNE">EUNE</option>
-                  <option value="NA">NA</option>
-                  <option value="KR">KR</option>
-                  <option value="BR">BR</option>
-                </select>
-              </label>
-              <label className="flex flex-col gap-1 text-sm">
-                {ps.rankSource}
-                <select
-                  value={leagueForm.rankPreference}
-                  onChange={(e) =>
-                    setLeagueForm((prev) => ({
-                      ...prev,
-                      rankPreference: e.target.value as "solo" | "flex",
-                    }))
-                  }
-                  className="rounded-md border border-input bg-background px-3 py-2"
-                >
-                  <option value="solo">{ps.rankSolo}</option>
-                  <option value="flex">{ps.rankFlex}</option>
-                </select>
-              </label>
-            </div>
 
-            <label className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm">
-              <input
-                type="checkbox"
-                checked={leagueForm.autoSync}
-                onChange={(e) => setLeagueForm((prev) => ({ ...prev, autoSync: e.target.checked }))}
-              />
-              {ps.autoSync}
-            </label>
-
-            <label className="flex flex-col gap-1 text-sm">
-              {ps.statusMessage}
-              <input
-                type="text"
-                value={leagueForm.statusMessage}
-                onChange={(e) =>
-                  setLeagueForm((prev) => ({ ...prev, statusMessage: e.target.value }))
-                }
-                className="rounded-md border border-input bg-background px-3 py-2"
-                placeholder={ps.statusPlaceholder}
-              />
-            </label>
-
-            <div className="flex flex-wrap gap-2">
-              <Button type="button" disabled={leagueBusy} onClick={submitLeagueConnect}>
+              <Button
+                type="button"
+                disabled={leagueBusy || !leagueForm.riotId || !leagueForm.tagLine}
+                onClick={() => void submitLeagueConnect()}
+                className="self-start"
+              >
                 <FontAwesomeIcon icon={faLink} data-icon="inline-start" />
                 {ps.connect}
-              </Button>
-              <Button type="button" variant="secondary" disabled={leagueBusy} onClick={submitLeagueSync}>
-                <FontAwesomeIcon icon={faRotate} data-icon="inline-start" />
-                {ps.syncNow}
-              </Button>
-              <Button type="button" variant="outline" disabled={leagueBusy} onClick={submitLeagueDisconnect}>
-                <FontAwesomeIcon icon={faUnlink} data-icon="inline-start" />
-                {ps.disconnect}
               </Button>
             </div>
 

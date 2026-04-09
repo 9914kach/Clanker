@@ -37,7 +37,6 @@ import {
 import {
   DEFAULT_WIDGET_VISUAL_PREFS,
   effectiveWidgetTone,
-  type HubDesktopStylePackId,
   type HubGridCompaction,
   type HubWidgetVisualPrefs,
 } from "@/lib/hub-prefs";
@@ -120,21 +119,6 @@ function toneAccentClass(tone: "useful" | "social" | "chaos", withBorder: boolea
   return "";
 }
 
-function stylePackBackground(stylePackId: HubDesktopStylePackId): string {
-  if (stylePackId === "midnight") {
-    return "radial-gradient(circle at top left, color-mix(in oklab, #7c3aed 14%, transparent), transparent 30%), radial-gradient(circle at bottom right, color-mix(in oklab, #1e3a5f 16%, transparent), transparent 32%)";
-  }
-  if (stylePackId === "paper") {
-    return "radial-gradient(circle at top left, color-mix(in oklab, #f5f0e8 50%, transparent), transparent 40%), radial-gradient(circle at bottom right, color-mix(in oklab, #e8d5b7 30%, transparent), transparent 32%)";
-  }
-  if (stylePackId === "signal") {
-    return "radial-gradient(circle at top left, color-mix(in oklab, #00ff88 10%, transparent), transparent 25%), radial-gradient(circle at bottom right, color-mix(in oklab, #ff3366 8%, transparent), transparent 28%)";
-  }
-  if (stylePackId === "campfire") {
-    return "radial-gradient(circle at top left, color-mix(in oklab, #fb923c 16%, transparent), transparent 32%), radial-gradient(circle at bottom right, color-mix(in oklab, #f472b6 10%, transparent), transparent 36%), radial-gradient(circle at 50% 120%, color-mix(in oklab, #fbbf24 12%, transparent), transparent 46%)";
-  }
-  return "";
-}
 
 function DesktopWidgetCard({
   item,
@@ -424,7 +408,6 @@ export default function HubDesktopSurface({
   layouts,
   hiddenWidgetIds,
   widgetVisualPrefsById = {},
-  stylePackId = "default",
   showWidgetBorder = true,
   animationIntensity = 100,
   onMoveWidget,
@@ -448,7 +431,6 @@ export default function HubDesktopSurface({
   layouts: Readonly<Record<string, HubDesktopWidgetLayout>>;
   hiddenWidgetIds: readonly string[];
   widgetVisualPrefsById?: Partial<Record<string, HubWidgetVisualPrefs>>;
-  stylePackId?: HubDesktopStylePackId;
   showWidgetBorder?: boolean;
   animationIntensity?: number;
   onMoveWidget: (id: string, position: Pick<HubDesktopWidgetLayout, "x" | "y">, options?: { snap?: boolean }) => void;
@@ -778,7 +760,6 @@ export default function HubDesktopSurface({
     [hiddenWidgetIds, widgets],
   );
 
-  const packBg = stylePackBackground(stylePackId);
   const durationScale = hubMotionDurationScale(animationIntensity);
 
   return (
@@ -792,11 +773,7 @@ export default function HubDesktopSurface({
     >
       {variant === "desktop" ? (
         <>
-          {packBg ? (
-            <div className="absolute inset-0 transition-all duration-700" style={{ backgroundImage: packBg }} />
-          ) : (
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,color-mix(in_oklab,var(--primary)_18%,transparent),transparent_30%),radial-gradient(circle_at_bottom_right,color-mix(in_oklab,var(--accent)_12%,transparent),transparent_32%)]" />
-          )}
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,color-mix(in_oklab,var(--primary)_18%,transparent),transparent_30%),radial-gradient(circle_at_bottom_right,color-mix(in_oklab,var(--accent)_12%,transparent),transparent_32%)]" />
           <div className="absolute inset-0 bg-[linear-gradient(to_right,color-mix(in_oklab,var(--border)_26%,transparent)_1px,transparent_1px),linear-gradient(to_bottom,color-mix(in_oklab,var(--border)_18%,transparent)_1px,transparent_1px)] bg-[size:132px_132px] opacity-45 dark:hidden" />
         </>
       ) : null}

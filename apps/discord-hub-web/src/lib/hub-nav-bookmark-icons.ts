@@ -6,9 +6,12 @@ import {
   Home,
   LayoutDashboard,
   Link2,
+  Music,
+  Radio,
   Search,
   Settings,
   Star,
+  Trophy,
   User,
   Workflow,
   Zap,
@@ -27,6 +30,9 @@ export const HUB_NAV_BOOKMARK_ICON_KEYS = [
   "Bell",
   "Heart",
   "Zap",
+  "Music",
+  "Radio",
+  "Trophy",
 ] as const;
 
 export type HubNavBookmarkIconKey = (typeof HUB_NAV_BOOKMARK_ICON_KEYS)[number];
@@ -46,6 +52,9 @@ const NAV_BOOKMARK_ICON_MAP: Record<HubNavBookmarkIconKey, LucideIcon> = {
   Bell,
   Heart,
   Zap,
+  Music,
+  Radio,
+  Trophy,
 };
 
 export function normalizeNavBookmarkIconKey(raw: unknown): HubNavBookmarkIconKey {

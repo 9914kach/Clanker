@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "predev": "npm run build --prefix ../../packages/hub-pg-migrate",
-    "dev": "tsx watch src/index.ts",
+    "dev": "tsx watch --exclude \"../../packages/**\" src/index.ts",
     "prebuild": "npm run build --prefix ../../packages/hub-pg-migrate",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",

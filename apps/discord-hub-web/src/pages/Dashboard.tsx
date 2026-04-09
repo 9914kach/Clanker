@@ -11,7 +11,6 @@ import {
   Quote,
   Radio,
   RotateCcw,
-  Search,
   Sparkles,
   UserRound,
 } from "lucide-react";
@@ -51,6 +50,7 @@ import {
   type HubToneOverride,
 } from "@/lib/hub-prefs";
 import { HUB_WIDGET_TIERS } from "@/lib/hub-widget-tiers";
+import { hubMusicPollIntervalMs } from "@/lib/hub-music-poll-interval";
 
 const HUB_GUILD_ID = import.meta.env.VITE_DISCORD_HUB_GUILD_ID?.trim() ?? "";
 
@@ -326,6 +326,10 @@ export default function DashboardPage() {
   }));
   const seedPreview = useMemo(() => `hub-${new Date().toISOString().slice(0, 10)}`, []);
   const [editingWidgetId, setEditingWidgetId] = useState<string | null>(null);
+  const fetchMusicRef = useRef<(() => Promise<void>) | null>(null);
+  const requestMusicRefresh = useCallback(() => {
+    void fetchMusicRef.current?.();
+  }, []);
 
   const surface = useHubSurfaceEngine({
     layoutEditMode,
@@ -493,13 +497,23 @@ export default function DashboardPage() {
       }
     };
 
+    fetchMusicRef.current = fetchMusic;
+
     void Promise.all([fetchSummary(), fetchLive(), fetchVoiceStates(), fetchMusic()]);
     const summaryTimer = window.setInterval(() => void fetchSummary(), 15_000);
     const liveTimer = window.setInterval(() => void fetchLive(), 4_000);
     const voiceStatesTimer = window.setInterval(() => void fetchVoiceStates(), 5_000);
-    const musicTimer = window.setInterval(() => void fetchMusic(), 3_000);
+    let musicTimer = window.setInterval(() => void fetchMusic(), hubMusicPollIntervalMs());
+    const restartMusicPoll = () => {
+      window.clearInterval(musicTimer);
+      musicTimer = window.setInterval(() => void fetchMusic(), hubMusicPollIntervalMs());
+      if (!document.hidden) void fetchMusic();
+    };
+    document.addEventListener("visibilitychange", restartMusicPoll);
     return () => {
+      fetchMusicRef.current = null;
       ac.abort();
+      document.removeEventListener("visibilitychange", restartMusicPoll);
       window.clearInterval(summaryTimer);
       window.clearInterval(liveTimer);
       window.clearInterval(voiceStatesTimer);
@@ -607,23 +621,6 @@ export default function DashboardPage() {
             </div>
           ) : null}
         </div>
-      ) : (
-        <div className="text-sm text-muted-foreground">{d.guildIdHint}</div>
-      ),
-    };
-
-    const wiretapWidget: HubDesktopWidget = {
-      id: "discord-wiretap",
-      label: d.widgetWiretap.label,
-      description: d.widgetWiretap.description,
-      tone: "useful",
-      icon: Search,
-      content: HUB_GUILD_ID ? (
-        <HubDiscordWiretapWidget
-          summary={guildWidget.summary}
-          live={guildWidget.live}
-          pulseHistory={pulseHistory}
-        />
       ) : (
         <div className="text-sm text-muted-foreground">{d.guildIdHint}</div>
       ),
@@ -794,7 +791,15 @@ export default function DashboardPage() {
       description: "Styr uppspelning och kön direkt från dashboarden.",
       tone: "social",
       icon: Radio,
-      content: <HubMusicWidget music={guildWidget.music} guildId={HUB_GUILD_ID} voiceStates={guildWidget.voiceStates} userId={profile.id} />,
+      content: (
+        <HubMusicWidget
+          music={guildWidget.music}
+          guildId={HUB_GUILD_ID}
+          voiceStates={guildWidget.voiceStates}
+          userId={profile.id}
+          onMusicRefreshRequest={requestMusicRefresh}
+        />
+      ),
     };
 
     const customModuleWidget: HubDesktopWidget = {
@@ -809,7 +814,6 @@ export default function DashboardPage() {
     return [
       welcomeWidget,
       serverPulseWidget,
-      wiretapWidget,
       moodClockWidget,
       loreQuoteWidget,
       wheelWidget,
@@ -830,13 +834,16 @@ export default function DashboardPage() {
     displayName,
     guildWidget.live,
     guildWidget.liveError,
+    guildWidget.music,
     guildWidget.summary,
     guildWidget.summaryError,
+    guildWidget.voiceStates,
     pulseHistory,
     openCommandPalette,
     play,
     profile,
     publicProfilePath,
+    requestMusicRefresh,
     seedPreview,
     toasts,
     toggleAudio,
@@ -1137,289 +1144,6 @@ export default function DashboardPage() {
   );
 }
 
-type HubWiretapEvent = {
-  id: number;
-  ts: number;
-  kind: "info" | "warn" | "danger" | "chaos";
-  text: string;
-};
-
-function wiretapHash01(value: string): number {
-  let hash = 2166136261;
-  for (let i = 0; i < value.length; i += 1) {
-    hash ^= value.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
-  return (hash >>> 0) / 0xffffffff;
-}
-
-function wiretapDotPos(userId: string): { left: string; top: string } {
-  const x = 12 + wiretapHash01(userId) * 76;
-  const y = 14 + wiretapHash01(`${userId}:y`) * 72;
-  return { left: `${x.toFixed(2)}%`, top: `${y.toFixed(2)}%` };
-}
-
-function HubDiscordWiretapWidget({
-  summary,
-  live,
-  pulseHistory,
-}: {
-  summary: GuildSummaryResponse | null;
-  live: GuildLiveResponse | null;
-  pulseHistory: { voice: readonly number[]; online: readonly number[] };
-}) {
-  const { copy, locale } = useHubLocale();
-  const d = copy.dashboard;
-  const chaosLines = d.chaosLines;
-  const { play } = useHubAudio();
-  const toasts = useHubToasts();
-
-  const timeFormatter = useMemo(() => {
-    const bcp47 = toBcp47(locale);
-    return new Intl.DateTimeFormat(bcp47, {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    });
-  }, [locale]);
-
-  const voiceNow = live ? live.voice_users.length : null;
-  const onlineNow = summary?.guild.approximate_presence_count ?? null;
-  const gatewayConnected = live?.gateway_connected ?? null;
-  const gatewayDegraded = live?.gateway_degraded ?? null;
-
-  const nextIdRef = useRef(1);
-  const prevRef = useRef<{
-    voiceNow: number | null;
-    onlineNow: number | null;
-    gatewayConnected: boolean | null;
-    gatewayDegraded: boolean | null;
-  }>({
-    voiceNow: null,
-    onlineNow: null,
-    gatewayConnected: null,
-    gatewayDegraded: null,
-  });
-
-  const [events, setEvents] = useState<HubWiretapEvent[]>(() => [
-    {
-      id: 0,
-      ts: Date.now(),
-      kind: "info",
-      text: d.wiretapBootLine,
-    },
-  ]);
-
-  const pushEvent = useCallback((event: Omit<HubWiretapEvent, "id" | "ts"> & { ts?: number }) => {
-    const id = nextIdRef.current++;
-    const ts = event.ts ?? Date.now();
-    setEvents((prev) => [...prev.slice(-8), { id, ts, kind: event.kind, text: event.text }]);
-  }, []);
-
-  useEffect(() => {
-    const prev = prevRef.current;
-
-    if (gatewayConnected !== null && prev.gatewayConnected !== gatewayConnected) {
-      pushEvent({
-        kind: gatewayConnected ? "info" : "danger",
-        text: `${d.gateway}: ${gatewayConnected ? d.gatewayConnected : d.gatewayDisconnected}`,
-      });
-    }
-
-    if (gatewayDegraded !== null && prev.gatewayDegraded !== gatewayDegraded) {
-      pushEvent({
-        kind: gatewayDegraded ? "warn" : "info",
-        text: gatewayDegraded ? d.wiretapGatewayDegraded : d.wiretapGatewayStable,
-      });
-    }
-
-    if (voiceNow !== null && prev.voiceNow !== voiceNow) {
-      pushEvent({ kind: "info", text: d.voiceNow(voiceNow) });
-    }
-
-    if (typeof onlineNow === "number" && prev.onlineNow !== onlineNow) {
-      pushEvent({ kind: "info", text: d.wiretapOnlineNow(onlineNow) });
-    }
-
-    prevRef.current = {
-      voiceNow,
-      onlineNow: typeof onlineNow === "number" ? onlineNow : null,
-      gatewayConnected,
-      gatewayDegraded,
-    };
-  }, [
-    d,
-    gatewayConnected,
-    gatewayDegraded,
-    onlineNow,
-    pushEvent,
-    voiceNow,
-  ]);
-
-  const dots = useMemo(() => {
-    const list = live?.voice_users ?? [];
-    return list.slice(0, 12).map((user) => ({
-      key: user.user_id,
-      pos: wiretapDotPos(user.user_id),
-    }));
-  }, [live?.voice_users]);
-
-  const gatewayVariant = !live
-    ? "secondary"
-    : live.gateway_connected
-      ? live.gateway_degraded
-        ? "destructive"
-        : "outline"
-      : "destructive";
-
-  const gatewayLabel = !live
-    ? d.wiretapGatewayUnknown
-    : live.gateway_connected
-      ? live.gateway_degraded
-        ? d.wiretapGatewayDegradedShort
-        : d.gatewayConnected
-      : d.gatewayDisconnected;
-
-  const leakRumor = useCallback(() => {
-    play("chaos");
-    pushEvent({
-      kind: "chaos",
-      text: `>>> ${pickHubChaosLine(chaosLines, chaosLines[0]!, Date.now())}`,
-    });
-    if (rollHubChaos("rare")) {
-      toasts.push({
-        kind: "chaos",
-        title: d.wiretapLeakToastTitle,
-        message: d.wiretapLeakToastMessage,
-      });
-    }
-  }, [
-    chaosLines,
-    d.wiretapLeakToastMessage,
-    d.wiretapLeakToastTitle,
-    play,
-    pushEvent,
-    toasts,
-  ]);
-
-  const clearLog = useCallback(() => {
-    play("panel");
-    setEvents([
-      {
-        id: 0,
-        ts: Date.now(),
-        kind: "info",
-        text: d.wiretapBootLine,
-      },
-    ]);
-  }, [d.wiretapBootLine, play]);
-
-  const historyVoice = pulseHistory.voice.at(-1) ?? 0;
-  const historyOnline = pulseHistory.online.at(-1) ?? 0;
-
-  const dotColor = gatewayConnected
-    ? gatewayDegraded
-      ? "bg-destructive/80"
-      : "hub-gateway-heartbeat-dot bg-primary/80"
-    : "bg-muted-foreground/40";
-
-  return (
-    <div className="flex flex-col gap-3 text-sm text-muted-foreground">
-      <p>{d.wiretapBlurb}</p>
-
-      <div className="relative overflow-hidden rounded-xl border border-border/60 bg-background/60 p-3">
-        <div className="relative h-28 overflow-hidden rounded-lg border border-border/60 bg-background/70">
-          <div className="absolute inset-0 hub-wiretap-radar" aria-hidden />
-          <div className="absolute inset-0 hub-wiretap-radar-sweep" aria-hidden />
-
-          {dots.map((dot, index) => (
-            <span
-              key={`${dot.key}:${index}`}
-              className="absolute size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/60 shadow-[0_0_0_2px_color-mix(in_oklab,var(--background)_70%,transparent),0_0_16px_color-mix(in_oklab,var(--primary)_20%,transparent)]"
-              style={dot.pos}
-              aria-hidden
-            />
-          ))}
-
-          <div className="absolute inset-0 flex items-center justify-between gap-3 p-3">
-            <div className="flex min-w-0 flex-1 flex-col gap-1">
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{d.gateway}</p>
-              <div className="flex items-center gap-2">
-                <span className={`size-2 rounded-full ${dotColor}`} aria-hidden />
-                <Badge variant={gatewayVariant}>{gatewayLabel}</Badge>
-                {live?.gateway_degraded_reason ? (
-                  <span className="truncate text-xs text-warning">{live.gateway_degraded_reason}</span>
-                ) : null}
-              </div>
-            </div>
-            <div className="flex shrink-0 flex-col items-end gap-1 text-xs">
-              <div className="rounded-md border border-border/60 bg-background/70 px-2 py-1 text-foreground/90">
-                {d.wiretapVoiceLabel}: <span className="font-semibold">{voiceNow ?? "—"}</span>
-              </div>
-              <div className="rounded-md border border-border/60 bg-background/70 px-2 py-1 text-foreground/90">
-                {d.wiretapOnlineLabel}:{" "}
-                <span className="font-semibold">{typeof onlineNow === "number" ? onlineNow : "—"}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-3 grid gap-2">
-          {pulseHistory.voice.length >= 2 || pulseHistory.online.length >= 2 ? (
-            <div className="grid grid-cols-2 gap-2">
-              <div className="rounded-lg border border-border/60 bg-background/70 p-2">
-                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{d.wiretapVoicePulse}</p>
-                <HubPulseBars values={pulseHistory.voice} />
-                <p className="mt-1 text-[0.7rem] text-muted-foreground">{historyVoice}</p>
-              </div>
-              <div className="rounded-lg border border-border/60 bg-background/70 p-2">
-                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{d.wiretapOnlinePulse}</p>
-                <HubPulseBars values={pulseHistory.online} barClassName="bg-accent/55" />
-                <p className="mt-1 text-[0.7rem] text-muted-foreground">{historyOnline}</p>
-              </div>
-            </div>
-          ) : null}
-
-          <div className="rounded-lg border border-border/60 bg-background/70 p-2">
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{d.wiretapLogLabel}</p>
-            <div className="mt-2 space-y-1 font-mono text-[0.72rem] leading-relaxed">
-              {events
-                .slice()
-                .reverse()
-                .map((event) => {
-                  const stamp = timeFormatter.format(new Date(event.ts));
-                  const tone =
-                    event.kind === "danger"
-                      ? "text-destructive"
-                      : event.kind === "warn"
-                        ? "text-warning"
-                        : event.kind === "chaos"
-                          ? "text-primary"
-                          : "text-foreground/90";
-                  return (
-                    <div key={event.id} className="flex gap-2">
-                      <span className="shrink-0 tabular-nums text-muted-foreground/70">{stamp}</span>
-                      <span className={tone}>{event.text}</span>
-                    </div>
-                  );
-                })}
-            </div>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" size="sm" onClick={leakRumor}>
-              {d.wiretapLeak}
-            </Button>
-            <Button type="button" size="sm" variant="outline" onClick={clearLog}>
-              {d.wiretapClear}
-            </Button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 type HubRadioTrack = {
   title: string;
   artist: string;
@@ -1694,11 +1418,14 @@ function HubMusicWidget({
   guildId,
   voiceStates,
   userId,
+  onMusicRefreshRequest,
 }: {
   music: MusicState | null;
   guildId: string;
   voiceStates: VoiceStatesResponse | null;
   userId: string;
+  /** After hub → bot mutations, poll immediately so the widget matches Discord without waiting for the interval. */
+  onMusicRefreshRequest?: () => void;
 }) {
   const { copy } = useHubLocale();
   const d = copy.dashboard;
@@ -1715,6 +1442,7 @@ function HubMusicWidget({
   const cmd = useCallback(
     async (action: string, body?: Record<string, unknown>) => {
       setLoading(true);
+      let ok = false;
       try {
         const res = await fetch(apiUrl(`/api/bot/guild/${encodeURIComponent(guildId)}/music/${action}`), {
           method: "POST",
@@ -1722,6 +1450,7 @@ function HubMusicWidget({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body ?? {}),
         });
+        ok = res.ok;
         if (action === "previous" && res.ok) {
           try {
             const j = (await res.json()) as { wentBack?: boolean };
@@ -1738,9 +1467,10 @@ function HubMusicWidget({
         }
       } finally {
         setLoading(false);
+        if (ok) onMusicRefreshRequest?.();
       }
     },
-    [guildId, d.musicPreviousTitle, d.musicPreviousNone, toasts],
+    [guildId, d.musicPreviousTitle, d.musicPreviousNone, toasts, onMusicRefreshRequest],
   );
 
   const resolveChannelId = (): string | null => {
@@ -1798,6 +1528,7 @@ function HubMusicWidget({
         return;
       }
       setQuery("");
+      onMusicRefreshRequest?.();
     } finally {
       setLoading(false);
     }

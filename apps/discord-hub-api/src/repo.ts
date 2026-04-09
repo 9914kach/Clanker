@@ -13,6 +13,7 @@ export type ProfileRow = {
 };
 
 export type LeagueConnectionRow = {
+  id: number;
   user_id: string;
   riot_id: string;
   tag_line: string;
@@ -22,6 +23,7 @@ export type LeagueConnectionRow = {
   status_message: string;
   linked_at: string;
   last_sync_requested_at: string | null;
+  puuid: string | null;
 };
 
 export async function upsertProfileFromSession(
@@ -73,7 +75,7 @@ export async function getProfileById(
 
 export async function upsertLeagueConnection(
   userId: string,
-  data: Omit<LeagueConnectionRow, "user_id">,
+  data: Omit<LeagueConnectionRow, "id" | "user_id">,
 ): Promise<void> {
   const pool = getPool();
   if (!pool) {
@@ -82,17 +84,16 @@ export async function upsertLeagueConnection(
   await pool.query(
     `
     INSERT INTO profile.league_connections
-      (user_id, riot_id, tag_line, region, auto_sync, rank_preference, status_message, linked_at, last_sync_requested_at)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-    ON CONFLICT (user_id) DO UPDATE SET
-      riot_id = EXCLUDED.riot_id,
-      tag_line = EXCLUDED.tag_line,
+      (user_id, riot_id, tag_line, region, auto_sync, rank_preference, status_message, linked_at, last_sync_requested_at, puuid)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+    ON CONFLICT (user_id, riot_id, tag_line) DO UPDATE SET
       region = EXCLUDED.region,
       auto_sync = EXCLUDED.auto_sync,
       rank_preference = EXCLUDED.rank_preference,
       status_message = EXCLUDED.status_message,
       linked_at = EXCLUDED.linked_at,
-      last_sync_requested_at = EXCLUDED.last_sync_requested_at
+      last_sync_requested_at = EXCLUDED.last_sync_requested_at,
+      puuid = COALESCE(EXCLUDED.puuid, profile.league_connections.puuid)
     `,
     [
       userId,
@@ -104,32 +105,24 @@ export async function upsertLeagueConnection(
       data.status_message,
       data.linked_at,
       data.last_sync_requested_at,
+      data.puuid ?? null,
     ],
   );
 }
 
-export async function getLeagueConnection(
-  userId: string,
-): Promise<LeagueConnectionRow | null> {
-  const pool = getPool();
-  if (!pool) {
-    return null;
-  }
-  const r = await pool.query<
-    Omit<LeagueConnectionRow, "linked_at" | "last_sync_requested_at"> & {
-      linked_at: string;
-      last_sync_requested_at: string | null;
-    }
-  >(
-    `SELECT user_id, riot_id, tag_line, region, auto_sync, rank_preference, status_message,
-            linked_at::timestamptz as linked_at,
-            last_sync_requested_at::timestamptz as last_sync_requested_at
-       FROM profile.league_connections WHERE user_id = $1`,
-    [userId],
-  );
-  // linked_at formatting: we ensure ISO string by using to_char; alternative is cast and let pg return ISO
-  const row = r.rows[0];
-  if (!row) return null;
+function normalizeConnectionRow(row: {
+  id: number;
+  user_id: string;
+  riot_id: string;
+  tag_line: string;
+  region: "EUW" | "EUNE" | "NA" | "KR" | "BR";
+  auto_sync: boolean;
+  rank_preference: "solo" | "flex";
+  status_message: string;
+  linked_at: string;
+  last_sync_requested_at: string | null;
+  puuid: string | null;
+}): LeagueConnectionRow {
   return {
     ...row,
     linked_at: new Date(String(row.linked_at)).toISOString(),
@@ -139,12 +132,54 @@ export async function getLeagueConnection(
   };
 }
 
+/** Returns all League accounts linked to a user. */
+export async function getLeagueConnections(
+  userId: string,
+): Promise<LeagueConnectionRow[]> {
+  const pool = getPool();
+  if (!pool) return [];
+  const r = await pool.query<LeagueConnectionRow>(
+    `SELECT id, user_id, riot_id, tag_line, region, auto_sync, rank_preference, status_message,
+            linked_at::timestamptz as linked_at,
+            last_sync_requested_at::timestamptz as last_sync_requested_at,
+            puuid
+       FROM profile.league_connections
+      WHERE user_id = $1
+      ORDER BY linked_at ASC`,
+    [userId],
+  );
+  return r.rows.map(normalizeConnectionRow);
+}
+
+/** Returns the first linked League account for a user, or null. */
+export async function getLeagueConnection(
+  userId: string,
+): Promise<LeagueConnectionRow | null> {
+  const rows = await getLeagueConnections(userId);
+  return rows[0] ?? null;
+}
+
+/** Delete a specific account by riot_id + tag_line. */
+export async function deleteLeagueConnectionByAccount(
+  userId: string,
+  riotId: string,
+  tagLine: string,
+): Promise<void> {
+  const pool = getPool();
+  if (!pool) return;
+  await pool.query(
+    `DELETE FROM profile.league_connections
+      WHERE user_id = $1 AND riot_id = $2 AND tag_line = $3`,
+    [userId, riotId, tagLine],
+  );
+}
+
 export async function getAllLeagueConnections(): Promise<LeagueConnectionRow[]> {
   const pool = getPool();
   if (!pool) return [];
   const r = await pool.query<LeagueConnectionRow>(
-    `SELECT user_id, riot_id, tag_line, region, auto_sync, rank_preference,
-            status_message, linked_at::text, last_sync_requested_at::text
+    `SELECT id, user_id, riot_id, tag_line, region, auto_sync, rank_preference,
+            status_message, linked_at::text, last_sync_requested_at::text, puuid
      FROM profile.league_connections`,
   );
   return r.rows;
@@ -152,26 +187,97 @@ export async function getAllLeagueConnections(): Promise<LeagueConnectionRow[]> 
 
 export async function getKnownMatchIds(
   userId: string,
+  puuid: string,
   candidateIds: string[],
 ): Promise<Set<string>> {
   const pool = getPool();
   if (!pool || candidateIds.length === 0) return new Set();
   const r = await pool.query<{ match_id: string }>(
     `SELECT match_id FROM stats.league_matches
-     WHERE user_id = $1 AND match_id = ANY($2::text[])`,
-    [userId, candidateIds],
+     WHERE user_id = $1 AND puuid = $2 AND match_id = ANY($3::text[])`,
+    [userId, puuid, candidateIds],
   );
   return new Set(r.rows.map((row) => row.match_id));
 }
 
+type LeagueMatchRowDb = {
+  match_id: string;
+  queue_id: number;
+  game_mode: string;
+  game_type: string;
+  map_id: number;
+  champion: string;
+  kills: number;
+  deaths: number;
+  assists: number;
+  cs: number;
+  gold_earned: number;
+  champion_level: number;
+  win: boolean;
+  duration_sec: number;
+  lane: string;
+  role: string;
+  played_at: Date;
+};
+
+function leagueRecentMatchFromDbRow(
+  row: LeagueMatchRowDb,
+  participantLabel: string,
+): LeagueRecentMatch {
+  const played =
+    row.played_at instanceof Date
+      ? row.played_at.getTime()
+      : new Date(String(row.played_at)).getTime();
+  return {
+    matchId: row.match_id,
+    gameCreation: Number.isFinite(played) ? played : 0,
+    gameDurationSeconds: row.duration_sec,
+    queueId: row.queue_id,
+    gameMode: row.game_mode,
+    gameType: row.game_type,
+    mapId: row.map_id,
+    championName: row.champion,
+    kills: row.kills,
+    deaths: row.deaths,
+    assists: row.assists,
+    totalCs: row.cs,
+    goldEarned: row.gold_earned,
+    championLevel: row.champion_level,
+    win: row.win,
+    lane: row.lane,
+    role: row.role,
+    participantName: participantLabel,
+  };
+}
+
+/** Load stored match rows for snapshot/UI (e.g. recent list already in DB). */
+export async function getLeagueRecentMatchesByMatchIds(
+  userId: string,
+  puuid: string,
+  matchIds: string[],
+  participantLabel: string,
+): Promise<Map<string, LeagueRecentMatch>> {
+  const pool = getPool();
+  const out = new Map<string, LeagueRecentMatch>();
+  if (!pool || matchIds.length === 0) return out;
+  const r = await pool.query<LeagueMatchRowDb>(
+    `SELECT match_id, queue_id, game_mode, game_type, map_id, champion, kills, deaths, assists,
+            cs, gold_earned, champion_level, win, duration_sec, lane, role, played_at
+       FROM stats.league_matches
+      WHERE user_id = $1 AND puuid = $2 AND match_id = ANY($3::text[])`,
+    [userId, puuid, matchIds],
+  );
+  for (const row of r.rows) {
+    out.set(row.match_id, leagueRecentMatchFromDbRow(row, participantLabel));
+  }
+  return out;
+}
+
+/** Delete ALL League connections for a user (used when unlinking everything). */
 export async function deleteLeagueConnection(userId: string): Promise<void> {
   const pool = getPool();
-  if (!pool) {
-    return;
-  }
-  await pool.query(`DELETE FROM profile.league_connections WHERE user_id = $1`, [
-    userId,
-  ]);
+  if (!pool) return;
+  await pool.query(`DELETE FROM profile.league_connections WHERE user_id = $1`, [userId]);
 }
 
 export async function upsertLeagueSnapshot(
@@ -179,45 +285,72 @@ export async function upsertLeagueSnapshot(
   snapshot: LeaguePlayerSnapshot,
 ): Promise<void> {
   const pool = getPool();
-  if (!pool) {
-    return;
-  }
+  if (!pool) return;
+  const puuid = snapshot.account.puuid;
   await pool.query(
     `
-    INSERT INTO profile.league_snapshots (user_id, payload, fetched_at)
-    VALUES ($1, $2::jsonb, $3)
-    ON CONFLICT (user_id) DO UPDATE SET
+    INSERT INTO profile.league_snapshots (user_id, puuid, payload, fetched_at)
+    VALUES ($1, $2, $3::jsonb, $4)
+    ON CONFLICT (user_id, puuid) DO UPDATE SET
       payload = EXCLUDED.payload,
       fetched_at = EXCLUDED.fetched_at
     `,
-    [userId, JSON.stringify(snapshot), snapshot.fetchedAt],
+    [userId, puuid, JSON.stringify(snapshot), snapshot.fetchedAt],
   );
 }
 
+/** Get snapshot for a specific puuid, or most-recently-fetched if puuid omitted. */
 export async function getLeagueSnapshot(
   userId: string,
+  puuid?: string,
 ): Promise<LeaguePlayerSnapshot | null> {
   const pool = getPool();
-  if (!pool) {
-    return null;
-  }
-  const r = await pool.query<{ payload: any }>(
-    `SELECT payload FROM profile.league_snapshots WHERE user_id = $1`,
-    [userId],
-  );
+  if (!pool) return null;
+  const r = puuid
+    ? await pool.query<{ payload: any }>(
+        `SELECT payload FROM profile.league_snapshots WHERE user_id = $1 AND puuid = $2`,
+        [userId, puuid],
+      )
+    : await pool.query<{ payload: any }>(
+        `SELECT payload FROM profile.league_snapshots WHERE user_id = $1 ORDER BY fetched_at DESC LIMIT 1`,
+        [userId],
+      );
   const row = r.rows[0];
   if (!row) return null;
   return row.payload as LeaguePlayerSnapshot;
 }
 
+/** Get all snapshots for a user (one per linked account). */
+export async function getAllLeagueSnapshots(
+  userId: string,
+): Promise<LeaguePlayerSnapshot[]> {
+  const pool = getPool();
+  if (!pool) return [];
+  const r = await pool.query<{ payload: any }>(
+    `SELECT payload FROM profile.league_snapshots WHERE user_id = $1 ORDER BY fetched_at DESC`,
+    [userId],
+  );
+  return r.rows.map((row) => row.payload as LeaguePlayerSnapshot);
+}
+
+/** Delete snapshot for a specific puuid. */
+export async function deleteLeagueSnapshotByPuuid(
+  userId: string,
+  puuid: string,
+): Promise<void> {
+  const pool = getPool();
+  if (!pool) return;
+  await pool.query(
+    `DELETE FROM profile.league_snapshots WHERE user_id = $1 AND puuid = $2`,
+    [userId, puuid],
+  );
+}
+
+/** Delete ALL snapshots for a user. */
 export async function deleteLeagueSnapshot(userId: string): Promise<void> {
   const pool = getPool();
-  if (!pool) {
-    return;
-  }
-  await pool.query(`DELETE FROM profile.league_snapshots WHERE user_id = $1`, [
-    userId,
-  ]);
+  if (!pool) return;
+  await pool.query(`DELETE FROM profile.league_snapshots WHERE user_id = $1`, [userId]);
 }
 
 /** Upsert individual match rows into stats.league_matches (ignores duplicates). */
@@ -232,15 +365,30 @@ export async function saveLeagueMatches(
   for (const m of matches) {
     await pool.query(
       `INSERT INTO stats.league_matches
-         (user_id, puuid, match_id, queue_id, champion, kills, deaths, assists,
+         (user_id, puuid, match_id, queue_id, game_mode, game_type, map_id, champion, kills, deaths, assists,
           cs, gold_earned, champion_level, win, duration_sec, lane, role, played_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15, to_timestamp($16::double precision / 1000))
-       ON CONFLICT (user_id, match_id) DO NOTHING`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18, to_timestamp($19::double precision / 1000))
+       ON CONFLICT (user_id, puuid, match_id) DO NOTHING`,
       [
-        userId, puuid, m.matchId, m.queueId, m.championName,
-        m.kills, m.deaths, m.assists, m.totalCs, m.goldEarned,
-        m.championLevel, m.win, m.gameDurationSeconds,
-        m.lane, m.role, m.gameCreation,
+        userId,
+        puuid,
+        m.matchId,
+        m.queueId,
+        m.gameMode,
+        m.gameType,
+        m.mapId,
+        m.championName,
+        m.kills,
+        m.deaths,
+        m.assists,
+        m.totalCs,
+        m.goldEarned,
+        m.championLevel,
+        m.win,
+        m.gameDurationSeconds,
+        m.lane,
+        m.role,
+        m.gameCreation,
       ],
     );
   }
@@ -263,6 +411,268 @@ export async function saveLeagueRankHistory(
       [userId, puuid, e.queueType, e.tier, e.rank, e.leaguePoints, e.wins, e.losses],
     );
   }
+}
+
+export type LeagueQueueStat = {
+  queueId: number;
+  games: number;
+  wins: number;
+  winRate: number;
+};
+
+export type LeagueChampionStat = {
+  champion: string;
+  games: number;
+  wins: number;
+  winRate: number;
+  avgKills: number;
+  avgDeaths: number;
+  avgAssists: number;
+  avgCs: number;
+};
+
+export type LeagueMatchRow = {
+  matchId: string;
+  queueId: number;
+  gameMode: string;
+  gameType: string;
+  mapId: number;
+  champion: string;
+  kills: number;
+  deaths: number;
+  assists: number;
+  cs: number;
+  goldEarned: number;
+  championLevel: number;
+  win: boolean;
+  durationSec: number;
+  lane: string;
+  role: string;
+  playedAt: string;
+};
+
+export type LeagueMatchStats = {
+  totalGames: number;
+  wins: number;
+  winRate: number;
+  avgKills: number;
+  avgDeaths: number;
+  avgAssists: number;
+  avgCs: number;
+  avgDurationSec: number;
+  byQueue: LeagueQueueStat[];
+  byChampion: LeagueChampionStat[];
+};
+
+export type LeagueMatchesPageResult = {
+  total: number;
+  offset: number;
+  limit: number;
+  matches: LeagueMatchRow[];
+};
+
+export async function getLeagueMatchStats(
+  userId: string,
+  puuid: string,
+): Promise<LeagueMatchStats | null> {
+  const pool = getPool();
+  if (!pool) return null;
+
+  const [summaryRes, queueRes, championRes] = await Promise.all([
+    pool.query<{
+      total: string;
+      wins: string;
+      avg_kills: string;
+      avg_deaths: string;
+      avg_assists: string;
+      avg_cs: string;
+      avg_duration: string;
+    }>(
+      `SELECT
+         COUNT(*)::text AS total,
+         SUM(CASE WHEN win THEN 1 ELSE 0 END)::text AS wins,
+         AVG(kills)::text AS avg_kills,
+         AVG(deaths)::text AS avg_deaths,
+         AVG(assists)::text AS avg_assists,
+         AVG(cs)::text AS avg_cs,
+         AVG(duration_sec)::text AS avg_duration
+       FROM stats.league_matches
+       WHERE user_id = $1 AND puuid = $2`,
+      [userId, puuid],
+    ),
+    pool.query<{ queue_id: number; games: string; wins: string }>(
+      `SELECT
+         queue_id,
+         COUNT(*)::text AS games,
+         SUM(CASE WHEN win THEN 1 ELSE 0 END)::text AS wins
+       FROM stats.league_matches
+       WHERE user_id = $1 AND puuid = $2
+       GROUP BY queue_id
+       ORDER BY games DESC`,
+      [userId, puuid],
+    ),
+    pool.query<{
+      champion: string;
+      games: string;
+      wins: string;
+      avg_kills: string;
+      avg_deaths: string;
+      avg_assists: string;
+      avg_cs: string;
+    }>(
+      `SELECT
+         champion,
+         COUNT(*)::text AS games,
+         SUM(CASE WHEN win THEN 1 ELSE 0 END)::text AS wins,
+         AVG(kills)::text AS avg_kills,
+         AVG(deaths)::text AS avg_deaths,
+         AVG(assists)::text AS avg_assists,
+         AVG(cs)::text AS avg_cs
+       FROM stats.league_matches
+       WHERE user_id = $1 AND puuid = $2
+       GROUP BY champion
+       ORDER BY games DESC
+       LIMIT 20`,
+      [userId, puuid],
+    ),
+  ]);
+
+  const s = summaryRes.rows[0];
+  if (!s) return null;
+
+  const totalGames = parseInt(s.total, 10);
+  const wins = parseInt(s.wins, 10);
+
+  const toFloat = (v: string) => parseFloat(v) || 0;
+
+  return {
+    totalGames,
+    wins,
+    winRate: totalGames > 0 ? Math.round((wins / totalGames) * 1000) / 10 : 0,
+    avgKills: Math.round(toFloat(s.avg_kills) * 10) / 10,
+    avgDeaths: Math.round(toFloat(s.avg_deaths) * 10) / 10,
+    avgAssists: Math.round(toFloat(s.avg_assists) * 10) / 10,
+    avgCs: Math.round(toFloat(s.avg_cs)),
+    avgDurationSec: Math.round(toFloat(s.avg_duration)),
+    byQueue: queueRes.rows.map((r) => {
+      const g = parseInt(r.games, 10);
+      const w = parseInt(r.wins, 10);
+      return {
+        queueId: r.queue_id,
+        games: g,
+        wins: w,
+        winRate: g > 0 ? Math.round((w / g) * 1000) / 10 : 0,
+      };
+    }),
+    byChampion: championRes.rows.map((r) => {
+      const g = parseInt(r.games, 10);
+      const w = parseInt(r.wins, 10);
+      return {
+        champion: r.champion,
+        games: g,
+        wins: w,
+        winRate: g > 0 ? Math.round((w / g) * 1000) / 10 : 0,
+        avgKills: Math.round(toFloat(r.avg_kills) * 10) / 10,
+        avgDeaths: Math.round(toFloat(r.avg_deaths) * 10) / 10,
+        avgAssists: Math.round(toFloat(r.avg_assists) * 10) / 10,
+        avgCs: Math.round(toFloat(r.avg_cs)),
+      };
+    }),
+  };
+}
+
+function mapLeagueMatchRow(r: {
+  match_id: string;
+  queue_id: number;
+  game_mode: string;
+  game_type: string;
+  map_id: number;
+  champion: string;
+  kills: number;
+  deaths: number;
+  assists: number;
+  cs: number;
+  gold_earned: number;
+  champion_level: number;
+  win: boolean;
+  duration_sec: number;
+  lane: string;
+  role: string;
+  played_at: string;
+}): LeagueMatchRow {
+  return {
+    matchId: r.match_id,
+    queueId: r.queue_id,
+    gameMode: r.game_mode ?? "",
+    gameType: r.game_type ?? "",
+    mapId: r.map_id ?? 0,
+    champion: r.champion,
+    kills: r.kills,
+    deaths: r.deaths,
+    assists: r.assists,
+    cs: r.cs,
+    goldEarned: r.gold_earned,
+    championLevel: r.champion_level,
+    win: r.win,
+    durationSec: r.duration_sec,
+    lane: r.lane,
+    role: r.role,
+    playedAt: new Date(String(r.played_at)).toISOString(),
+  };
+}
+
+/** Paginated match history (newest first). */
+export async function getLeagueMatchesPage(
+  userId: string,
+  puuid: string,
+  offset: number,
+  limit: number,
+): Promise<LeagueMatchesPageResult | null> {
+  const pool = getPool();
+  if (!pool) return null;
+
+  const countRes = await pool.query<{ c: string }>(
+    `SELECT COUNT(*)::text AS c FROM stats.league_matches WHERE user_id = $1 AND puuid = $2`,
+    [userId, puuid],
+  );
+  const total = parseInt(countRes.rows[0]?.c ?? "0", 10);
+
+  const dataRes = await pool.query<{
+    match_id: string;
+    queue_id: number;
+    game_mode: string;
+    game_type: string;
+    map_id: number;
+    champion: string;
+    kills: number;
+    deaths: number;
+    assists: number;
+    cs: number;
+    gold_earned: number;
+    champion_level: number;
+    win: boolean;
+    duration_sec: number;
+    lane: string;
+    role: string;
+    played_at: string;
+  }>(
+    `SELECT
+       match_id, queue_id, game_mode, game_type, map_id, champion, kills, deaths, assists,
+       cs, gold_earned, champion_level, win, duration_sec, lane, role,
+       played_at::timestamptz AS played_at
+     FROM stats.league_matches
+     WHERE user_id = $1 AND puuid = $2
+     ORDER BY played_at DESC
+     LIMIT $3 OFFSET $4`,
+    [userId, puuid, limit, offset],
+  );
+
+  return {
+    total,
+    offset,
+    limit,
+    matches: dataRes.rows.map(mapLeagueMatchRow),
+  };
 }
 
 export type WheelGroupRow = {

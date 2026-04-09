@@ -56,6 +56,8 @@ type VoiceStateMember = {
   channel_name: string | null;
   username: string;
   global_name: string | null;
+  /** Server nickname when set — matches Discord’s voice list. */
+  nick?: string | null;
 };
 
 type VoiceStateChannel = {
@@ -71,11 +73,44 @@ type VoiceStatesResponse = {
 };
 
 function voiceMemberDisplayName(m: VoiceStateMember): string {
+  const nick = m.nick?.trim();
+  if (nick) return nick;
   const g = m.global_name?.trim();
   if (g) return g;
   const u = m.username?.trim();
   if (u) return u;
   return m.user_id;
+}
+
+/** Match participant chip label to a live voice row (nick / global / username, case-insensitive). */
+function resolveVoiceStateMember(members: VoiceStateMember[], participantName: string): VoiceStateMember | undefined {
+  const needle = participantName.trim();
+  if (!needle) return undefined;
+
+  const byExactDisplay = members.find((m) => voiceMemberDisplayName(m) === needle);
+  if (byExactDisplay) return byExactDisplay;
+
+  const nl = needle.toLocaleLowerCase();
+  const byCiDisplay = members.find((m) => voiceMemberDisplayName(m).toLocaleLowerCase() === nl);
+  if (byCiDisplay) return byCiDisplay;
+
+  for (const m of members) {
+    const candidates = [m.nick, m.global_name, m.username].filter(
+      (s): s is string => typeof s === "string" && s.trim().length > 0,
+    );
+    for (const c of candidates) {
+      if (c.trim() === needle) return m;
+    }
+  }
+  for (const m of members) {
+    const candidates = [m.nick, m.global_name, m.username].filter(
+      (s): s is string => typeof s === "string" && s.trim().length > 0,
+    );
+    for (const c of candidates) {
+      if (c.trim().toLocaleLowerCase() === nl) return m;
+    }
+  }
+  return undefined;
 }
 
 function voiceChannelLabel(ch: VoiceStateChannel, unnamed: string): string {
@@ -226,6 +261,7 @@ export default function SpinTheWheelPage() {
   const [voiceFetchPending, setVoiceFetchPending] = useState(false);
   const [voiceFetchError, setVoiceFetchError] = useState<string | null>(null);
   const voiceFirstFetchDoneRef = useRef(false);
+  const [autoMoveEnabled, setAutoMoveEnabled] = useState(false);
 
   /** Set when a spin starts; read on wheel animation end (avoids stale participants / highlightIndex). */
   const spinResultRef = useRef<{ index: number; names: readonly string[] } | null>(null);
@@ -418,7 +454,7 @@ export default function SpinTheWheelPage() {
     if (teams.length > 0) setIsTeamSetupOpen(true);
   }, [teams.length]);
 
-  const isReady = participants.length >= 2;
+  const isReady = participants.length >= 1;
 
   const canMakeEqualTeams =
     participants.length > 0 && teamCount >= 1 && participants.length % teamCount === 0;
@@ -801,6 +837,52 @@ export default function SpinTheWheelPage() {
     [participants],
   );
 
+  /** Returns 0 for left team, 1 for right team, null if teams not set or participant not found. */
+  const teamIndexFor = useCallback(
+    (name: string): number | null => {
+      if (teams.length < 2) return null;
+      for (let i = 0; i < teams.length; i++) {
+        if (teams[i]!.includes(name)) return i;
+      }
+      return null;
+    },
+    [teams],
+  );
+
+  const moveUserVoice = useCallback(
+    async (name: string, direction: "down" | "up") => {
+      if (!HUB_GUILD_ID || !voiceStates) return;
+      const allMembers = voiceStates.channels.flatMap((ch) => ch.members);
+      const member = resolveVoiceStateMember(allMembers, name);
+      if (!member) {
+        toasts.push({ kind: "error", title: tt.voiceMoveFail, message: tt.voiceMoveNoMember(name) });
+        return;
+      }
+      try {
+        const res = await fetch(
+          apiUrl(`/api/bot/guild/${encodeURIComponent(HUB_GUILD_ID)}/voice-move`),
+          {
+            method: "POST",
+            credentials: "include",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ userId: member.user_id, direction }),
+          },
+        );
+        if (!res.ok) {
+          const data = (await res.json()) as { error?: string };
+          toasts.push({
+            kind: "error",
+            title: tt.voiceMoveFail,
+            message: data.error ?? tt.voiceMoveUnknown,
+          });
+        }
+      } catch {
+        toasts.push({ kind: "error", title: tt.voiceMoveFail, message: tt.voiceMoveUnknown });
+      }
+    },
+    [voiceStates, toasts, tt.voiceMoveFail, tt.voiceMoveNoMember, tt.voiceMoveUnknown],
+  );
+
   const dismissCelebration = useCallback(() => setCelebrationWinner(null), []);
 
   const celebrationRemoveWinner = useCallback(() => {
@@ -1089,13 +1171,21 @@ export default function SpinTheWheelPage() {
 
             {HUB_GUILD_ID ? (
               <div className="rounded-xl border border-border/60 bg-background/25 p-3">
-                <div className="mb-2 flex items-start gap-2">
+                <div className="mb-2 flex items-center gap-2">
                   <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border/50 bg-background/50">
                     <MicVocal className="size-4 text-muted-foreground" aria-hidden />
                   </span>
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <div className="text-sm font-medium leading-tight">{w.voiceChannelsTitle}</div>
                   </div>
+                  <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground select-none">
+                    <Switch
+                      checked={autoMoveEnabled}
+                      onCheckedChange={setAutoMoveEnabled}
+                      aria-label="Auto-flytta högerlag"
+                    />
+                    <span className={autoMoveEnabled ? "text-foreground" : ""}>Auto-flytta</span>
+                  </label>
                 </div>
                 {voiceFetchPending ? (
                   <p className="text-xs text-muted-foreground">{w.voiceChannelsLoading}</p>
@@ -1148,12 +1238,21 @@ export default function SpinTheWheelPage() {
 
             {participants.length > 0 ? (
               <div className="flex flex-wrap gap-2">
-                {participants.map((p) => (
+                {participants.map((p) => {
+                  const teamIdx = teamIndexFor(p);
+                  const isLeft = teamIdx === 0;
+                  const isRight = teamIdx === 1;
+                  return (
                   <ContextMenu key={p}>
                     <ContextMenuTrigger asChild>
                       <button
                         type="button"
-                        onClick={() => removeParticipant(p)}
+                        onClick={() => {
+                          removeParticipant(p);
+                          // No teams set = no left/right distinction; move everyone (useful for testing).
+                          // Teams set = only move right-team members.
+                          if (autoMoveEnabled && (teamIdx === null || isRight)) void moveUserVoice(p, "down");
+                        }}
                         className={[
                           "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm transition",
                           "hover:bg-muted active:scale-[0.99]",
@@ -1163,13 +1262,26 @@ export default function SpinTheWheelPage() {
                         ].join(" ")}
                         title={w.participantChipTitle}
                       >
+                        {teamIdx !== null && (
+                          <span
+                            className={["size-2 shrink-0 rounded-full", isLeft ? "bg-blue-500" : "bg-red-500"].join(" ")}
+                            title={isLeft ? "Vänster" : "Höger"}
+                          />
+                        )}
                         <span className="max-w-[11rem] truncate">{p}</span>
                         <span className="text-muted-foreground">x</span>
                       </button>
                     </ContextMenuTrigger>
 
                     <ContextMenuContent>
-                      <ContextMenuLabel>{w.participantMenuLabel}</ContextMenuLabel>
+                      <ContextMenuLabel>
+                        {w.participantMenuLabel}
+                        {teamIdx !== null && (
+                          <span className={["ml-2 text-xs font-normal", isLeft ? "text-blue-500" : "text-red-500"].join(" ")}>
+                            {isLeft ? "Vänster" : "Höger"}
+                          </span>
+                        )}
+                      </ContextMenuLabel>
                       <ContextMenuItem onSelect={() => removeParticipant(p)}>{w.remove}</ContextMenuItem>
                       <ContextMenuItem
                         onSelect={() => {
@@ -1196,7 +1308,8 @@ export default function SpinTheWheelPage() {
                       </ContextMenuItem>
                     </ContextMenuContent>
                   </ContextMenu>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <div className="rounded-xl border border-dashed border-border/60 bg-background/30 px-4 py-5 text-sm text-muted-foreground">

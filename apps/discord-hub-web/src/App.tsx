@@ -7,6 +7,7 @@ import ProfileSettingsPage from "@/pages/ProfileSettings";
 import PublicProfilePage from "@/pages/PublicProfile";
 import SpinTheWheelPage from "@/pages/SpinTheWheel";
 import MusicPlayerPage from "@/pages/MusicPlayer";
+import LeagueStatsPage from "@/pages/LeagueStats";
 
 export default function App() {
   return (
@@ -19,6 +20,7 @@ export default function App() {
           <Route path="/profile/settings" element={<ProfileSettingsPage />} />
           <Route path="/tools/spin-the-wheel" element={<SpinTheWheelPage />} />
           <Route path="/tools/music" element={<MusicPlayerPage />} />
+          <Route path="/tools/league-stats" element={<LeagueStatsPage />} />
           <Route path="/u/:userId" element={<PublicProfilePage />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Route>

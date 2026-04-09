@@ -66,7 +66,6 @@ export default function HubDock({
   audioEnabled = true,
   onToggleAudio,
   onCyclePalette,
-  onCycleStylePack,
   onOpenCommandPalette,
   onSummonGoblin,
   onAppeaseHamster,
@@ -102,7 +101,6 @@ export default function HubDock({
   audioEnabled?: boolean;
   onToggleAudio?: (() => void) | null;
   onCyclePalette?: (() => void) | null;
-  onCycleStylePack?: (() => void) | null;
   onOpenCommandPalette?: (() => void) | null;
   onSummonGoblin?: (() => void) | null;
   onAppeaseHamster?: (() => void) | null;
@@ -525,7 +523,6 @@ export default function HubDock({
   const systemTrayEnabled =
     Boolean(onToggleAudio) ||
     Boolean(onCyclePalette) ||
-    Boolean(onCycleStylePack) ||
     Boolean(onOpenCommandPalette) ||
     Boolean(onSummonGoblin) ||
     Boolean(onAppeaseHamster);
@@ -722,17 +719,6 @@ export default function HubDock({
                   >
                     <Palette className="mr-2 size-4 opacity-70" />
                     {shellMenu.cyclePalette}
-                  </DropdownMenuItem>
-                ) : null}
-
-                {onCycleStylePack ? (
-                  <DropdownMenuItem
-                    onSelect={() => {
-                      onCycleStylePack();
-                    }}
-                  >
-                    <LayoutTemplate className="mr-2 size-4 opacity-70" />
-                    {shellMenu.cycleStylePack}
                   </DropdownMenuItem>
                 ) : null}
 
