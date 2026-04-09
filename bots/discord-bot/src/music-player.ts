@@ -838,6 +838,49 @@ export async function shuffleQueue(guildId: string): Promise<number> {
   return res.rowCount ?? 0;
 }
 
+/**
+ * Reassign `added_at` so playback order matches `orderedIds` (must be a permutation of current rows).
+ */
+export async function reorderMusicQueue(guildId: string, orderedIds: number[]): Promise<boolean> {
+  const gid = voiceSnowflake(guildId);
+  if (orderedIds.length === 0) return true;
+  const pool = getPool();
+  const cur = await pool.query<{ id: number }>(
+    `SELECT id FROM bot.music_queue WHERE guild_id = $1 ORDER BY added_at`,
+    [gid],
+  );
+  const currentIds = cur.rows.map((r) => r.id);
+  if (currentIds.length !== orderedIds.length) return false;
+  const setCur = new Set(currentIds);
+  if (new Set(orderedIds).size !== orderedIds.length) return false;
+  if (!orderedIds.every((id) => setCur.has(id))) return false;
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const baseRes = await client.query<{ t: string }>(
+      `SELECT clock_timestamp()::text AS t`,
+    );
+    const base = baseRes.rows[0]?.t;
+    if (!base) throw new Error("clock_timestamp failed");
+    for (let i = 0; i < orderedIds.length; i++) {
+      await client.query(
+        `UPDATE bot.music_queue
+         SET added_at = $1::timestamptz + ($2::bigint * interval '1 microsecond')
+         WHERE id = $3 AND guild_id = $4`,
+        [base, i, orderedIds[i], gid],
+      );
+    }
+    await client.query("COMMIT");
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
+  return true;
+}
+
 async function playTrack(client: Client, guildId: string, track: Track): Promise<void> {
   const gid = voiceSnowflake(guildId);
   const tr: Track = { ...track, channelId: voiceSnowflake(track.channelId) };

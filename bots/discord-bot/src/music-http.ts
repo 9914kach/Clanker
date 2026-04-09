@@ -4,6 +4,7 @@ import { type Client } from 'discord.js';
 import { getPool } from './db.js';
 import {
   enqueue, skip, previous, pause, resume, stop, seek, shuffleQueue,
+  reorderMusicQueue,
   addTrackToPlaylist, playPlaylist,
 } from './music-player.js';
 
@@ -143,6 +144,29 @@ export function startMusicHttpServer(client: Client, port: number): void {
     });
   });
 
+  app.post('/music/queue/reorder', async (c) => {
+    const body = await c.req.json<{ guildId: string; orderedIds: unknown }>();
+    const { guildId, orderedIds } = body;
+    if (!guildId || !GUILD_SNOWFLAKE_RE.test(guildId)) {
+      return c.json({ error: 'Invalid guild id' }, 400);
+    }
+    if (!Array.isArray(orderedIds) || orderedIds.length === 0) {
+      return c.json({ error: 'orderedIds must be a non-empty array' }, 400);
+    }
+    const ids = orderedIds.map((x) => (typeof x === 'number' ? x : Number(x)));
+    if (!ids.every((n) => Number.isInteger(n) && n > 0)) {
+      return c.json({ error: 'orderedIds must be positive integers' }, 400);
+    }
+    try {
+      const ok = await reorderMusicQueue(guildId, ids);
+      if (!ok) return c.json({ error: 'Queue mismatch — refresh and try again' }, 409);
+      return c.json({ ok: true });
+    } catch (err) {
+      console.error('[music-http] queue reorder:', (err as Error).message);
+      return c.json({ error: 'Reorder failed' }, 500);
+    }
+  });
+
   app.delete('/music/queue/:itemId', async (c) => {
     const guildId = c.req.query('guildId')?.trim() ?? '';
     if (!GUILD_SNOWFLAKE_RE.test(guildId)) {
@@ -177,9 +201,12 @@ export function startMusicHttpServer(client: Client, port: number): void {
       console.error(
         `[music-http] Port ${port} is already in use. Stop the other process (e.g. \`docker compose stop discord-bot\`) or set MUSIC_BOT_HTTP_PORT to a free port.`,
       );
+      console.warn('[music-http] Continuing without local music HTTP server in this process.');
+      return;
     } else {
       console.error('[music-http] HTTP server error:', err.message);
     }
-    process.exit(1);
+    // Immediate process.exit(1) on Windows can trip libuv (UV_HANDLE_CLOSING) while the HTTP handle is still unwinding.
+    setImmediate(() => process.exit(1));
   });
 }

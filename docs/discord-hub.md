@@ -34,7 +34,9 @@ Relaterade detaljer:
 **Backend**
 - `apps/discord-hub-api/src/index.ts` — huvudsakliga endpoints.
 - `apps/discord-hub-api/src/discord-*.ts` — OAuth, proxy, gateway, bot‑REST.
-- `apps/discord-hub-api/src/riot-lol.ts` — League‑integration.
+- `apps/discord-hub-api/src/riot-lol.ts` — League‑integration (Riot **match-v5**: match‑ID‑lista per PUUID, paginerat 100 åt gången; utan `type`‑filter får du alla kötyper Riot returnerar inkl. många customs. `gameMode` / `gameType` / `mapId` sparas i `stats.league_matches` efter migration `012_league_match_modes`).
+- Periodisk League‑auto‑sync i API‑processen är **av** som standard; sätt `LEAGUE_AUTO_SYNC_ENABLED=1` i API‑`.env` för att starta den. `LEAGUE_MATCH_FETCH_COUNT` styr hur djupt den hämtar match‑ID:n per användare och cykel när den är påslagen.
+- `GET /api/stats/league/matches` — paginerad lista över inspelade matcher (för hubbens League‑statistik‑vy).
 
 ## Utveckling (lokalt)
 
